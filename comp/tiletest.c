@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
+
 
 int gwidth;
 int gheight;
@@ -27,11 +29,17 @@ void HandleMotion( int x, int y, int mask ) { }
 
 int wordcount = 0;
 
-#define MAXGLYPHS 200000
+#define W_DECIMATE 1
+#define H_DECIMATE 1
+
+#define EXP_W (512>>W_DECIMATE)
+#define EXP_H (384>>H_DECIMATE)
+#define MAXGLYPHS 400000
 
 struct glyph
 {
 	uint64_t dat;
+	uint8_t  flag;
 	int      qty;
 };
 struct glyph gglyphs[MAXGLYPHS];
@@ -76,6 +84,9 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 	int i, x, y;
 	int comppl = 0;
 
+	width>>=W_DECIMATE;
+	height>>=H_DECIMATE;
+
 	if( (width % 8) || (height % 8)) 
 	{
 		fprintf( stderr, "Error: width is not divisible by 8.\n" );
@@ -104,7 +115,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		for( bity = 0; bity < 8; bity++ )
 		for( bitx = 0; bitx < 8; bitx++ )
 		{
-			int on = rgbbuffer[(x+bitx)*3+(y+bity)*linesize]>0x60;
+			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>0x60;
 			glyph <<= 1;
 			glyph |= on;
 		}
@@ -134,7 +145,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 			gglyphs[h].qty++;
 		}
 
-		printf( "%d\n", glyphct );
+		printf( "%d %d\n", glyphct, frame );
 
 //		uint32_t data[width*height];
 //		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
@@ -265,6 +276,47 @@ int compare_ggs( const void * pp, const void *qq) {
 }
 
 
+struct huff_for_sort
+{
+	int      ptr;
+	int      qty;
+	int		 oqty;
+};
+
+struct huff_tree
+{
+	int left;	//If MSB set, is leaf.  Otherwise is tree pointer.
+	int right;
+
+	uint64_t bitpattern;
+	int      bitdepth;
+};
+
+//For finding the least used elements.
+int compare_huff( const void * p, const void *q )
+{
+	const struct huff_for_sort *hp = (const struct huff_for_sort*)p;
+	const struct huff_for_sort *hq = (const struct huff_for_sort*)q;
+	if( hp->qty > hq->qty )
+		return 1;
+	else if( hp->qty < hq->qty )
+		return -1;
+	else
+		return 0;
+}
+
+void FillOutTree( int place, struct huff_tree * ht, int bit_depth, uint64_t pattern )
+{
+	ht[place].bitpattern = pattern;
+	ht[place].bitdepth = bit_depth;
+	if( ht[place].left >= 0 )
+		FillOutTree( ht[place].left, ht, bit_depth + 1, pattern );
+	if( ht[place].right >= 0 )
+		FillOutTree( ht[place].right, ht, bit_depth + 1, pattern | (1<<bit_depth) );
+}
+
+
+
 int main( int argc, char ** argv )
 {
 	if( argc < 2 ) goto help;
@@ -336,8 +388,10 @@ int main( int argc, char ** argv )
 
 		//Reset glyph counts.
 		int i;
-		for( i = 0; i < glyphct; i++ )
-			gglyphs[i].qty = 0;
+		for( i = 0; i < MAXGLYPHS; i++ )
+		{
+			gglyphs[i].qty  = 0;
+		}
 
 		setup_video_decode();
 		video_decode( argv[2] );
@@ -346,11 +400,13 @@ int main( int argc, char ** argv )
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
 		int tileout = atoi( argv[3] );
 
+		int tquat = 0;
 		for( i = 0; i < tileout; i++ )
 		{
-			printf( "%d: %d\n", i, gglyphs[i].qty );
+			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, gglyphs[i].dat );
+			tquat+= gglyphs[i].qty;
 		}
-
+		printf( "Total: %d\n", tquat );
 		f = fopen( "rawtiledata.dat", "wb" );
 		glyphct = tileout;
 		fwrite( &glyphct, sizeof( glyphct ), 1, f );
@@ -364,8 +420,8 @@ int main( int argc, char ** argv )
 		fseek( f, 0, SEEK_END );
 		int len = ftell( f )/4;
 		fseek( f, 0, SEEK_SET );
-		uint32_t * gfdat = malloc(len*4);
-		int ignore = fread( gfdat, len, 1, f );
+		uint32_t * gfdat_raw = malloc(len*4);
+		if( fread( gfdat_raw, 1, len*4, f ) != len*4 ) { fprintf( stderr, "IO fault on read\n" ); exit( -9 ); }
 		fclose( f );
 
 		f = fopen( "rawtiledata.dat", "rb" );
@@ -375,6 +431,36 @@ int main( int argc, char ** argv )
 
 		int i;
 		int maxgf = 0;
+
+		for( i = 0; i < MAXGLYPHS; i++ )
+		{
+			gglyphs[i].qty  = 0;
+		}
+//Perform a sort of space fill curve, seems to save about 15%
+#define SFILL 3
+#ifdef SFILL
+		uint32_t * gfdat = malloc(len*4);
+		int linecells = EXP_W/8;
+		for( i = 0; i < len; i++ )
+		{
+			int frame = i / (EXP_W*EXP_H/64);
+			int cellinframe = i % (EXP_W*EXP_H/64);
+
+			int lower = cellinframe & ((1<<SFILL)-1);
+			int upper = cellinframe & (((EXP_W/8)-1)<<SFILL); ///XXX TODO This bit math might be wrong.
+
+			//int mask = lower * 512/8;
+			int x = upper>>SFILL;
+			int y = lower + ((cellinframe/((EXP_W/8)<<SFILL))<<SFILL);
+			//printf( "(%d %d)\n", x, y );
+			//printf( "(%d,%d,%d)\n",cellinframe, x, y );
+			gfdat[i] = gfdat_raw[x+y*linecells+frame*(EXP_W*EXP_H/64)];
+		}
+#else
+		uint32_t * gfdat = gfdat_raw;
+#endif
+
+#if 0
 		printf( "LEN: %d\n", len );
 		for( i = 0; i < len; i++ )
 		{
@@ -386,13 +472,223 @@ int main( int argc, char ** argv )
 		{
 			printf( "%d\n", gglyphs[i].qty );
 		}
+#endif
+		printf( "LEN: %d\n", len );
 
-		//First, we should encode the RLE somehow, or at least RLE of types 0 and 1.
-		//since they are 3 orders of magnitude more common than any other symbol.
-		//Maybe all this step should do is create extra symbols for RLE of the first two symbols.
-		printf( "LEN: %d / max: %d\n", len, maxgf );
+		uint16_t * mapout = malloc( len * 2 );
+		int mapelem = 0;
+
+		//Tricky - we actually want to remove the first two glyphs, since 0 and 1 will be RLE encoded.
+		for( i = 0; i < glyphct-2; i++ )
+		{
+			memcpy( gglyphs + i, gglyphs + i + 2, sizeof( gglyphs[0] ) );
+		}
+		glyphct-=2;
+		memset( gglyphs + i, 0, sizeof( gglyphs[0] ) * 2 );
+
+		printf( "Initial glyph count: %d\n", glyphct );
+		int tqcells = 0;
+
+
+		for( i = 0; i < len; i++ )
+		{
+			int tglyph = gfdat[i];
+			//Detect first two glyphs.  They're special.  Need to RLE them.
+			if( tglyph == 0 || tglyph == 1 )
+			{
+				int runlen = 1;
+				i++;
+				for( ; i < len; i++ )
+				{
+					if( gfdat[i] == tglyph ) runlen++;
+					else break;
+				}
+				i--;
+
+				tqcells += runlen;
+
+				int flag = tglyph+1;
+				uint64_t dat = runlen;
+				int k;
+				struct glyph * g;
+				for( k = 0; k < glyphct; k++ )
+				{
+					g = &gglyphs[k];
+					if( g->flag == flag && g->dat == dat ) break;
+				}
+
+				if( k == glyphct )
+				{
+					g = &gglyphs[glyphct];
+					glyphct++;
+					g->qty = 1;
+					g->flag = flag;
+					g->dat = dat;
+				}
+				else
+				{
+					g->qty++;
+				}
+				mapout[mapelem++] = k;
+				//printf( "MK: %d %d %d %d   %x\n", mapelem, tqcells, mapout[mapelem-1], glyphct, runlen );
+			}
+			else
+			{
+				struct glyph * g = &gglyphs[tglyph-2];
+				g->qty++;
+				tqcells ++;
+				mapout[mapelem++] = tglyph-2;
+				//printf( "MA: %d %d %d\n", mapelem, tqcells, mapout[mapelem-1] );
+			}
+		}
+
+
+		printf( "Total maps: %d\n", mapelem );
+		printf( "Got cells: %d [check]\n", len );
+		printf( "Accounted cells: %d [check]\n", tqcells );
+
+		//Now, gglyphs is populated, and we have a static mapping of "mapout" to them.
+		//Must now huffman compress the tree.
+
+
+
+#if 0
+		int tquat = 0;
+		for( i = 0; i < glyphct; i++ )
+		{
+			struct glyph * g = &gglyphs[i];
+			printf( "%4d %5d %d %16lx\n", i, g->qty, g->flag, g->dat );
+			tquat += g->qty;
+		}
+		printf( "Total: %d\n", tquat );
+		printf( "Glyph size: %d (Should match)\n", mapelem );
+#endif
+
+		struct huff_for_sort hfs[glyphct*2+2];
+		struct huff_tree     ht[glyphct*2+2];
+
+		//Build huffman tree.
+		for( i = 0; i < glyphct; i++ )
+		{
+			struct huff_for_sort * h = &hfs[i];
+			hfs[i].ptr = i;
+			hfs[i].qty = gglyphs[i].qty;
+			hfs[i].oqty = gglyphs[i].qty;
+			ht[i].left = -1;
+			ht[i].right = -1;
+		}
+
+		for( ; i < glyphct*2; i++ )
+		{
+			hfs[i].ptr = i;
+			hfs[i].qty = 0;
+			hfs[i].oqty = 0;
+			ht[i].left = -1;
+			ht[i].right = -1;
+		}
+		int next_tree = glyphct;
+
+/*
+struct huff_for_sort
+{
+	int      ptr;
+	int      qty;
+};
+struct huff_tree
+{
+	uint16_t left;	//If MSB set, is leaf.  Otherwise is tree pointer.
+	uint16_t right;
+};
+*/
+		int valid_hfsct = glyphct;
+
+		int iteration = 0;
+
+		for( iteration = 0; ; iteration++ )
+		{
+			qsort( hfs, valid_hfsct, sizeof( hfs[0] ), &compare_huff );
+
+			struct huff_for_sort * nhs = &hfs[next_tree];
+			struct huff_tree *   nht = &ht[next_tree];
+
+			//If no more pairs, break;
+			if( hfs[1].qty == 0x7fffffff ) break;
+
+			//Join the first two elements into the next huff_tree.
+			nhs->oqty = nhs->qty = hfs[0].qty + hfs[1].qty;
+			nhs->ptr = next_tree;
+			nht->left = hfs[0].ptr;
+			nht->right = hfs[1].ptr;
+
+			valid_hfsct++;
+			next_tree++;
+
+			//Take the leaves out of the running.
+			hfs[0].qty = 0x7fffffff;
+			hfs[1].qty = 0x7fffffff;
+		}
+		printf( "Stopped after %d\n", iteration );
+
+		//qsort( hfs, valid_hfsct, sizeof( hfs[0] ), &compare_huff );
+		//Already re-sorted.
+
+		//Now, write addresses into all of the tree nodes.
+		FillOutTree( hfs[0].ptr, &ht[0], 0, 0 );
+
+#if 1
+		for( i = 0; i < glyphct*2-1; i++ )
+		{
+			int gid = hfs[i].ptr;
+
+			if( gid < glyphct )
+			{
+				struct glyph * g = &gglyphs[gid];
+				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat, ht[gid].bitdepth, ht[gid].bitpattern );
+			}
+			else
+			{
+				printf( "MY: [(%d, %d)NODE %d %d (%d %d)] [[%d %lx]]\n", hfs[i].oqty, gid, ht[gid].left, ht[gid].right, hfs[i].ptr, hfs[i].qty, ht[gid].bitdepth, ht[gid].bitpattern );
+			}
+		}
+#endif
+
+		//Now, we need to make the output bit stream that would match this huff table.
+		int totalbits = 0;
+		int faults = 0;
+		int tcells = 0;
+		for( i = 0; i < mapelem; i++ )
+		{
+			int mo = mapout[i];
+			totalbits += ht[mo].bitdepth;
+			if( ht[mo].bitdepth < 5 ) faults++;
+			struct glyph * g = &gglyphs[mo];
+			
+			if( g->flag )
+				tcells += g->dat;
+			else
+				tcells++;
+			//printf( "MO: %d %5d %2d %10x   %2d %16x  %d\n", i, mo, ht[mo].bitdepth, ht[mo].bitpattern, g->flag, g->dat, tcells  );
+		}
+		printf( "Total cells: %d [please check this]\n", tcells );
+		printf( "Total frames: %d\n", tcells/(EXP_W*EXP_H/64) );
+		printf( "Total faults: %d\n", faults );
+		printf( "Total maps: %d\n", mapelem );
+		printf( "Total bits: %d\n", totalbits );
+		printf( "Total bytes: %d\n", (totalbits+7)/8 );
+		printf( "Total glyphs: %d\n", glyphct*2-1 );
+	//	mapout[mapelem++] = tglyph;
+
+
+/*
+		f = fopen( "tile_with_rle.dat", "wb" );
+		//glyphct = tileout;
+		fwrite( &glyphct, sizeof( glyphct ), 1, f );
+		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
+		fclose( f );
+
+		//printf( "LEN: %d / max: %d\n", len, maxgf );
+		*/
 	}
-
 	else goto help;
 
 	return 0;
@@ -407,4 +703,37 @@ help:
 	fprintf( stderr, "Stage: 4: Try to compress output data set.\n" );
 	return -1;
 }
+
+//General notes:
+//  ./tiletest 1 badapple.mp4
+//	./tiletest 3 badapple.mp4 16384
+//  Ending with # make && ./tiletest 3 badapple.mp4 8192; make && ./tiletest 4 badapple.mp4 
+//	Total bytes: 2764992
+//  Ending with # make && ./tiletest 3 badapple.mp4 4096; make && ./tiletest 4 badapple.mp4 
+//	Total bytes: 2719717
+//  Ending with # make && ./tiletest 3 badapple.mp4 2048; make && ./tiletest 4 badapple.mp4  << Would use 16kB of ram on the ESP for the table.  This is the maximum that we can do.
+//  Total bytes: 2662156
+//  Ending with # make && ./tiletest 3 badapple.mp4 1024; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 2531176
+//  Ending with # make && ./tiletest 3 badapple.mp4 512; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 2369015
+//  Ending with # make && ./tiletest 3 badapple.mp4 256; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 2178844
+//  Ending with # make && ./tiletest 3 badapple.mp4 128; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 1996740
+//  Ending with # make && ./tiletest 3 badapple.mp4 64; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 1849142
+//  Ending with # make && ./tiletest 3 badapple.mp4 32; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 1,724,437
+//  Ending with # make && ./tiletest 3 badapple.mp4 16; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 1570586
+//  Ending with # make && ./tiletest 3 badapple.mp4 8; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 1354813
+//  Ending with # make && ./tiletest 3 badapple.mp4 4; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 844225
+//  Ending with # make && ./tiletest 3 badapple.mp4 2; make && ./tiletest 4 badapple.mp4 
+//  Total bytes: 843347
+
+
+
 
