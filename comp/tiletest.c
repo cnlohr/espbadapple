@@ -47,7 +47,7 @@ int glyphct;
 
 
 int stage;
-
+int total_quality_loss;
 int BitDiff( uint64_t a, uint64_t b )
 {
 	int i;
@@ -199,6 +199,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 				}
 				printf( "%d\n", bestdiff );
 #endif
+				total_quality_loss += bestdiff;
 				i = bestid;
 			}
 			glyphmap[g] = i;
@@ -232,7 +233,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
 
 		maxframe = frame;
-		//usleep(17000);
+		//usleep(20000);
 
 			//Map this to glyph "i"
 	}
@@ -412,6 +413,8 @@ int main( int argc, char ** argv )
 		fwrite( &glyphct, sizeof( glyphct ), 1, f );
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
+		printf( "Quality loss: %d\n", total_quality_loss );
+
 	}
 	else if( stage == 4 )
 	{
@@ -437,7 +440,7 @@ int main( int argc, char ** argv )
 			gglyphs[i].qty  = 0;
 		}
 //Perform a sort of space fill curve, seems to save about 15%
-#define SFILL 3
+#define SFILL 2
 #ifdef SFILL
 		uint32_t * gfdat = malloc(len*4);
 		int linecells = EXP_W/8;
@@ -675,7 +678,8 @@ struct huff_tree
 		printf( "Total maps: %d\n", mapelem );
 		printf( "Total bits: %d\n", totalbits );
 		printf( "Total bytes: %d\n", (totalbits+7)/8 );
-		printf( "Total glyphs: %d\n", glyphct*2-1 );
+		printf( "Total huffman entries: %d\n", glyphct*2-1 );
+		printf( "Glyphs: %d\n", glyphct );
 	//	mapout[mapelem++] = tglyph;
 
 
@@ -703,37 +707,4 @@ help:
 	fprintf( stderr, "Stage: 4: Try to compress output data set.\n" );
 	return -1;
 }
-
-//General notes:
-//  ./tiletest 1 badapple.mp4
-//	./tiletest 3 badapple.mp4 16384
-//  Ending with # make && ./tiletest 3 badapple.mp4 8192; make && ./tiletest 4 badapple.mp4 
-//	Total bytes: 2764992
-//  Ending with # make && ./tiletest 3 badapple.mp4 4096; make && ./tiletest 4 badapple.mp4 
-//	Total bytes: 2719717
-//  Ending with # make && ./tiletest 3 badapple.mp4 2048; make && ./tiletest 4 badapple.mp4  << Would use 16kB of ram on the ESP for the table.  This is the maximum that we can do.
-//  Total bytes: 2662156
-//  Ending with # make && ./tiletest 3 badapple.mp4 1024; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 2531176
-//  Ending with # make && ./tiletest 3 badapple.mp4 512; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 2369015
-//  Ending with # make && ./tiletest 3 badapple.mp4 256; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 2178844
-//  Ending with # make && ./tiletest 3 badapple.mp4 128; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 1996740
-//  Ending with # make && ./tiletest 3 badapple.mp4 64; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 1849142
-//  Ending with # make && ./tiletest 3 badapple.mp4 32; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 1,724,437
-//  Ending with # make && ./tiletest 3 badapple.mp4 16; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 1570586
-//  Ending with # make && ./tiletest 3 badapple.mp4 8; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 1354813
-//  Ending with # make && ./tiletest 3 badapple.mp4 4; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 844225
-//  Ending with # make && ./tiletest 3 badapple.mp4 2; make && ./tiletest 4 badapple.mp4 
-//  Total bytes: 843347
-
-
-
 
