@@ -16,12 +16,13 @@ int * framenos;
 #define TILE 16
 #define LIMIT 0x40
 #define SFILL 3
-
+#define MAXRLE 127 
+#define T_RLE  uint8_t
 
 #define W_DECIMATE 1
 #define H_DECIMATE 1
 
-#define MAKE_GIF_AT_STAGE_3
+//#define MAKE_GIF_AT_STAGE_3
 
 #ifdef MAKE_GIF_AT_STAGE_3
 #include "gifenc.h"
@@ -442,7 +443,27 @@ void FillOutTree( int place, struct huff_tree * ht, int bit_depth, uint64_t patt
 		FillOutTree( ht[place].right, ht, bit_depth + 1, pattern | (1<<bit_depth) );
 }
 
+void OutputBufferToFile( FILE * outc, const char * dataname, const char * typename, int stride, int bytes, uint8_t * data )
+{
+	int elems = bytes/stride;
+	fprintf( outc, "const %s %s[%d] = {", typename, dataname, elems );
+	int i;
+	for( i = 0; i < elems; i++ )
+	{
+		if( !(i % (16/stride) ) ) fprintf( outc, "\n\t" );
+		uint32_t number = 0;
+		int j;
 
+		//Assume little-endian.
+		for( j = 0; j < stride; j++ )
+		{
+			number |= data[i*stride+j]<<(j*8);
+		}
+
+		fprintf( outc, "0x%0*llx, ", stride*2, number );
+	}
+	fprintf( outc, "};\n\n" );
+}
 
 int main( int argc, char ** argv )
 {
@@ -661,7 +682,7 @@ int main( int argc, char ** argv )
 			{
 				int runlen = 1;
 				i++;
-				for( ; i < len; i++ )
+				for( ; i < len && runlen < MAXRLE-1; i++ )
 				{
 					if( gfdat[i] == tglyph ) runlen++;
 					else break;
@@ -808,7 +829,7 @@ struct huff_tree
 			nhs->ptr = next_tree;
 			nht->left = hfs[0].ptr;
 			nht->right = hfs[1].ptr;
-
+			//printf( "Rolling up %d = %04x %04x\n", next_tree, nht->left, nht->right );
 			valid_hfsct++;
 			next_tree++;
 
@@ -832,7 +853,7 @@ struct huff_tree
 			if( gid < glyphct )
 			{
 				struct glyph * g = &gglyphs[gid];
-				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.dat, ht[gid].bitdepth, ht[gid].bitpattern );
+				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 			else
 			{
@@ -865,9 +886,96 @@ struct huff_tree
 		printf( "Total bytes: %d\n", (totalbits+7)/8 );
 		printf( "Total huffman entries: %d\n", glyphct*2-1 );
 		printf( "Glyphs: %d\n", glyphct );
+
+		int nr_rles = glyphct-initgglyphs;
+		int nr_huffs = glyphct-1;
+		f = fopen( "outsettings.h", "w" );
+		fprintf( f, "#ifndef _BADAPPLE_SETTINGS_H\n" );
+		fprintf( f, "#define _BADAPPLE_SETTINGS_H\n\n" );
+		fprintf( f, "#define TILE %d\n", TILE );
+		fprintf( f, "#define SFILLE %d\n", SFILL );
+		fprintf( f, "#define NR_TILES %d\n", initgglyphs );
+		fprintf( f, "#define NR_RLES %d\n",  nr_rles );
+		fprintf( f, "#define NR_HUFFS %d\n",  nr_huffs );
+		fprintf( f, "#define ROOT_HUFF %d\n", hfs[0].ptr-glyphct );
+
+		fprintf( f, "\n#endif\n" );
+
+		fclose( f );
+
+		FILE * outc = fopen( "outdata.c", "w" );
+		fprintf( outc, "#include \"outsettings.h\"\n" );
+		fprintf( outc, "#include <stdint.h>\n" );
+
+
+		{
+			tiledata tiles[initgglyphs];
+			for( i = 0; i < initgglyphs; i++ )
+			{
+				SetGlyph( tiles[i], gglyphs[i].dat.dat );
+			}
+			f = fopen( "outglyph.dat", "wb" );
+			fwrite( tiles, sizeof(tiles), 1, f );
+			fclose( f );
+			OutputBufferToFile( outc, "glyphdata", "uint32_t", 4, sizeof(tiles), tiles );
+		}
+		{
+			f = fopen( "outrles.dat", "wb" );
+			T_RLE rles[nr_rles];
+			for( i = 0; i < nr_rles; i++ )
+			{
+				rles[i] = gglyphs[i+initgglyphs].dat.runlen<<1;
+				//If white, mark it as such in the RLE tag.
+				if( gglyphs[i+initgglyphs].flag > 1 )
+				{
+					rles[i] |= 1;
+				}
+			}
+			fwrite( rles, sizeof(rles), 1, f );
+			fprintf( outc, "\n//RLE Data MSB's are the length, and the lsb is whether it's white or black.\n" );
+			OutputBufferToFile( outc, "rledata", (sizeof(T_RLE)<2)?"uint8_t":"uint16_t", sizeof(T_RLE), sizeof(rles), rles );
+			fclose( f );
+		}
+		{
+			f = fopen( "hufftable.dat", "wb" );
+			int huffroot = hfs[0].ptr;
+
+			uint16_t huffs[nr_huffs*2];
+			for( i = 0; i < nr_huffs; i++ )
+			{
+				int huffno = glyphct + i;
+				int l = ht[huffno].left;
+				int r = ht[huffno].right;
+
+				//printf( "%d = %04x %04x\n", huffno, l, r );
+
+				if( l >= initgglyphs + nr_rles ) l -= nr_rles + initgglyphs;
+				else if( l > initgglyphs ) l = (l - initgglyphs) | 0x8000;
+				else l = l | 0x4000;
+
+				if( r >= initgglyphs + nr_rles ) r -= nr_rles + initgglyphs;
+				else if( r > initgglyphs ) r = (r - initgglyphs) | 0x8000;
+				else r = r | 0x4000;
+
+				huffs[0+i*2] = l;
+				huffs[1+i*2] = r;
+			}
+			fwrite( huffs, sizeof(huffs), 1, f );
+			fclose( f );
+
+			fprintf( outc, "//0x8000 = glyph, 0x4000 = rle, otherwise, points inside table.\n" );
+			
+			OutputBufferToFile( outc, "huffdata", "uint32_t", 4, sizeof(huffs), huffs );
+		}
+		fclose( outc );
+
+
+		//Last step (For tomorrow) encode the data!  Specifically, mapout[mapelem++] and how it maps to ht[gid].bitdepth
+
+		//XXX XXX TODO
+
+
 	//	mapout[mapelem++] = tglyph;
-
-
 /*
 		f = fopen( "tile_with_rle.dat", "wb" );
 		//glyphct = tileout;

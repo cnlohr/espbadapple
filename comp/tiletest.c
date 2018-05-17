@@ -1,3 +1,5 @@
+//This file has been superceded by tiletest16.c
+
 #include <stdio.h>
 #include "DrawFunctions.h"
 #include "ffmdecode.h"
