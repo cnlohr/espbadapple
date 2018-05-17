@@ -1,4 +1,4 @@
-all : rletest tiletest
+all : rletest tiletest tiletest16
 
 CFLAGS:=-O2 -g
 LDFLAGS:=-g
@@ -8,6 +8,9 @@ rletest : rletest.o ffmdecode.o XDriver.o DrawFunctions.o
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 tiletest :  tiletest.o ffmdecode.o XDriver.o DrawFunctions.o
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+tiletest16 :  tiletest16.o ffmdecode.o XDriver.o DrawFunctions.o gifenc.o
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 clean :

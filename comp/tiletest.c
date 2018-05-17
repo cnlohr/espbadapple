@@ -13,6 +13,10 @@ int firstframe = 1;
 int maxframe;
 int * framenos;
 
+#define LIMIT 0x40
+
+#define SFILL 2
+
 void initframes( const unsigned char * frame, int linesize )
 {
 	int x, y;
@@ -29,8 +33,8 @@ void HandleMotion( int x, int y, int mask ) { }
 
 int wordcount = 0;
 
-#define W_DECIMATE 1
-#define H_DECIMATE 1
+#define W_DECIMATE 0
+#define H_DECIMATE 0
 
 #define EXP_W (512>>W_DECIMATE)
 #define EXP_H (384>>H_DECIMATE)
@@ -47,7 +51,11 @@ int glyphct;
 
 
 int stage;
+//Used in mode 3.
 int total_quality_loss;
+int highest_used_symbol = 0;
+float weight_toward_earlier_symbols;
+
 int BitDiff( uint64_t a, uint64_t b )
 {
 	int i;
@@ -115,7 +123,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		for( bity = 0; bity < 8; bity++ )
 		for( bitx = 0; bitx < 8; bitx++ )
 		{
-			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>0x60;
+			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>LIMIT;
 			glyph <<= 1;
 			glyph |= on;
 		}
@@ -165,20 +173,41 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		{
 			uint64_t gl = thisframe[g];
 			//Step 1: look for an exact match.
-			for( i = 0; i < glyphct; i++ )
+			if( weight_toward_earlier_symbols == 0 )
+				for( i = 0; i < glyphct; i++ )
+				{
+					if( gglyphs[i].dat == gl ) break;
+				}
+			else
 			{
-				if( gglyphs[i].dat == gl ) break;
+				for( i = 0; i < 2; i++ )
+				{
+					if( gglyphs[i].dat == gl ) break;
+				}
+				if( i == 2 ) i = glyphct;
 			}
 
 			if( i == glyphct )
 			{
 				//Step 2: find best match.
-				int bestdiff = 255;
+				float bestdiff = 25500;
 				int bestid;
 				for( i = 0; i < glyphct; i++ )
 				{
 					uint64_t targ = gglyphs[i].dat;
-					int diff = BitDiff( targ, gl );
+					float diff;
+					float bias = 0;
+					if( weight_toward_earlier_symbols >= 0 )
+						bias = weight_toward_earlier_symbols * i;
+					else
+						bias = ((i>=2)?(-weight_toward_earlier_symbols):0);
+
+					//Don't check impossible-to-hit solutions.
+					if( bias > 32 ) break;
+
+					diff = BitDiff( targ, gl ) + bias;
+					//printf( "%16lx %16lx  %d %f\n", targ, gl, i, diff );
+
 					if( diff < bestdiff ) //NOTE: Want to select first instance of good match, to help weight huffman tree if we use one.
 					{
 						bestdiff = diff;
@@ -201,7 +230,9 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 #endif
 				total_quality_loss += bestdiff;
 				i = bestid;
+				//printf( "Selected %d %f\n", i, bestdiff );
 			}
+			if( i > highest_used_symbol ) highest_used_symbol = i;
 			glyphmap[g] = i;
 			gglyphs[i].qty++;
 		}
@@ -225,7 +256,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		for( y = 0; y < height; y++ )
 		for( x = 0; x < width; x++ )
 		{
-			int on = rgbbuffer[(x)*3+(y)*linesize]>0x60;
+			int on = rgbbuffer[(x)*3+(y)*linesize]>LIMIT;
 			//data[x+y*width] |= on?0xf0:0x00;
 		}
 		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
@@ -332,12 +363,13 @@ int main( int argc, char ** argv )
 			fprintf( stderr, "Error: stage 1 but no video\n" );
 			return -9; 
 		}
-		f = fopen( "rawtiledata.dat", "wb" );
 		int line;
 		setup_video_decode();
 
 		video_decode( argv[2] );
 
+		f = fopen( "rawtiledata.dat", "wb" );
+		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
 		fwrite( &glyphct, sizeof( glyphct ), 1, f );
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
@@ -376,9 +408,9 @@ int main( int argc, char ** argv )
 	}
 	else if( stage == 3 )
 	{
-		if( argc < 4 )
+		if( argc < 5 )
 		{
-			fprintf( stderr, "Error: stage 3 but need:  3 [avi] [nr_of_tiles] \n" );
+			fprintf( stderr, "Error: stage 3 but need:  3 [avi] [nr_of_tiles] [weight for symbols earlier in the list, float]\n" );
 			return -9; 
 		}
 		f = fopen( "rawtiledata.dat", "rb" );
@@ -393,13 +425,17 @@ int main( int argc, char ** argv )
 		{
 			gglyphs[i].qty  = 0;
 		}
+		weight_toward_earlier_symbols = atof( argv[4] );
 
 		setup_video_decode();
 		video_decode( argv[2] );
 
-		//Sort tiles.
+		//Sort tiles.  XXX TODO: Maybe do this first?
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
 		int tileout = atoi( argv[3] );
+		highest_used_symbol++;
+		printf( "Writing %d/%d Symbols\n", highest_used_symbol, tileout );
+		if( highest_used_symbol < tileout ) tileout = highest_used_symbol;
 
 		int tquat = 0;
 		for( i = 0; i < tileout; i++ )
@@ -440,7 +476,6 @@ int main( int argc, char ** argv )
 			gglyphs[i].qty  = 0;
 		}
 //Perform a sort of space fill curve, seems to save about 15%
-#define SFILL 2
 #ifdef SFILL
 		uint32_t * gfdat = malloc(len*4);
 		int linecells = EXP_W/8;
@@ -481,6 +516,13 @@ int main( int argc, char ** argv )
 		uint16_t * mapout = malloc( len * 2 );
 		int mapelem = 0;
 
+
+		printf( "Initial glyph count: %d\n", glyphct );
+		int tqcells = 0;
+
+#define DO_RLE  //Use this.
+
+#ifdef DO_RLE
 		//Tricky - we actually want to remove the first two glyphs, since 0 and 1 will be RLE encoded.
 		for( i = 0; i < glyphct-2; i++ )
 		{
@@ -488,11 +530,7 @@ int main( int argc, char ** argv )
 		}
 		glyphct-=2;
 		memset( gglyphs + i, 0, sizeof( gglyphs[0] ) * 2 );
-
-		printf( "Initial glyph count: %d\n", glyphct );
-		int tqcells = 0;
-
-
+		int initgglyphs = glyphct;
 		for( i = 0; i < len; i++ )
 		{
 			int tglyph = gfdat[i];
@@ -533,6 +571,7 @@ int main( int argc, char ** argv )
 					g->qty++;
 				}
 				mapout[mapelem++] = k;
+				//printf( "+" );
 				//printf( "MK: %d %d %d %d   %x\n", mapelem, tqcells, mapout[mapelem-1], glyphct, runlen );
 			}
 			else
@@ -541,10 +580,33 @@ int main( int argc, char ** argv )
 				g->qty++;
 				tqcells ++;
 				mapout[mapelem++] = tglyph-2;
+				if( tglyph-2 >= initgglyphs )
+				{
+					fprintf( stderr, "Error: original glyph exceeded table position.\n" );
+				}
 				//printf( "MA: %d %d %d\n", mapelem, tqcells, mapout[mapelem-1] );
-			}
-		}
+				//printf( ":" );
 
+			}
+			int mo = mapout[mapelem-1];
+			struct glyph * g = &gglyphs[mo];
+			//printf( "YO %6d -> %d -> %16x  [%6d %d]\n", mo, g->flag, g->dat, mapelem, glyphct );
+
+		}
+#elif 0
+		//This was an experiment to see if we shoud use some other mechanism to store run length
+		//instead of huff.  Answer: No.  Use huff.
+#else
+		for( i = 0; i < len; i++ )
+		{
+			int tglyph = gfdat[i];
+			struct glyph * g = &gglyphs[tglyph];
+			g->qty++;
+			tqcells ++;
+			mapout[mapelem++] = tglyph;
+			//printf( "MA: %d %d %d\n", mapelem, tqcells, mapout[mapelem-1] );
+		}
+#endif
 
 		printf( "Total maps: %d\n", mapelem );
 		printf( "Got cells: %d [check]\n", len );
@@ -663,9 +725,9 @@ struct huff_tree
 		{
 			int mo = mapout[i];
 			totalbits += ht[mo].bitdepth;
-			if( ht[mo].bitdepth < 5 ) faults++;
+			//if( ht[mo].bitdepth < 5 ) faults++;
 			struct glyph * g = &gglyphs[mo];
-			
+			//printf( "XO %6d -> %d -> %16x\n", mo, g->flag, g->dat );
 			if( g->flag )
 				tcells += g->dat;
 			else
@@ -674,7 +736,6 @@ struct huff_tree
 		}
 		printf( "Total cells: %d [please check this]\n", tcells );
 		printf( "Total frames: %d\n", tcells/(EXP_W*EXP_H/64) );
-		printf( "Total faults: %d\n", faults );
 		printf( "Total maps: %d\n", mapelem );
 		printf( "Total bits: %d\n", totalbits );
 		printf( "Total bytes: %d\n", (totalbits+7)/8 );
@@ -703,8 +764,8 @@ help:
 	fprintf( stderr, "Error: usage: tiletest [stage] [avi file]\n" );
 	fprintf( stderr, "Stage: 1: Parse into full tile set (huge quantities) set.\n" );
 	fprintf( stderr, "Stage: 2: Show frequency of tiles in set, removing all orphan events.\n" );
-	fprintf( stderr, "Stage: 3: Restrict tile set based on video, also produce tile matches. (Run this step multiple times with decreasing ranges, down to 254.)\n" );
-	fprintf( stderr, "Stage: 4: Try to compress output data set.\n" );
+	fprintf( stderr, "Stage: 3: Restrict tile set based on video, also produce tile matches. (Run this step multiple times with decreasing ranges, down to 254 or whatever the desired # of symbols is.)\n" );
+	fprintf( stderr, "Stage: 5: Try to compress output data set.\n" );
 	return -1;
 }
 

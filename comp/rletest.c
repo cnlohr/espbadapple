@@ -54,6 +54,8 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 	{
 		int thiscolor = rgbbuffer[x*3+y*linesize]>0x60;
 
+		//I've tried swizziling it, but it doesn't seem to help.
+
 		if( thiscolor != color )
 		{
 			compbuffer[comppl++] = runningtime;
