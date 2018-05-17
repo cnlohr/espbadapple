@@ -28,6 +28,7 @@
 				./tiletest16 3 badapple.mp4 2048 0
 				./tiletest16 2 4 .03  ## This was too aggressive. Knocked it down to 538 glyphs.
 				./tiletest16 3 badapple.mp4 2048 0
+				./tiletest16 4
 		*/
 
 
@@ -53,7 +54,7 @@ int * framenos;
 #define W_DECIMATE 0
 #define H_DECIMATE 0
 
-#define MAKE_GIF_AT_STAGE_3
+//#define MAKE_GIF_AT_STAGE_3
 
 #ifdef MAKE_GIF_AT_STAGE_3
 #include "gifenc.h"
@@ -961,11 +962,11 @@ struct huff_tree
 			if( gid < glyphct )
 			{
 				struct glyph * g = &gglyphs[gid];
-				//printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
+				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 			else
 			{
-				//printf( "MY: [(%d, %d)NODE %d %d (%d %d)] [[%d %lx]]\n", hfs[i].oqty, gid, ht[gid].left, ht[gid].right, hfs[i].ptr, hfs[i].qty, ht[gid].bitdepth, ht[gid].bitpattern );
+				printf( "MY: [(%d, %d)NODE %d %d (%d %d)] [[%d %lx]]\n", hfs[i].oqty, gid, ht[gid].left, ht[gid].right, hfs[i].ptr, hfs[i].qty, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 		}
 #endif
