@@ -6,6 +6,31 @@
 #include <stdint.h>
 #include <unistd.h>
 
+//XXX TODO: Do something about the tearing at the bottom of the screen.
+//Probably needs to be moved off into own file.
+//XXX TODO: Add hatching for grey.
+
+		/* Current recommended operating mode:
+				./tiletest16 1 mp4
+				./tiletest16 2 2 .0005 (maybe more?)
+				./tiletest16 3 mp4 [# of cells] 0
+				./tiletest16 2 2 .001
+				./tiletest16 3 mp4 [# of cells] 0
+				./tiletest16 2 3 .001
+				./tiletest16 3 mp4 [# of cells] 0.001
+				./tiletest16 2 3 .001
+				./tiletest16 3 mp4 [# of cells] 0.01
+				./tiletest16 2 3 .002
+				./tiletest16 3 mp4 [# of cells] 0.01
+				./tiletest16 2 3 .01
+				./tiletest16 3 badapple.mp4 2048 0
+				./tiletest16 2 3 .01
+				./tiletest16 3 badapple.mp4 2048 0
+				./tiletest16 2 4 .03  ## This was too aggressive. Knocked it down to 538 glyphs.
+				./tiletest16 3 badapple.mp4 2048 0
+		*/
+
+
 
 int gwidth;
 int gheight;
@@ -14,15 +39,21 @@ int maxframe;
 int * framenos;
 
 #define TILE 16
-#define LIMIT 0x40
-#define SFILL 3
-#define MAXRLE 127 
-#define T_RLE  uint8_t
+#define LIMIT 0x60
+#define SFILL 2
 
-#define W_DECIMATE 1
-#define H_DECIMATE 1
 
-//#define MAKE_GIF_AT_STAGE_3
+//In our source data, we have 357 instances of exceeding RLE lenght if 8 bits.  It is less total
+//data to store RLEs as doubles.
+#define MAXRLE 32767 
+#define T_RLE  uint16_t
+//#define MAXRLE 127
+//#define T_RLE  uint8_t
+
+#define W_DECIMATE 0
+#define H_DECIMATE 0
+
+#define MAKE_GIF_AT_STAGE_3
 
 #ifdef MAKE_GIF_AT_STAGE_3
 #include "gifenc.h"
@@ -81,7 +112,7 @@ int total_quality_loss;
 int highest_used_symbol = 0;
 float weight_toward_earlier_symbols;
 
-int BitDiff( tiledata a, tiledata b )
+int BitDiff( tiledata a, tiledata b, int mintocare )
 {
 	int i;
 	static uint8_t BitsSetTable256[256];
@@ -114,6 +145,7 @@ int BitDiff( tiledata a, tiledata b )
 	{
 		uint16_t diff = a[i]^b[i];
 		ct += BitsSetTable256[diff>>8] + BitsSetTable256[diff & 0xff];
+		if( ct >= mintocare ) { return mintocare; }
 	}
 
 #endif
@@ -121,11 +153,29 @@ int BitDiff( tiledata a, tiledata b )
 	return ct;
 }
 
+
 void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
 {
 	static int notfirst;
 	int i, x, y;
 	int comppl = 0;
+
+	//XXX XXX HACK There is tearing at the bottom of the bad apple screen.
+	static char * oldbuffer;
+	const unsigned char * origrgb = rgbbuffer;
+	{
+		origrgb = rgbbuffer;
+		if( !oldbuffer )
+		{
+			oldbuffer = malloc( linesize * height );
+			memcpy( oldbuffer, origrgb, linesize * height );
+		}
+
+		int offset = linesize * 381;
+		int size =  linesize * 3;
+		memcpy( oldbuffer + offset, origrgb + offset, size );
+	}
+	rgbbuffer = oldbuffer;
 
 	width>>=W_DECIMATE;
 	height>>=H_DECIMATE;
@@ -196,7 +246,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 			{
 //#define FIRST_PASS_CULL
 #ifdef FIRST_PASS_CULL
-				if( BitDiff( tg, gglyphs[h].dat.dat ) < 4 )
+				if( BitDiff( tg, gglyphs[h].dat.dat, 4 ) < 4 )
 				{
 					break;
 				}
@@ -269,7 +319,9 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 					//Don't check impossible-to-hit solutions.
 					if( bias > (TILE*TILE/2) ) break;
 
-					diff = BitDiff( targ, gl ) + bias;
+					int best = ( (int)(bestdiff-bias)+1 );
+					if( best > 100 || best < 1 ) best = 10000;
+					diff = BitDiff( targ, gl, best ) + bias;
 					//printf( "%16lx %16lx  %d %f\n", targ, gl, i, diff );
 
 					if( diff < bestdiff ) //NOTE: Want to select first instance of good match, to help weight huffman tree if we use one.
@@ -364,6 +416,9 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 
 			//Map this to glyph "i"
 	}
+
+
+	memcpy( oldbuffer, origrgb, linesize * height );
 }
 /*
 	color = 0;
@@ -460,7 +515,7 @@ void OutputBufferToFile( FILE * outc, const char * dataname, const char * typena
 			number |= data[i*stride+j]<<(j*8);
 		}
 
-		fprintf( outc, "0x%0*llx, ", stride*2, number );
+		fprintf( outc, "0x%0*x, ", stride*2, number );
 	}
 	fprintf( outc, "};\n\n" );
 }
@@ -494,35 +549,80 @@ int main( int argc, char ** argv )
 	else if( stage == 2 )
 	{
 		//CURRENTLY 2 isn't used, but we should probably use 2 to recondense the glyph dictionaries.
-
+		if( argc < 4 )
+		{
+			fprintf( stderr, "Error: USage tiletest 2 [cutoff, try 2] [dynamic cutoff try 0.0005]\n" );
+			exit( -9 );
+		}
+		float cutoff = atof( argv[2] );
+		float cutoff_dyn = atof( argv[3] );
 		f = fopen( "rawtiledata.dat", "rb" );
 		if( fread( &glyphct, sizeof( glyphct ), 1, f ) != 1 ) goto iofault;
 		if( fread( gglyphs, sizeof( gglyphs[0] ), glyphct, f ) != glyphct ) goto iofault;
 		fclose( f );
 
-		int i;
+		printf( "Input %d glyphs\n", glyphct );
+		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
+
+		int i, j;
 		int qg1 = 0;
 
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
-
+		int keepglyph = 0;
 		for( i = 0; i < glyphct; i++ )
 		{
-			if( gglyphs[i].qty > 1 )
+			printf( "Glyph: %d: ", i );
+			//int closest = 0xffffff;
+			//int closestindex = -1;
+			int cutoff_mark = cutoff + cutoff_dyn * i+1;
+			for( j = 0; j < i; j++ )
 			{
-				printf( "%6d / %6d / %016lx\n", i, gglyphs[i].qty, gglyphs[i].dat.dat );
-				qg1++;
+				if( gglyphs[j].qty > 0 && gglyphs[i].qty > 0 )
+				{
+					int bd = BitDiff( gglyphs[i].dat.dat, gglyphs[j].dat.dat, cutoff_mark );
+					//if( bd <= closest )
+					//{
+					//	closest = bd;
+					//	closestindex = j;
+					//}
+					if( bd < cutoff_mark )
+					{
+						//Nerf lower count.  It's always 'i'
+						gglyphs[i].qty = 0;
+						printf( "Nix  %2d\n", bd );
+						break;
+					}
+
+				}
 			}
+
+//			printf( "%3d ", closest );
+
+			if( j == i )
+				printf( "Keep (%d)\n",keepglyph++ );
+
 		}
-		printf( "%d\n", qg1 );
+
+
+		//from a fresh run, cutoff = 2,.00005, Goes from 339089 to 83740
+
+		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
+
+		glyphct = keepglyph;
+
+		//printf( "%d\n", qg1 );
 
 		//XXX TODO: Right now, we're selecting the most popular 256 tiles.
 		//  Must do something to merge tiles and find out what the most useful 256 tiles are.
 
+	#if 1
 		f = fopen( "rawtiledata.dat", "wb" );
-		glyphct = qg1;
 		fwrite( &glyphct, sizeof( glyphct ), 1, f );
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
+		#endif
+		printf( "Output %d glyphs\n", glyphct );
+
 	}
 	else if( stage == 3 )
 	{
@@ -666,13 +766,20 @@ int main( int argc, char ** argv )
 #define DO_RLE  //Use this.
 
 #ifdef DO_RLE
+
+		int nr_rles = 0;
+		//
 		//Tricky - we actually want to remove the first two glyphs, since 0 and 1 will be RLE encoded.
-		for( i = 0; i < glyphct-2; i++ )
-		{
-			memcpy( gglyphs + i, gglyphs + i + 2, sizeof( gglyphs[0] ) );
-		}
-		glyphct-=2;
-		memset( gglyphs + i, 0, sizeof( gglyphs[0] ) * 2 );
+		//for( i = 0; i < glyphct-2; i++ )
+		//{
+		//	memcpy( gglyphs + i, gglyphs + i + 2, sizeof( gglyphs[0] ) );
+		//}
+		//glyphct-=2;
+		//initgglyphs -= 2;
+		//memset( gglyphs + i, 0, sizeof( gglyphs[0] ) * 2 );
+		//FALSE.  This causes many more problems than it solves.  We do not want to do this.
+
+
 		for( i = 0; i < len; i++ )
 		{
 			int tglyph = gfdat[i];
@@ -710,6 +817,7 @@ int main( int argc, char ** argv )
 					g->qty = 1;
 					g->flag = flag;
 					g->dat.runlen = dat;
+					nr_rles++;
 				}
 				else
 				{
@@ -721,11 +829,11 @@ int main( int argc, char ** argv )
 			}
 			else
 			{
-				struct glyph * g = &gglyphs[tglyph-2];
+				struct glyph * g = &gglyphs[tglyph];
 				g->qty++;
 				tqcells ++;
-				mapout[mapelem++] = tglyph-2;
-				if( tglyph-2 >= initgglyphs )
+				mapout[mapelem++] = tglyph;
+				if( tglyph >= initgglyphs )
 				{
 					fprintf( stderr, "Error: original glyph exceeded table position.\n" );
 				}
@@ -853,11 +961,11 @@ struct huff_tree
 			if( gid < glyphct )
 			{
 				struct glyph * g = &gglyphs[gid];
-				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
+				//printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 			else
 			{
-				printf( "MY: [(%d, %d)NODE %d %d (%d %d)] [[%d %lx]]\n", hfs[i].oqty, gid, ht[gid].left, ht[gid].right, hfs[i].ptr, hfs[i].qty, ht[gid].bitdepth, ht[gid].bitpattern );
+				//printf( "MY: [(%d, %d)NODE %d %d (%d %d)] [[%d %lx]]\n", hfs[i].oqty, gid, ht[gid].left, ht[gid].right, hfs[i].ptr, hfs[i].qty, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 		}
 #endif
@@ -886,27 +994,17 @@ struct huff_tree
 		printf( "Total bytes: %d\n", (totalbits+7)/8 );
 		printf( "Total huffman entries: %d\n", glyphct*2-1 );
 		printf( "Glyphs: %d\n", glyphct );
+		printf( "RLEs: %d\n", nr_rles );
 
-		int nr_rles = glyphct-initgglyphs;
-		int nr_huffs = glyphct-1;
-		f = fopen( "outsettings.h", "w" );
-		fprintf( f, "#ifndef _BADAPPLE_SETTINGS_H\n" );
-		fprintf( f, "#define _BADAPPLE_SETTINGS_H\n\n" );
-		fprintf( f, "#define TILE %d\n", TILE );
-		fprintf( f, "#define SFILLE %d\n", SFILL );
-		fprintf( f, "#define NR_TILES %d\n", initgglyphs );
-		fprintf( f, "#define NR_RLES %d\n",  nr_rles );
-		fprintf( f, "#define NR_HUFFS %d\n",  nr_huffs );
-		fprintf( f, "#define ROOT_HUFF %d\n", hfs[0].ptr-glyphct );
-
-		fprintf( f, "\n#endif\n" );
-
-		fclose( f );
+		int nr_huffs = glyphct-1;  //We know that there are exactly this many huffman nodes because of the way the trees are generated.
 
 		FILE * outc = fopen( "outdata.c", "w" );
 		fprintf( outc, "#include \"outsettings.h\"\n" );
 		fprintf( outc, "#include <stdint.h>\n" );
 
+		int glyphelemlist = 0;
+		int rleelemlist = 0;
+		int huffelemlist = 0;
 
 		{
 			tiledata tiles[initgglyphs];
@@ -917,7 +1015,8 @@ struct huff_tree
 			f = fopen( "outglyph.dat", "wb" );
 			fwrite( tiles, sizeof(tiles), 1, f );
 			fclose( f );
-			OutputBufferToFile( outc, "glyphdata", "uint32_t", 4, sizeof(tiles), tiles );
+			OutputBufferToFile( outc, "glyphdata", "uint32_t", 4, sizeof(tiles), (uint8_t*)tiles );
+			glyphelemlist = sizeof(tiles)/4;
 		}
 		{
 			f = fopen( "outrles.dat", "wb" );
@@ -933,9 +1032,11 @@ struct huff_tree
 			}
 			fwrite( rles, sizeof(rles), 1, f );
 			fprintf( outc, "\n//RLE Data MSB's are the length, and the lsb is whether it's white or black.\n" );
-			OutputBufferToFile( outc, "rledata", (sizeof(T_RLE)<2)?"uint8_t":"uint16_t", sizeof(T_RLE), sizeof(rles), rles );
+			OutputBufferToFile( outc, "rledata", (sizeof(T_RLE)<2)?"uint8_t":"uint16_t", sizeof(T_RLE), sizeof(rles), (uint8_t*)rles );
 			fclose( f );
+			rleelemlist = sizeof(rles)/sizeof(T_RLE);
 		}
+		printf( "IG in hex: %04x\n", initgglyphs );
 		{
 			f = fopen( "hufftable.dat", "wb" );
 			int huffroot = hfs[0].ptr;
@@ -947,15 +1048,13 @@ struct huff_tree
 				int l = ht[huffno].left;
 				int r = ht[huffno].right;
 
-				//printf( "%d = %04x %04x\n", huffno, l, r );
-
 				if( l >= initgglyphs + nr_rles ) l -= nr_rles + initgglyphs;
-				else if( l > initgglyphs ) l = (l - initgglyphs) | 0x8000;
-				else l = l | 0x4000;
+				else if( l >= initgglyphs ) l = (l - initgglyphs) | 0xc000; //RLE
+				else l = l | 0x8000;  //Regular data
 
 				if( r >= initgglyphs + nr_rles ) r -= nr_rles + initgglyphs;
-				else if( r > initgglyphs ) r = (r - initgglyphs) | 0x8000;
-				else r = r | 0x4000;
+				else if( r >= initgglyphs ) r = (r - initgglyphs) | 0xc000; //RLE
+				else r = r | 0x8000;  //Regular glyph
 
 				huffs[0+i*2] = l;
 				huffs[1+i*2] = r;
@@ -963,16 +1062,73 @@ struct huff_tree
 			fwrite( huffs, sizeof(huffs), 1, f );
 			fclose( f );
 
-			fprintf( outc, "//0x8000 = glyph, 0x4000 = rle, otherwise, points inside table.\n" );
+			fprintf( outc, "//0x8000 = glyph, 0xc000 = rle, otherwise, points inside table.\n" );
 			
-			OutputBufferToFile( outc, "huffdata", "uint32_t", 4, sizeof(huffs), huffs );
+			OutputBufferToFile( outc, "huffdata", "uint16_t", 2, sizeof(huffs), (uint8_t*)huffs );
+			huffelemlist = sizeof(huffs)/2;
 		}
 		fclose( outc );
 
 
 		//Last step (For tomorrow) encode the data!  Specifically, mapout[mapelem++] and how it maps to ht[gid].bitdepth
+		{
+			f = fopen( "outvideo.dat", "wb" );
+			uint32_t outbuffer = 0;
+			int outplace = 0;
+			int totalbits = 0;
+			for( i = 0; i < mapelem; i++ )
+			{
+				int me = mapout[i];
+				uint32_t bitpattern = ht[me].bitpattern;   //lsbit first.
+				int      bitdepth = ht[me].bitdepth;
+				int j;
+				//printf( "TOK: %04x %d\n", me, i );
+				for( j = 0; j < bitdepth; j++ )
+				{
+					int bit = bitpattern & 1;
+					bitpattern>>=1;
+					outbuffer |= bit << outplace;
+					outplace++;
+					if( outplace == 32 )
+					{
+						fwrite( &outbuffer, 4, 1, f );
+						//printf( "DUMP %08x\n", outbuffer );
+						outbuffer = 0;
+						outplace = 0;
+					}
+					//printf( "%d", bit );
+					totalbits++;
+				}
+				//printf( "\n" );
+			}
+			if( outplace )
+			{
+				fwrite( &outbuffer, 4, 1, f );
+			}
 
-		//XXX XXX TODO
+			fclose( f );
+		}
+		f = fopen( "outsettings.h", "w" );
+		fprintf( f, "#ifndef _BADAPPLE_SETTINGS_H\n" );
+		fprintf( f, "#define _BADAPPLE_SETTINGS_H\n\n" );
+		fprintf( f, "#include <stdint.h>\n" );
+		fprintf( f, "#define TILE %d\n", TILE );
+		fprintf( f, "#define SFILLE %d\n", SFILL );
+		fprintf( f, "#define NR_TILES %d\n", initgglyphs );
+		fprintf( f, "#define NR_RLES %d\n",  nr_rles );
+		fprintf( f, "#define NR_HUFFS %d\n",  nr_huffs );
+		fprintf( f, "#define ROOT_HUFF %d\n", (hfs[0].ptr-glyphct) );
+		fprintf( f, "#define FWIDTH %d\n", EXP_W );
+		fprintf( f, "#define FHEIGHT %d\n", EXP_H );
+		fprintf( f, "#define TOTALBITS %d\n", totalbits );
+		fprintf( f, "#define FRAMES %d\n", tcells/(EXP_W*EXP_H/(TILE*TILE)) );
+		fprintf( f, "extern const uint32_t glyphdata[%d];\n", glyphelemlist );
+		fprintf( f, "extern const %s rledata[%d];\n", (sizeof(T_RLE)<2)?"uint8_t":"uint16_t", rleelemlist );
+		fprintf( f, "extern const uint16_t huffdata[%d];\n", huffelemlist );
+		fprintf( f, "\n#endif\n" );
+
+
+		fclose( f );
 
 
 	//	mapout[mapelem++] = tglyph;

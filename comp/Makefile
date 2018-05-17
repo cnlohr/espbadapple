@@ -1,4 +1,4 @@
-all : rletest tiletest tiletest16
+all : rletest tiletest tiletest16 test_tilehuff
 
 CFLAGS:=-O2 -g
 LDFLAGS:=-g
@@ -13,5 +13,7 @@ tiletest :  tiletest.o ffmdecode.o XDriver.o DrawFunctions.o
 tiletest16 :  tiletest16.o ffmdecode.o XDriver.o DrawFunctions.o gifenc.o
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
+test_tilehuff : test_tilehuff.o outdata.o XDriver.o DrawFunctions.o gifenc.o
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 clean :
 	rm -rf *.o *~ dectest
