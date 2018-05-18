@@ -18,7 +18,7 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 
 
-void EmitFrametile( uint16_t tile )
+void EmitFrametile( int16_t tile )
 {
 	int sf = 1<<SFILLE;
 	static int tileinframe = 0;
@@ -34,7 +34,7 @@ void EmitFrametile( uint16_t tile )
 
 //	printf( "%d  / %d,%d [%d[%d\n", tileinframe, tilex, tiley, SFILLE, TILEX );
 
-	tilemap[tilex+tiley*TILEX] = tile;
+	if( tile >= 0 ) tilemap[tilex+tiley*TILEX] = tile;
 
 	tileinframe++;
 
@@ -59,7 +59,10 @@ void EmitFrametile( uint16_t tile )
 				}
 			}
 		}
+		
 		CNFGUpdateScreenWithBitmap( framebuffer, FWIDTH, FHEIGHT );
+		CNFGSwapBuffers();
+		usleep(30000);
 		if( frame > 5100 && frame < 6600 )
 		{
 			for( y = 0; y < FHEIGHT; y++ )
@@ -130,16 +133,23 @@ int main()
 		if( tablekey & 0x4000 ) //RLE
 		{
 			uint16_t rle = rledata[tablekey&0x3fff];
-			int color = rle&1;
-			rle>>=1;
+			int flags = rle;
+			rle&=0x3fff;
+			//printf( "RLE: %d %d\n", rle, flags>>14 );
 			while( rle-- )
 			{
-				EmitFrametile(color);
+				if( flags & 0x4000 )
+					EmitFrametile(0);
+				else if( flags & 0x8000 )
+					EmitFrametile(1);
+				else
+					EmitFrametile(-1);
 			}
 			//tilemap[TILEX*TILEY];
 		}
 		else					//GLYPH
 		{
+			//printf( "Emit: %d\n", tablekey );
 			EmitFrametile( tablekey & 0x3fff );
 		}
 

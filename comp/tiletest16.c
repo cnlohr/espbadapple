@@ -41,12 +41,16 @@ int * framenos;
 
 #define TILE 16
 #define LIMIT 0x60
-#define SFILL 2
+#define SFILL 3
+
+#define USE_PREVIOUS_THRESH 4 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 2 
+#define USE_DELTA_FRAMES
 
 
 //In our source data, we have 357 instances of exceeding RLE lenght if 8 bits.  It is less total
 //data to store RLEs as doubles.
-#define MAXRLE 32767 
+#define MAXRLE 8191 
 #define T_RLE  uint16_t
 //#define MAXRLE 127
 //#define T_RLE  uint8_t
@@ -155,28 +159,11 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 }
 
 
-void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
+void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
 {
 	static int notfirst;
 	int i, x, y;
 	int comppl = 0;
-
-	//XXX XXX HACK There is tearing at the bottom of the bad apple screen.
-	static char * oldbuffer;
-	const unsigned char * origrgb = rgbbuffer;
-	{
-		origrgb = rgbbuffer;
-		if( !oldbuffer )
-		{
-			oldbuffer = malloc( linesize * height );
-			memcpy( oldbuffer, origrgb, linesize * height );
-		}
-
-		int offset = linesize * 381;
-		int size =  linesize * 3;
-		memcpy( oldbuffer + offset, origrgb + offset, size );
-	}
-	rgbbuffer = oldbuffer;
 
 	width>>=W_DECIMATE;
 	height>>=H_DECIMATE;
@@ -275,12 +262,14 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		maxframe = frame;
 
 	}
-	else if( stage == 3 )
+	else if( stage == 3 ) 	//refine:  Use the existing dictionary, only and try to fit based on that.
 	{
 		int i, g;
 
-		uint32_t glyphmap[glyphs];
-		uint32_t data[width*height];
+		static uint32_t  * glyphlast;
+		if( !glyphlast ) { glyphlast = calloc( glyphs, sizeof(uint32_t) ); }
+		int32_t glyphmap[glyphs];
+		int32_t data[width*height];
 		memset( data, 0, sizeof(data ));
 		for( g = 0; g < glyphs; g++ )
 		{
@@ -345,21 +334,42 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 				}
 				printf( "%d\n", bestdiff );
 #endif
+
 				total_quality_loss += bestdiff;
 				i = bestid;
 				//printf( "Selected %d %f\n", i, bestdiff );
 			}
-			if( i > highest_used_symbol ) highest_used_symbol = i;
-			glyphmap[g] = i;
-			gglyphs[i].qty++;
+
+			//XXX HERE: write out -1 for cells that didn't change.
+			//Do something smart about it.
+#ifdef USE_DELTA_FRAMES
+			int last = glyphlast[g];
+			int lastdiffS = BitDiff( gglyphs[last].dat.dat, gl, 1000 );
+			int lastdiffC = BitDiff( gl, gglyphs[i].dat.dat, 1000 );
+
+			if( last == i || lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
+				 || lastdiffS <= lastdiffC + USE_PREVIOUS_THRESH_S )		//Is it at least as good as the previously selected frag?
+			{
+				glyphmap[g] = -1;
+			}
+			else
+#endif
+			{
+				//Check to see if it should just stay the same...
+				if( i > highest_used_symbol ) highest_used_symbol = i;
+				glyphmap[g] = i;
+				gglyphs[i].qty++;
+			}
 		}
 		fwrite( glyphmap, sizeof( glyphmap ), 1, f );
+		for( g = 0; g < glyphs; g++ )
+			if( glyphmap[g] >= 0 ) glyphlast[g] = glyphmap[g];
 
 		for( y = 0; y < height/TILE; y++ )
 		for( x = 0; x < width/TILE; x++ )
 		{
 			tiledata glyphdata;
-			SetGlyph( glyphdata, gglyphs[glyphmap[x+y*(width/TILE)]].dat.dat );
+			SetGlyph( glyphdata, gglyphs[glyphlast[x+y*(width/TILE)]].dat.dat );
 			int lx = x * TILE;
 			int ly = y * TILE;
 			int px, py;
@@ -382,7 +392,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 			//data[x+y*width] |= on?0xf0:0x00;
 		}
 		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
-
+		CNFGSwapBuffers();
 		printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
 
 		maxframe = frame;
@@ -419,7 +429,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 	}
 
 
-	memcpy( oldbuffer, origrgb, linesize * height );
+//	memcpy( oldbuffer, origrgb, linesize * height );
 }
 /*
 	color = 0;
@@ -784,9 +794,7 @@ int main( int argc, char ** argv )
 		for( i = 0; i < len; i++ )
 		{
 			int tglyph = gfdat[i];
-			//printf( "%d/%d\n", tglyph, initgglyphs );
-			//Detect first two glyphs.  They're special.  Need to RLE them.
-			if( tglyph == 0 || tglyph == 1 )
+			if( tglyph == 0 || tglyph == 1 || tglyph == -1 )  			//Detect first two glyphs.  They're special.  Need to RLE them.
 			{
 				int runlen = 1;
 				i++;
@@ -801,7 +809,7 @@ int main( int argc, char ** argv )
 
 				tqcells += runlen;
 
-				int flag = tglyph+1;
+				int flag = tglyph+2;
 				int dat = runlen;
 				int k;
 				struct glyph * g;
@@ -1024,11 +1032,15 @@ struct huff_tree
 			T_RLE rles[nr_rles];
 			for( i = 0; i < nr_rles; i++ )
 			{
-				rles[i] = gglyphs[i+initgglyphs].dat.runlen<<1;
+				rles[i] = gglyphs[i+initgglyphs].dat.runlen;
 				//If white, mark it as such in the RLE tag.
-				if( gglyphs[i+initgglyphs].flag > 1 )
+				if( gglyphs[i+initgglyphs].flag == 3 ) //White
 				{
-					rles[i] |= 1;
+					rles[i] |= 0x8000;
+				}
+				if( gglyphs[i+initgglyphs].flag == 2 ) //Black
+				{
+					rles[i] |= 0x4000;
 				}
 			}
 			fwrite( rles, sizeof(rles), 1, f );
