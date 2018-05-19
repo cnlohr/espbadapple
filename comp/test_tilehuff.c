@@ -47,6 +47,7 @@ void EmitFrametile( int16_t tile )
 		{
 			uint16_t tile = tilemap[x+y*TILEX];
 			//XXX TODO For different tile sizes.
+#if TILE == 16
 			uint16_t * gd = (uint16_t*)&glyphdata;
 
 			gd = &gd[tile*TILE];
@@ -58,12 +59,25 @@ void EmitFrametile( int16_t tile )
 					framebuffer[(lx+x*TILE)+(ly+y*TILE)*FWIDTH] = (gd[ly]&(1<<(TILE-lx-1)))?0xfffffff:0;
 				}
 			}
+#else
+			uint8_t * gd = (uint8_t*)&glyphdata;
+			gd = &gd[tile*TILE];
+			for( ly = 0; ly < TILE; ly++ )
+			{
+				for( lx = 0; lx < TILE; lx++ )
+				{
+					framebuffer[(lx+x*TILE)+(ly+y*TILE)*FWIDTH] = (gd[7-ly]&(1<<(TILE-lx-1)))?0xfffffff:0;
+				}
+			}
+
+
+#endif
 		}
 		
 		CNFGUpdateScreenWithBitmap( framebuffer, FWIDTH, FHEIGHT );
-		CNFGSwapBuffers();
-		usleep(30000);
-		if( frame > 5100 && frame < 6600 )
+		//CNFGSwapBuffers();
+		//usleep(30000);
+		if( frame > 3200 && frame < 5000 )
 		{
 			for( y = 0; y < FHEIGHT; y++ )
 			for( x = 0; x < FWIDTH; x++ )

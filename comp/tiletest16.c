@@ -6,22 +6,34 @@
 #include <stdint.h>
 #include <unistd.h>
 
+
 //XXX TODO: Do something about the tearing at the bottom of the screen.
 //Probably needs to be moved off into own file.
 //XXX TODO: Add hatching for grey.
 
 		/* Current recommended operating mode:
-				./tiletest16 1 mp4
-				./tiletest16 2 2 .0005 (maybe more?)
-				./tiletest16 3 mp4 [# of cells] 0
-				./tiletest16 2 2 .001
-				./tiletest16 3 mp4 [# of cells] 0
+				./tiletest16 1 badapple-sm8628149.mp4
+				./tiletest16 3 badapple-sm8628149.mp4 5000000 0
+				./tiletest16 2 2 -4
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0
+				./tiletest16 2 3 -7
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0
+				./tiletest16 2 3 -10
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.0001
+				./tiletest16 2 3 -14
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.0001
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.0001
+				./tiletest16 2 3 -16
+				./tiletest16 3 badapple-sm8628149.mp4 20000 0.001
+				./tiletest16 2 3 -16
+				./tiletest16 3 badapple-sm8628149.mp4 10000 0.002
+
+				./tiletest16 2 3 .0001
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.001
 				./tiletest16 2 3 .001
-				./tiletest16 3 mp4 [# of cells] 0.001
-				./tiletest16 2 3 .001
-				./tiletest16 3 mp4 [# of cells] 0.01
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.01
 				./tiletest16 2 3 .002
-				./tiletest16 3 mp4 [# of cells] 0.01
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0.01
 				./tiletest16 2 3 .01
 				./tiletest16 3 badapple.mp4 2048 0
 				./tiletest16 2 3 .01
@@ -29,6 +41,30 @@
 				./tiletest16 2 4 .03  ## This was too aggressive. Knocked it down to 538 glyphs.
 				./tiletest16 3 badapple.mp4 2048 0
 				./tiletest16 4
+
+
+		For 8-tile...
+				./tiletest16 1 badapple-sm8628149.mp4
+				./tiletest16 3 badapple-sm8628149.mp4 200000 0
+				./tiletest16 2 2 -2
+				#./tiletest16 2 1 .0005 (maybe more?)
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .001
+				./tiletest16 3 badapple-sm8628149.mp4 10000 .001
+				./tiletest16 2 3 -2 #
+
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .002  # Get a sorted list out.
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .002  # Get a sorted list out.
+			This gets you to under 2MB but you can keep going...  This starts to look awful.
+				./tiletest16 2 2 .004 (maybe more?)
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .002  # Get a sorted list out.
+			Gets you to 1.7MB
+				./tiletest16 2 2 .02 (maybe more?)
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .01  # Get a sorted list out.
+				./tiletest16 2 2 .03 (maybe more?)
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .02  # Get a sorted list out.
+				./tiletest16 3 badapple-sm8628149.mp4 200000 .1  # Get a sorted list out.
+				./tiletest16 4
+
 		*/
 
 
@@ -39,13 +75,27 @@ int firstframe = 1;
 int maxframe;
 int * framenos;
 
-#define TILE 16
+#define TILE 8
+
+#define HALFTONE
+
+#ifndef HALFTONE
 #define LIMIT 0x60
+#else
+#define LIMITA 0xa0
+#define LIMITB 0x20
+#endif
 #define SFILL 3
 
+#define USE_DELTA_FRAMES
+
+#if TILE==16
 #define USE_PREVIOUS_THRESH 4 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 2 
-#define USE_DELTA_FRAMES
+#else
+#define USE_PREVIOUS_THRESH 4 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 2
+#endif
 
 
 //In our source data, we have 357 instances of exceeding RLE lenght if 8 bits.  It is less total
@@ -58,12 +108,6 @@ int * framenos;
 #define W_DECIMATE 0
 #define H_DECIMATE 0
 
-//#define MAKE_GIF_AT_STAGE_3
-
-#ifdef MAKE_GIF_AT_STAGE_3
-#include "gifenc.h"
-static ge_GIF *gif;
-#endif
 
 void initframes( const unsigned char * frame, int linesize )
 {
@@ -99,14 +143,14 @@ typedef uint16_t tiledata[16];
 
 struct glyph
 {
-	uint8_t  flag;
-	int      qty;
+	int32_t  flag;
+	int32_t      qty;
 	union
 	{
 		tiledata dat;
 		uint32_t runlen;
 	} dat;
-};
+} __attribute__((packed));
 struct glyph gglyphs[MAXGLYPHS];
 int glyphct;
 
@@ -199,7 +243,11 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( bity = 0; bity < 8; bity++ )
 		for( bitx = 0; bitx < 8; bitx++ )
 		{
+#ifndef HALFTONE
 			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>LIMIT;
+#else
+			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+#endif
 			glyph <<= 1;
 			glyph |= on;
 		}
@@ -210,7 +258,12 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			int tglyph = 0;
 			for( bitx = 0; bitx < 16; bitx++ )
 			{
+#ifndef HALFTONE
 				int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>LIMIT;
+#else
+				int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+#endif
+
 				tglyph <<= 1;
 				tglyph |= on?1:0;
 			}
@@ -258,6 +311,21 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 //		uint32_t data[width*height];
 //		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
 //		printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
+
+		int32_t data[width*height];
+		memset( data, 0, sizeof(data ));
+
+		for( y = 0; y < height; y++ )
+		for( x = 0; x < width; x++ )
+		{
+#ifndef HALFTONE
+			int on = rgbbuffer[(x)*3+(y)*linesize]>LIMIT;
+#else
+			int on = rgbbuffer[(x)*3+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
+#endif
+			data[x+y*width] |= on?0xfffffff:0x00;
+		}
+		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
 
 		maxframe = frame;
 
@@ -347,8 +415,12 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			int lastdiffS = BitDiff( gglyphs[last].dat.dat, gl, 1000 );
 			int lastdiffC = BitDiff( gl, gglyphs[i].dat.dat, 1000 );
 
-			if( last == i || lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
-				 || lastdiffS <= lastdiffC + USE_PREVIOUS_THRESH_S )		//Is it at least as good as the previously selected frag?
+			//If the recommended glyph is 0 or 1, and it doesn't match perfectly, make it so.
+			int disable_rle_for_this = i<2 && lastdiffS;
+
+			if( ( last == i || lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
+				 || lastdiffS <= lastdiffC + USE_PREVIOUS_THRESH_S ) &&
+					!disable_rle_for_this )		//Is it at least as good as the previously selected frag?
 			{
 				glyphmap[g] = -1;
 			}
@@ -388,11 +460,16 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( y = 0; y < height; y++ )
 		for( x = 0; x < width; x++ )
 		{
+#ifndef HALFTONE
 			int on = rgbbuffer[(x)*3+(y)*linesize]>LIMIT;
+#else
+			int on = rgbbuffer[(x)*3+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
+#endif
 			//data[x+y*width] |= on?0xf0:0x00;
 		}
 		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
-		CNFGSwapBuffers();
+		//CNFGSwapBuffers();
+		//CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
 		printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
 
 		maxframe = frame;
@@ -556,6 +633,7 @@ int main( int argc, char ** argv )
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
 		printf( "Total: %d glyphs\n", glyphct );
+		printf( "Writing %ld+4 bytes\n", sizeof( gglyphs[0] ) * glyphct );
 	}
 	else if( stage == 2 )
 	{
@@ -568,6 +646,7 @@ int main( int argc, char ** argv )
 		float cutoff = atof( argv[2] );
 		float cutoff_dyn = atof( argv[3] );
 		f = fopen( "rawtiledata.dat", "rb" );
+		printf( "%ld\n", sizeof( gglyphs[0] ) );
 		if( fread( &glyphct, sizeof( glyphct ), 1, f ) != 1 ) goto iofault;
 		if( fread( gglyphs, sizeof( gglyphs[0] ), glyphct, f ) != glyphct ) goto iofault;
 		fclose( f );
@@ -585,7 +664,16 @@ int main( int argc, char ** argv )
 			printf( "Glyph: %d: ", i );
 			//int closest = 0xffffff;
 			//int closestindex = -1;
-			int cutoff_mark = cutoff + cutoff_dyn * i+1;
+			int cutoff_mark;
+			if( cutoff_dyn >= 0 )
+				cutoff_mark = cutoff + cutoff_dyn * i+1;
+			else if( gglyphs[i].qty > 0 )
+			{
+				int extraterm = -cutoff_dyn/gglyphs[i].qty;
+				cutoff_mark = cutoff + extraterm;
+			}
+			else
+				cutoff_mark = 10000;
 			for( j = 0; j < i; j++ )
 			{
 				if( gglyphs[j].qty > 0 && gglyphs[i].qty > 0 )
@@ -650,7 +738,8 @@ int main( int argc, char ** argv )
 
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
 		int tileout = atoi( argv[3] );
-		glyphct = tileout;
+		if( tileout < glyphct ) 
+			glyphct = tileout;
 
 		int i;
 
@@ -675,17 +764,19 @@ int main( int argc, char ** argv )
 		video_decode( argv[2] );
 
 		highest_used_symbol++;
-		printf( "Writing %d/%d Symbols\n", highest_used_symbol, tileout );
-		if( highest_used_symbol < tileout ) tileout = highest_used_symbol;
-
-		for( i = 0; i < tileout; i++ )
+		printf( "%d Symbols used... But writing %d\n", highest_used_symbol, glyphct );
+		if( glyphct > highest_used_symbol ) glyphct = highest_used_symbol;
+		for( i = 0; i < glyphct; i++ )
 		{
+#if TILE==16
 			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, ((uint64_t*)gglyphs[i].dat.dat)[0] );
+#else
+			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, gglyphs[i].dat.dat );
+#endif
 			tquat+= gglyphs[i].qty;
 		}
 		printf( "Total: %d\n", tquat );
 		f = fopen( "rawtiledata.dat", "wb" );
-		glyphct = tileout;
 		fwrite( &glyphct, sizeof( glyphct ), 1, f );
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
@@ -970,7 +1061,7 @@ struct huff_tree
 			if( gid < glyphct )
 			{
 				struct glyph * g = &gglyphs[gid];
-				printf( "MZ: %4d %4d %5d %d %16lx   [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
+				printf( "MZ: %4d %4d %5d %d %d  [[%d %lx]] \n", gid, i, hfs[i].oqty, g->flag, g->dat.runlen, ht[gid].bitdepth, ht[gid].bitpattern );
 			}
 			else
 			{
@@ -1002,7 +1093,7 @@ struct huff_tree
 		printf( "Total bits: %d\n", totalbits );
 		printf( "Total bytes: %d\n", (totalbits+7)/8 );
 		printf( "Total huffman entries: %d\n", glyphct*2-1 );
-		printf( "Glyphs: %d\n", glyphct );
+		printf( "Symbols: %d\n", initgglyphs );
 		printf( "RLEs: %d\n", nr_rles );
 
 		int nr_huffs = glyphct-1;  //We know that there are exactly this many huffman nodes because of the way the trees are generated.
@@ -1092,7 +1183,7 @@ struct huff_tree
 			for( i = 0; i < mapelem; i++ )
 			{
 				int me = mapout[i];
-				uint32_t bitpattern = ht[me].bitpattern;   //lsbit first.
+				uint64_t bitpattern = ht[me].bitpattern;   //lsbit first.
 				int      bitdepth = ht[me].bitdepth;
 				int j;
 				//printf( "TOK: %04x %d\n", me, i );
