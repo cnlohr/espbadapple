@@ -45,12 +45,12 @@
 
 		For 8-tile...
 				./tiletest16 1 badapple-sm8628149.mp4
-				./tiletest16 3 badapple-sm8628149.mp4 200000 0
-				./tiletest16 2 2 -2
+				./tiletest16 2 2 -1
+				./tiletest16 3 badapple-sm8628149.mp4 2000000 0
 				#./tiletest16 2 1 .0005 (maybe more?)
 				./tiletest16 3 badapple-sm8628149.mp4 200000 .001
 				./tiletest16 3 badapple-sm8628149.mp4 10000 .001
-				./tiletest16 2 3 -2 #
+				./tiletest16 2 3 -2
 
 				./tiletest16 3 badapple-sm8628149.mp4 200000 .002  # Get a sorted list out.
 				./tiletest16 3 badapple-sm8628149.mp4 200000 .002  # Get a sorted list out.
@@ -75,27 +75,41 @@ int firstframe = 1;
 int maxframe;
 int * framenos;
 
+#define FOR_ESP8266
+
+#ifdef FOR_ESP8266
+
+#define W_DECIMATE 0.594
+#define H_DECIMATE 0.594
 #define TILE 8
-
 #define HALFTONE
-
-#ifndef HALFTONE
+#define SFILL 2
 #define LIMIT 0x60
+#define LIMITA 0xa0
+#define LIMITB 0x18
+
+
+#define USE_PREVIOUS_THRESH 2 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 1 
+
+
 #else
+
+#define W_DECIMATE 1
+#define H_DECIMATE 1
+#define TILE 16
+#define HALFTONE
+#define SFILL 3
 #define LIMITA 0xa0
 #define LIMITB 0x20
+
+#define USE_PREVIOUS_THRESH 4 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 2
+
 #endif
-#define SFILL 3
 
 #define USE_DELTA_FRAMES
 
-#if TILE==16
-#define USE_PREVIOUS_THRESH 4 //For delta-frames.
-#define USE_PREVIOUS_THRESH_S 2 
-#else
-#define USE_PREVIOUS_THRESH 4 //For delta-frames.
-#define USE_PREVIOUS_THRESH_S 2
-#endif
 
 
 //In our source data, we have 357 instances of exceeding RLE lenght if 8 bits.  It is less total
@@ -104,10 +118,6 @@ int * framenos;
 #define T_RLE  uint16_t
 //#define MAXRLE 127
 //#define T_RLE  uint8_t
-
-#define W_DECIMATE 0
-#define H_DECIMATE 0
-
 
 void initframes( const unsigned char * frame, int linesize )
 {
@@ -125,8 +135,8 @@ void HandleMotion( int x, int y, int mask ) { }
 
 int wordcount = 0;
 
-#define EXP_W (512>>W_DECIMATE)
-#define EXP_H (384>>H_DECIMATE)
+#define EXP_W (((int)(512*W_DECIMATE))/TILE*TILE)
+#define EXP_H (((int)(384*H_DECIMATE))/TILE*TILE)
 #define MAXGLYPHS 600000
 
 #if TILE==8
@@ -209,18 +219,22 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	int i, x, y;
 	int comppl = 0;
 
-	width>>=W_DECIMATE;
-	height>>=H_DECIMATE;
+	width*=W_DECIMATE;
+	height*=H_DECIMATE;
 
-	if( (width % TILE) || (height % TILE)) 
+	if( (width % TILE) ) 
 	{
-		fprintf( stderr, "Error: width is not divisible by TILE.\n" );
+		fprintf( stderr, "Error: width is not divisible by TILE. %d %d %d %d\n", width, height, (int)(width % TILE), (int)(height % TILE) );
 		exit( -1 );
 	}
+
+	height = ( height / TILE ) * TILE;
 
 	if( !notfirst )
 	{
 		CNFGSetup( "badapple", width, height );
+		printf( "Width: %d / Height: %d  (%d %d) (%d %d) Leftover %d %d\n", width, height, EXP_W, EXP_H, width / TILE, height / TILE );
+
 		notfirst = 1;
 	}
 
@@ -244,9 +258,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( bitx = 0; bitx < 8; bitx++ )
 		{
 #ifndef HALFTONE
-			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>LIMIT;
+			int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>LIMIT;
 #else
-			int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+			int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
 #endif
 			glyph <<= 1;
 			glyph |= on;
@@ -259,9 +273,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			for( bitx = 0; bitx < 16; bitx++ )
 			{
 #ifndef HALFTONE
-				int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>LIMIT;
+				int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>LIMIT;
 #else
-				int on = rgbbuffer[(((x+bitx)*3)<<W_DECIMATE)+((y+bity)<<H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+				int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
 #endif
 
 				tglyph <<= 1;
@@ -319,9 +333,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( x = 0; x < width; x++ )
 		{
 #ifndef HALFTONE
-			int on = rgbbuffer[(x)*3+(y)*linesize]>LIMIT;
+			int on = rgbbuffer[(int)((x)*3/W_DECIMATE)+(int)(y/H_DECIMATE)*linesize]>LIMIT;
 #else
-			int on = rgbbuffer[(x)*3+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
+			int on = rgbbuffer[(int)((x)*3/W_DECIMATE)+(int)(y/H_DECIMATE)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
 #endif
 			data[x+y*width] |= on?0xfffffff:0x00;
 		}
@@ -333,7 +347,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	else if( stage == 3 ) 	//refine:  Use the existing dictionary, only and try to fit based on that.
 	{
 		int i, g;
-
+		uint8_t match_frame[glyphs];
 		static uint32_t  * glyphlast;
 		if( !glyphlast ) { glyphlast = calloc( glyphs, sizeof(uint32_t) ); }
 		int32_t glyphmap[glyphs];
@@ -410,6 +424,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 
 			//XXX HERE: write out -1 for cells that didn't change.
 			//Do something smart about it.
+
 #ifdef USE_DELTA_FRAMES
 			int last = glyphlast[g];
 			int lastdiffS = BitDiff( gglyphs[last].dat.dat, gl, 1000 );
@@ -418,11 +433,12 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			//If the recommended glyph is 0 or 1, and it doesn't match perfectly, make it so.
 			int disable_rle_for_this = i<2 && lastdiffS;
 
-			if( ( last == i || lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
+			if( ( ( lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
 				 || lastdiffS <= lastdiffC + USE_PREVIOUS_THRESH_S ) &&
-					!disable_rle_for_this )		//Is it at least as good as the previously selected frag?
+					!disable_rle_for_this ) ||  last == i )		//Is it at least as good as the previously selected frag?
 			{
 				glyphmap[g] = -1;
+				match_frame[g] = 1;
 			}
 			else
 #endif
@@ -431,6 +447,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 				if( i > highest_used_symbol ) highest_used_symbol = i;
 				glyphmap[g] = i;
 				gglyphs[i].qty++;
+				match_frame[g] = 0;
 			}
 		}
 		fwrite( glyphmap, sizeof( glyphmap ), 1, f );
@@ -441,7 +458,8 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( x = 0; x < width/TILE; x++ )
 		{
 			tiledata glyphdata;
-			SetGlyph( glyphdata, gglyphs[glyphlast[x+y*(width/TILE)]].dat.dat );
+			int g = x+y*(width/TILE);
+			SetGlyph( glyphdata, gglyphs[glyphlast[g]].dat.dat );
 			int lx = x * TILE;
 			int ly = y * TILE;
 			int px, py;
@@ -453,7 +471,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 #else
 				int bit = glyphdata[py] & (1<<(15-px));
 #endif
-				data[px+x*TILE+(py+y*TILE)*width] |= bit?0xf00000:0x00000000;
+				uint32_t dat = bit?0xf00000:0x00000000;
+				if( match_frame[g] ) dat|= 0xf0;
+				data[px+x*TILE+(py+y*TILE)*width] = dat;
 			}
 		}
 
@@ -674,6 +694,7 @@ int main( int argc, char ** argv )
 			}
 			else
 				cutoff_mark = 10000;
+			int best = 10000;
 			for( j = 0; j < i; j++ )
 			{
 				if( gglyphs[j].qty > 0 && gglyphs[i].qty > 0 )
@@ -684,6 +705,7 @@ int main( int argc, char ** argv )
 					//	closest = bd;
 					//	closestindex = j;
 					//}
+					if( bd < best ) best = bd;
 					if( bd < cutoff_mark )
 					{
 						//Nerf lower count.  It's always 'i'
@@ -698,16 +720,22 @@ int main( int argc, char ** argv )
 //			printf( "%3d ", closest );
 
 			if( j == i )
-				printf( "Keep (%d)\n",keepglyph++ );
+				printf( "Keep (%d) %d (%d)\n",keepglyph++, best, gglyphs[j].qty );
 
 		}
 
 
 		//from a fresh run, cutoff = 2,.00005, Goes from 339089 to 83740
-
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
 
-		glyphct = keepglyph;
+		int nr_to_nonzero = 0;
+		for( i = 0; i < keepglyph; i++ )
+		{
+			if( gglyphs[i].qty ) nr_to_nonzero = i+1;
+		}
+
+		printf( "Pruned ending from %d to %d\n", keepglyph, nr_to_nonzero );
+		glyphct = nr_to_nonzero;
 
 		//printf( "%d\n", qg1 );
 
@@ -764,8 +792,8 @@ int main( int argc, char ** argv )
 		video_decode( argv[2] );
 
 		highest_used_symbol++;
-		printf( "%d Symbols used... But writing %d\n", highest_used_symbol, glyphct );
 		if( glyphct > highest_used_symbol ) glyphct = highest_used_symbol;
+		printf( "%d Symbols used... But writing %d\n", highest_used_symbol, glyphct );
 		for( i = 0; i < glyphct; i++ )
 		{
 #if TILE==16
@@ -810,7 +838,7 @@ int main( int argc, char ** argv )
 			gglyphs[i].qty  = 0;
 		}
 //Perform a sort of space fill curve, seems to save about 15%
-#ifdef SFILL
+#if(SFILL>0)
 		uint32_t * gfdat = malloc(len*4);
 		int linecells = EXP_W/TILE;
 		for( i = 0; i < len; i++ )
@@ -819,11 +847,12 @@ int main( int argc, char ** argv )
 			int cellinframe = i % (EXP_W*EXP_H/(TILE*TILE));
 
 			int lower = cellinframe & ((1<<SFILL)-1);
-			int upper = cellinframe & (((EXP_W/TILE)-1)<<SFILL); ///XXX TODO This bit math might be wrong.
+			int upper = cellinframe % (((EXP_W/TILE))<<SFILL); ///XXX TODO This bit math might be wrong.
 
 			//int mask = lower * 512/8;
 			int x = upper>>SFILL;
 			int y = lower + ((cellinframe/((EXP_W/TILE)<<SFILL))<<SFILL);
+
 			//printf( "(%d %d)\n", x, y );
 			//printf( "(%d,%d,%d)\n",cellinframe, x, y );
 			gfdat[i] = gfdat_raw[x+y*linecells+frame*(EXP_W*EXP_H/(TILE*TILE))];

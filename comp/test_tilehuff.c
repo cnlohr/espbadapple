@@ -90,6 +90,7 @@ void EmitFrametile( int16_t tile )
 
 		tileinframe = 0;
 		frame++;
+		printf( "Frame: %d\n", frame );
 	}
 }
 
@@ -166,7 +167,6 @@ int main()
 			//printf( "Emit: %d\n", tablekey );
 			EmitFrametile( tablekey & 0x3fff );
 		}
-
 	}
 
     ge_close_gif(gif);
