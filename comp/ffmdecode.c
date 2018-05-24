@@ -10,12 +10,17 @@
 #include <stdlib.h>
 
 #define INBUF_SIZE 4096
+
+static int request_w, request_h;
+
 void setup_video_decode()
 {
     avcodec_register_all();
     av_register_all();
 	printf( "REGISTERING\n" );
 }
+
+void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int height, int frame );
 
 
 static int decode_write_frame( AVCodecContext *avctx,
@@ -29,15 +34,18 @@ static int decode_write_frame( AVCodecContext *avctx,
         fprintf(stderr, "Error while decoding frame %d\n", *frame_count);
         return len;
     }
+
+	if( request_w == 0 && request_h == 0 ) { request_w = avctx->width; request_h = avctx->height; }
+
     if (got_frame) {
 //		uint8_t myframedata[avctx->width * avctx->height * 3];
 		struct SwsContext *img_convert_ctx = sws_getContext(avctx->width, avctx->height, frame->format,
-			avctx->width, avctx->height, PIX_FMT_RGB24, SWS_FAST_BILINEAR , NULL, NULL, NULL); 
-		sws_scale(img_convert_ctx, frame->data, frame->linesize, 0, avctx->height,
+			request_w, request_h, PIX_FMT_RGB24, SWS_FAST_BILINEAR , NULL, NULL, NULL); 
+		sws_scale(img_convert_ctx, ( const uint8_t * const * )frame->data, frame->linesize, 0, avctx->height,
 			encoderRescaledFrame->data, encoderRescaledFrame->linesize);
 
 		got_video_frame( encoderRescaledFrame->data[0], encoderRescaledFrame->linesize[0],
-			avctx->width, avctx->height, *frame_count);
+			request_w, request_h, *frame_count);
 
 //		got_video_frame( frame->data[0], frame->linesize[0],
 //			avctx->width, avctx->height, frame);
@@ -54,8 +62,11 @@ static int decode_write_frame( AVCodecContext *avctx,
 }
 
 
-int video_decode( const char *filename)
+int video_decode( const char *filename, int reqw, int reqh)
 {
+	request_w = reqw;
+	request_h = reqh;
+
 	AVFrame* encoderRescaledFrame;
 	AVFormatContext *fmt_ctx = 0;
 	AVCodecContext *dec_ctx = 0;

@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include "ffmdecode.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -52,7 +51,7 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 	for( y = 0; y < height; y++ )
 	for( x = 0; x < width; x++ )
 	{
-		int thiscolor = rgbbuffer[x*3+y*linesize]>0x60;
+		int thiscolor = rgbbuffer[x+y*linesize]>0x60;
 
 		//I've tried swizziling it, but it doesn't seem to help.
 
@@ -138,9 +137,17 @@ int main( int argc, char ** argv )
 {
 	f = fopen( "rawdata.dat", "wb" );
 	int line;
-	setup_video_decode();
-
-	video_decode( argv[1] );
+	
+	int width, height;
+	int frame = 0;
+	FILE * f = fopen( "videoout.dat", "rb" );
+	fscanf( f, "%d %d\n", &width, &height );
+	while( !feof(f) )
+	{
+		uint8_t buffer[width*height];
+		fread( buffer, width, height, f );
+		got_video_frame( buffer, width, width, height, frame++ );
+	}
 	printf( "Total: %d bytes\n", wordcount );
 }
 

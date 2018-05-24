@@ -76,27 +76,38 @@ int maxframe;
 int * framenos;
 
 #define FOR_ESP8266
+//#define SUPERTINY
 
-#ifdef FOR_ESP8266
+#ifdef SUPERTINY
 
-#define W_DECIMATE 0.594
-#define H_DECIMATE 0.594
 #define TILE 8
-#define HALFTONE
+//#define HALFTONE
 #define SFILL 2
 #define LIMIT 0x60
 #define LIMITA 0xa0
 #define LIMITB 0x18
+#define USE_PREVIOUS_THRESH 12 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 6
+#define USE_DELTA_FRAMES
 
+#elif defined(FOR_ESP8266)
+//./decodevideo badapple.mp4 288 224
 
-#define USE_PREVIOUS_THRESH 2 //For delta-frames.
-#define USE_PREVIOUS_THRESH_S 1 
+#define TILE 16
+#define HALFTONE
+#define SFILL 1
+#define LIMIT 0x60
+#define LIMITA 0xa0
+#define LIMITB 0x18
+#define USE_PREVIOUS_THRESH 8 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 4
+#define USE_DELTA_FRAMES
 
 
 #else
 
-#define W_DECIMATE 1
-#define H_DECIMATE 1
+//Maybe something with a little more beef?
+
 #define TILE 16
 #define HALFTONE
 #define SFILL 3
@@ -106,9 +117,10 @@ int * framenos;
 #define USE_PREVIOUS_THRESH 4 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 2
 
+#define USE_DELTA_FRAMES
+
 #endif
 
-#define USE_DELTA_FRAMES
 
 
 
@@ -135,8 +147,8 @@ void HandleMotion( int x, int y, int mask ) { }
 
 int wordcount = 0;
 
-#define EXP_W (((int)(512*W_DECIMATE))/TILE*TILE)
-#define EXP_H (((int)(384*H_DECIMATE))/TILE*TILE)
+#define EXP_W (((int)(width)))
+#define EXP_H (((int)(height)))
 #define MAXGLYPHS 600000
 
 #if TILE==8
@@ -219,9 +231,6 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	int i, x, y;
 	int comppl = 0;
 
-	width*=W_DECIMATE;
-	height*=H_DECIMATE;
-
 	if( (width % TILE) ) 
 	{
 		fprintf( stderr, "Error: width is not divisible by TILE. %d %d %d %d\n", width, height, (int)(width % TILE), (int)(height % TILE) );
@@ -234,7 +243,6 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	{
 		CNFGSetup( "badapple", width, height );
 		printf( "Width: %d / Height: %d  (%d %d) (%d %d) Leftover %d %d\n", width, height, EXP_W, EXP_H, width / TILE, height / TILE );
-
 		notfirst = 1;
 	}
 
@@ -258,9 +266,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( bitx = 0; bitx < 8; bitx++ )
 		{
 #ifndef HALFTONE
-			int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>LIMIT;
+			int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
 #else
-			int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+			int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
 #endif
 			glyph <<= 1;
 			glyph |= on;
@@ -273,9 +281,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			for( bitx = 0; bitx < 16; bitx++ )
 			{
 #ifndef HALFTONE
-				int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>LIMIT;
+				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
 #else
-				int on = rgbbuffer[(int)(((x+bitx)*3)/W_DECIMATE)+(int)((y+bity)/H_DECIMATE)*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
 #endif
 
 				tglyph <<= 1;
@@ -333,9 +341,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( x = 0; x < width; x++ )
 		{
 #ifndef HALFTONE
-			int on = rgbbuffer[(int)((x)*3/W_DECIMATE)+(int)(y/H_DECIMATE)*linesize]>LIMIT;
+			int on = rgbbuffer[(int)((x))+(int)(y)*linesize]>LIMIT;
 #else
-			int on = rgbbuffer[(int)((x)*3/W_DECIMATE)+(int)(y/H_DECIMATE)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
+			int on = rgbbuffer[(int)((x))+(int)(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
 #endif
 			data[x+y*width] |= on?0xfffffff:0x00;
 		}
@@ -431,8 +439,11 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			int lastdiffC = BitDiff( gl, gglyphs[i].dat.dat, 1000 );
 
 			//If the recommended glyph is 0 or 1, and it doesn't match perfectly, make it so.
+#ifdef HALFTONE
+			int disable_rle_for_this = i<3 && lastdiffS;
+#else
 			int disable_rle_for_this = i<2 && lastdiffS;
-
+#endif
 			if( ( ( lastdiffS < USE_PREVIOUS_THRESH		//Is it "good enough"?
 				 || lastdiffS <= lastdiffC + USE_PREVIOUS_THRESH_S ) &&
 					!disable_rle_for_this ) ||  last == i )		//Is it at least as good as the previously selected frag?
@@ -481,9 +492,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( x = 0; x < width; x++ )
 		{
 #ifndef HALFTONE
-			int on = rgbbuffer[(x)*3+(y)*linesize]>LIMIT;
+			int on = rgbbuffer[(x)+(y)*linesize]>LIMIT;
 #else
-			int on = rgbbuffer[(x)*3+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
+			int on = rgbbuffer[(x)+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
 #endif
 			//data[x+y*width] |= on?0xf0:0x00;
 		}
@@ -494,31 +505,6 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 
 		maxframe = frame;
 
-
-#ifdef MAKE_GIF_AT_STAGE_3
-		if( !gif )
-		{
-			gif = ge_new_gif(
-				"example.gif",  /* file name */
-				width, height,           /* canvas size */
-				(uint8_t []) {  /* palette */
-				    0x00, 0x00, 0x00, /* 0 -> black */
-				    0xFF, 0xff, 0xff, /* 1 -> white */
-				},
-				1,              /* palette depth == log2(# of colors) */
-				1               /* infinite loop */
-    			);
-		}
-		if( frame > 5000 && frame < 6600 )
-		{
-			for( y = 0; y < height; y++ )
-			for( x = 0; x < width; x++ )
-			{
-				gif->frame[(x+y*width)] = data[x+y*width]?1:0;
-			}
-	        ge_add_frame(gif, 3);
-		}
-#endif
 
 		//usleep(20000);
 
@@ -630,22 +616,32 @@ void OutputBufferToFile( FILE * outc, const char * dataname, const char * typena
 
 int main( int argc, char ** argv )
 {
+	int width, height;
 	if( argc < 2 ) goto help;
+	FILE * fin = fopen( "videoout.dat", "rb" );
+	fscanf( fin, "%d %d\n", &width, &height );
+	int frame = 0;
 
 	stage = atoi( argv[1] );
 	if( !stage ) goto help;
 
+		int line;
 	if( stage == 1 )
 	{
-		if( argc < 3 )
+		if( argc < 2 )
 		{
 			fprintf( stderr, "Error: stage 1 but no video\n" );
 			return -9; 
 		}
 		int line;
-		setup_video_decode();
 
-		video_decode( argv[2] );
+
+		while( !feof(fin) )
+		{
+			uint8_t buffer[width*height];
+			fread( buffer, width, height, fin );
+			got_video_frame( buffer, width, width, height, frame++ );
+		}
 
 		f = fopen( "rawtiledata.dat", "wb" );
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
@@ -753,9 +749,9 @@ int main( int argc, char ** argv )
 	}
 	else if( stage == 3 )
 	{
-		if( argc < 5 )
+		if( argc < 4 )
 		{
-			fprintf( stderr, "Error: stage 3 but need:  3 [avi] [nr_of_tiles] [weight for symbols earlier in the list, float]\n" );
+			fprintf( stderr, "Error: stage 3 but need:  3 [nr_of_tiles] [weight for symbols earlier in the list, float]\n" );
 			return -9; 
 		}
 		f = fopen( "rawtiledata.dat", "rb" );
@@ -765,7 +761,7 @@ int main( int argc, char ** argv )
 		f = fopen ("outgframes.dat", "wb" );
 
 		qsort( gglyphs, glyphct, sizeof( gglyphs[0] ), &compare_ggs );
-		int tileout = atoi( argv[3] );
+		int tileout = atoi( argv[2] );
 		if( tileout < glyphct ) 
 			glyphct = tileout;
 
@@ -786,10 +782,15 @@ int main( int argc, char ** argv )
 		{
 			gglyphs[i].qty  = 0;
 		}
-		weight_toward_earlier_symbols = atof( argv[4] );
+		weight_toward_earlier_symbols = atof( argv[3] );
 
-		setup_video_decode();
-		video_decode( argv[2] );
+		while( !feof(fin) )
+		{
+			uint8_t buffer[width*height];
+			fread( buffer, width, height, fin );
+			got_video_frame( buffer, width, width, height, frame++ );
+		}
+
 
 		highest_used_symbol++;
 		if( glyphct > highest_used_symbol ) glyphct = highest_used_symbol;
@@ -809,10 +810,6 @@ int main( int argc, char ** argv )
 		fwrite( gglyphs, sizeof( gglyphs[0] ), glyphct, f );
 		fclose( f );
 		printf( "Quality loss: %d\n", total_quality_loss );
-#ifdef MAKE_GIF_AT_STAGE_3
-	    ge_close_gif(gif);
-#endif
-
 	}
 	else if( stage == 4 )
 	{
