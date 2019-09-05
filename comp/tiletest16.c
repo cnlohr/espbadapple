@@ -76,7 +76,8 @@ int maxframe;
 int * framenos;
 
 #define FOR_ESP8266
-//#define SUPERTINY
+#define SUPERTINY
+//#define HALFTONE
 
 #ifdef SUPERTINY
 

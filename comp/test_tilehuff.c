@@ -77,7 +77,7 @@ void EmitFrametile( int16_t tile )
 		CNFGUpdateScreenWithBitmap( framebuffer, FWIDTH, FHEIGHT );
 		//CNFGSwapBuffers();
 		//usleep(30000);
-		if( frame > 3200 && frame < 5000 )
+		if( frame > 0 && frame < 6568 )
 		{
 			for( y = 0; y < FHEIGHT; y++ )
 			for( x = 0; x < FWIDTH; x++ )

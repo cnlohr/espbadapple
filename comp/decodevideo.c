@@ -41,7 +41,7 @@ int main( int argc, char ** argv )
 	f = fopen( "videoout.dat", "wb" );
 	fprintf( f, "%d %d\n", targw, targh );
 	setup_video_decode();
-	video_decode( "badapple.mp4", targw, targh );
+	video_decode( argv[1], targw, targh );
 	fclose( f );
 	return 0;
 }

@@ -6,6 +6,16 @@
 #include <libswscale/swscale.h>
 //from decoding_encoding.c
 
+#ifndef PIX_FMT_RGB24
+#define PIX_FMT_RGB24 AV_PIX_FMT_RGB24
+#endif
+
+//#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(55,28,1)
+#define avcodec_alloc_frame av_frame_alloc
+//#endif
+
+
+
 #include <string.h>
 #include <stdlib.h>
 
@@ -84,7 +94,7 @@ int video_decode( const char *filename, int reqw, int reqh)
     /* set end of buffer to 0 (this ensures that no overreading happens for damaged mpeg streams) */
     memset(inbuf + INBUF_SIZE, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
-
+	printf( "Opening: %s\n", filename );
     if ((ret = avformat_open_input(&fmt_ctx, filename, NULL, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
         return ret;
