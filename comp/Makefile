@@ -1,4 +1,4 @@
-all : decodevideo rletest tiletest16 test_tilehuff
+all : decodevideo rletest tiletest16 test_tilehuff example.gif
 
 CFLAGS:=-O2 -g
 LDFLAGS:=-g
@@ -18,7 +18,7 @@ test_tilehuff : test_tilehuff.c outdata.c XDriver.c DrawFunctions.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 128 96
+	./decodevideo badapple-sm8628149.mp4 96 64
 
 outdata.c : videoout.dat tiletest16
 	./tiletest16 1 badapple-sm8628149.mp4
@@ -27,6 +27,9 @@ outdata.c : videoout.dat tiletest16
 	./tiletest16 2 2 .005
 	./tiletest16 3 20000 .001
 	./tiletest16 4
+
+example.gif : test_tilehuff
+	./test_tilehuff
 
 #	./tiletest16 2 2 -1
 #	./tiletest16 3  2000000 0
