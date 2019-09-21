@@ -59,4 +59,4 @@ example.gif : test_tilehuff
 # #define SUPERTINY
 
 clean :
-	rm -rf *.o *~ dectest
+	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff
