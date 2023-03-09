@@ -1,5 +1,6 @@
 #include <stdio.h>
-#include "DrawFunctions.h"
+#define CNFG_IMPLEMENTATION
+#include "rawdraw_sf.h"
 #include "ffmdecode.h"
 #include <stdlib.h>
 #include <string.h>
@@ -77,14 +78,14 @@ int * framenos;
 
 //#define FOR_ESP8266
 #define SUPERTINY
-#define HALFTONE
-#define EVERY_OTHER_FRAME 0
 
 #ifdef SUPERTINY
 
-#define TILE 8
-//#define HALFTONE
-#define SFILL 2
+#define TILE_W 16
+#define TILE_H 16
+#define HALFTONE
+#define EVERY_OTHER_FRAME 1
+#define SFILL 0
 #define LIMIT 0x60
 #define LIMITA 0xa0
 #define LIMITB 0x18
@@ -95,9 +96,10 @@ int * framenos;
 #elif defined(FOR_ESP8266)
 //./decodevideo badapple.mp4 288 224
 
-#define TILE 16
+#define TILE_W 16
+#define TILE_H 16
 #define HALFTONE
-#define SFILL 1
+#define SFILL 2
 #define LIMIT 0x60
 #define LIMITA 0xa0
 #define LIMITB 0x18
@@ -109,7 +111,8 @@ int * framenos;
 
 //Maybe something with a little more beef?
 
-#define TILE 16
+#define TILE_W 16
+#define TILE_H 16
 #define HALFTONE
 #define SFILL 3
 #define LIMITA 0xa0
@@ -145,6 +148,7 @@ FILE * f;
 void HandleKey( int keycode, int bDown ) { }
 void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
+void HandleDestroy() { }
 
 int wordcount = 0;
 
@@ -152,16 +156,20 @@ int wordcount = 0;
 #define EXP_H (((int)(height)))
 #define MAXGLYPHS 600000
 
-#if TILE==8
+#if TILE_W==8 && TILE_H==8
 typedef uint64_t tiledata;
 #define GlyphsEqual( a, b ) ((a) == (b))
 #define SetGlyph( a, b ) a = b;
-#elif TILE==16
+#elif TILE_W==8 && TILE_H==4
+typedef uint32_t tiledata;
+#define GlyphsEqual( a, b ) ((a) == (b))
+#define SetGlyph( a, b ) a = b;
+#elif TILE_W==16 && TILE_H==16
 typedef uint16_t tiledata[16];
 #define GlyphsEqual( a, b ) ( ((uint64_t*)a)[0] == ((uint64_t*)b)[0] && ((uint64_t*)a)[1] == ((uint64_t*)b)[1] && ((uint64_t*)a)[2] == ((uint64_t*)b)[2] && ((uint64_t*)a)[3] == ((uint64_t*)b)[3] )
 #define SetGlyph( a, b ) memcpy( a, b, 32 );
 #else
-#error TILE must be 8 or 16.
+#error TILE_W,TILE_H must be 8,4 or 8,8 or 16,16
 #endif
 
 struct glyph
@@ -199,7 +207,7 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 		did_init = 1;
 	}
 
-#if TILE==8
+#if TILE_W==8 && TILE_H==8
 	int ct = 0;
 	uint64_t mismask = a^b;
 
@@ -211,7 +219,15 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 		BitsSetTable256[ (mismask>>40)&0xff ] +
 		BitsSetTable256[ (mismask>>48)&0xff ] +
 		BitsSetTable256[ (mismask>>56)&0xff ];
-#elif TILE==16
+#elif TILE_W==8 && TILE_H==4
+	int ct = 0;
+	uint32_t mismask = a^b;
+
+	ct = BitsSetTable256[ (mismask)&0xff ] +
+		BitsSetTable256[ (mismask>>8)&0xff ] +
+		BitsSetTable256[ (mismask>>16)&0xff ] +
+		BitsSetTable256[ (mismask>>24)&0xff ];
+#elif TILE_W==16
 	int ct = 0;
 	for( i = 0; i < 16; i++ )
 	{
@@ -235,39 +251,39 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	int i, x, y;
 	int comppl = 0;
 
-	if( (width % TILE) ) 
+	if( (width % TILE_W) )
 	{
-		fprintf( stderr, "Error: width is not divisible by TILE. %d %d %d %d\n", width, height, (int)(width % TILE), (int)(height % TILE) );
+		fprintf( stderr, "Error: width is not divisible by TILE. %d %d %d %d\n", width, height, (int)(width % TILE_W), (int)(height % TILE_H) );
 		exit( -1 );
 	}
 
-	height = ( height / TILE ) * TILE;
+	height = ( height / TILE_H ) * TILE_H;
 
 	if( !notfirst )
 	{
 		CNFGSetup( "badapple", width, height );
-		printf( "Width: %d / Height: %d  (%d %d) (%d %d) Leftover %d %d\n", width, height, EXP_W, EXP_H, width / TILE, height / TILE );
+		printf( "Width: %d / Height: %d  (%d %d) (%d %d) Leftover %d %d\n", width, height, EXP_W, EXP_H, width / TILE_W, height / TILE_H, width % TILE_W, height % TILE_H );
 		notfirst = 1;
 	}
 
 	int color = 0;
 	int runningtime = 0;
 
-	int glyphs = width/TILE*height/TILE;
+	int glyphs = width/TILE_W*height/TILE_H;
 	tiledata thisframe[glyphs];
 
 	//encode
-	for( y = 0; y < height; y+=TILE )
-	for( x = 0; x < width; x+=TILE )
+	for( y = 0; y < height; y+=TILE_H )
+	for( x = 0; x < width; x+=TILE_W )
 	{
 		int bitx, bity;
 		tiledata glyph;
 		int glyphbit = 0;
 
-#if TILE == 8
+#if TILE_W == 8
 		glyph = 0;
-		for( bity = 0; bity < 8; bity++ )
-		for( bitx = 0; bitx < 8; bitx++ )
+		for( bity = 0; bity < TILE_H; bity++ )
+		for( bitx = 0; bitx < TILE_W; bitx++ )
 		{
 #ifndef HALFTONE
 			int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
@@ -278,11 +294,11 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			glyph |= on;
 		}
 		thisframe[(x/8)+(y*width)/64] = glyph;
-#elif TILE == 16
-		for( bity = 0; bity < 16; bity++ )
+#elif TILE_W == 16
+		for( bity = 0; bity < TILE_H; bity++ )
 		{
 			int tglyph = 0;
-			for( bitx = 0; bitx < 16; bitx++ )
+			for( bitx = 0; bitx < TILE_W; bitx++ )
 			{
 #ifndef HALFTONE
 				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
@@ -351,7 +367,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 #endif
 			data[x+y*width] |= on?0xfffffff:0x00;
 		}
-		CNFGUpdateScreenWithBitmap( (long unsigned int*)data, width, height );
+		CNFGUpdateScreenWithBitmap( (uint32_t*)data, width, height );
 
 		maxframe = frame;
 
@@ -401,7 +417,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 						bias = ((i>=2)?(-weight_toward_earlier_symbols):0);
 
 					//Don't check impossible-to-hit solutions.
-					if( bias > (TILE*TILE/2) ) break;
+					if( bias > (TILE_W*TILE_H/2) ) break;
 
 					int best = ( (int)(bestdiff-bias)+1 );
 					if( best > 100 || best < 1 ) best = 10000;
@@ -469,26 +485,26 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( g = 0; g < glyphs; g++ )
 			if( glyphmap[g] >= 0 ) glyphlast[g] = glyphmap[g];
 
-		for( y = 0; y < height/TILE; y++ )
-		for( x = 0; x < width/TILE; x++ )
+		for( y = 0; y < height/TILE_H; y++ )
+		for( x = 0; x < width/TILE_W; x++ )
 		{
 			tiledata glyphdata;
-			int g = x+y*(width/TILE);
+			int g = x+y*(width/TILE_W);
 			SetGlyph( glyphdata, gglyphs[glyphlast[g]].dat.dat );
-			int lx = x * TILE;
-			int ly = y * TILE;
+			int lx = x * TILE_W;
+			int ly = y * TILE_H;
 			int px, py;
-			for( py = 0; py < TILE; py++ )
-			for( px = 0; px < TILE; px++ )
+			for( py = 0; py < TILE_H; py++ )
+			for( px = 0; px < TILE_W; px++ )
 			{
-#if TILE==8
-				uint64_t bit = (glyphdata>>(63-(px+py*8))) & 1;
+#if TILE_W==8
+				uint64_t bit = (glyphdata>>((TILE_W*TILE_H-1)-(px+py*TILE_W))) & 1;
 #else
 				int bit = glyphdata[py] & (1<<(15-px));
 #endif
 				uint32_t dat = bit?0xf00000:0x00000000;
 				if( match_frame[g] ) dat|= 0xf0;
-				data[px+x*TILE+(py+y*TILE)*width] = dat;
+				data[px+x*TILE_W+(py+y*TILE_H)*width] = dat;
 			}
 		}
 
@@ -801,7 +817,7 @@ int main( int argc, char ** argv )
 		printf( "%d Symbols used... But writing %d\n", highest_used_symbol, glyphct );
 		for( i = 0; i < glyphct; i++ )
 		{
-#if TILE==16
+#if TILE_W==16
 			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, ((uint64_t*)gglyphs[i].dat.dat)[0] );
 #else
 			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, gglyphs[i].dat.dat );
@@ -841,22 +857,22 @@ int main( int argc, char ** argv )
 //Perform a sort of space fill curve, seems to save about 15%
 #if(SFILL>0)
 		uint32_t * gfdat = malloc(len*4);
-		int linecells = EXP_W/TILE;
+		int linecells = EXP_W/TILE_W;
 		for( i = 0; i < len; i++ )
 		{
-			int frame = i / (EXP_W*EXP_H/(TILE*TILE));
-			int cellinframe = i % (EXP_W*EXP_H/(TILE*TILE));
+			int frame = i / (EXP_W*EXP_H/(TILE_W*TILE_H));
+			int cellinframe = i % (EXP_W*EXP_H/(TILE_W*TILE_H));
 
 			int lower = cellinframe & ((1<<SFILL)-1);
-			int upper = cellinframe % (((EXP_W/TILE))<<SFILL); ///XXX TODO This bit math might be wrong.
+			int upper = cellinframe % (((EXP_W/TILE_W))<<SFILL); ///XXX TODO This bit math might be wrong.
 
 			//int mask = lower * 512/8;
 			int x = upper>>SFILL;
-			int y = lower + ((cellinframe/((EXP_W/TILE)<<SFILL))<<SFILL);
+			int y = lower + ((cellinframe/((EXP_W/TILE_W)<<SFILL))<<SFILL);
 
 			//printf( "(%d %d)\n", x, y );
 			//printf( "(%d,%d,%d)\n",cellinframe, x, y );
-			gfdat[i] = gfdat_raw[x+y*linecells+frame*(EXP_W*EXP_H/(TILE*TILE))];
+			gfdat[i] = gfdat_raw[x+y*linecells+frame*(EXP_W*EXP_H/(TILE_W*TILE_H))];
 		}
 #else
 		uint32_t * gfdat = gfdat_raw;
@@ -1117,13 +1133,13 @@ struct huff_tree
 				tcells++;
 			//printf( "MO: %d %5d %2d %10x   %2d %16x  %d\n", i, mo, ht[mo].bitdepth, ht[mo].bitpattern, g->flag, g->dat, tcells  );
 		}
-		printf( "Total cells: %d [please check this]\n", tcells );
-		printf( "Total frames: %d\n", tcells/(EXP_W*EXP_H/(TILE*TILE)) );
+		printf( "Total cells: %d [please check this (Should be w*h*frames/TILE_SIZE]\n", tcells );
+		printf( "Total frames: %d\n", tcells/(EXP_W*EXP_H/(TILE_W*TILE_H)) );
 		printf( "Total maps: %d\n", mapelem );
-		printf( "Total bits: %d\n", totalbits );
-		printf( "Total bytes: %d\n", (totalbits+7)/8 );
+		printf( "Total bits: %d (Of bitstream, not glyphs/maps)\n", totalbits );
+		printf( "Total bytes: %d (Of bitstream, not glyphs/maps)\n", (totalbits+7)/8 );
 		printf( "Total huffman entries: %d\n", glyphct*2-1 );
-		printf( "Symbols: %d\n", initgglyphs );
+		printf( "Symbols: %d (Groups of %d x %d pixels in dictionary)\n", initgglyphs, TILE_W, TILE_H );
 		printf( "RLEs: %d\n", nr_rles );
 
 		int nr_huffs = glyphct-1;  //We know that there are exactly this many huffman nodes because of the way the trees are generated.
@@ -1246,7 +1262,8 @@ struct huff_tree
 		fprintf( f, "#ifndef _BADAPPLE_SETTINGS_H\n" );
 		fprintf( f, "#define _BADAPPLE_SETTINGS_H\n\n" );
 		fprintf( f, "#include <stdint.h>\n" );
-		fprintf( f, "#define TILE %d\n", TILE );
+		fprintf( f, "#define TILE_W %d\n", TILE_W );
+		fprintf( f, "#define TILE_H %d\n", TILE_H );
 		fprintf( f, "#define SFILLE %d\n", SFILL );
 		fprintf( f, "#define NR_TILES %d\n", initgglyphs );
 		fprintf( f, "#define NR_RLES %d\n",  nr_rles );
@@ -1255,12 +1272,13 @@ struct huff_tree
 		fprintf( f, "#define FWIDTH %d\n", EXP_W );
 		fprintf( f, "#define FHEIGHT %d\n", EXP_H );
 		fprintf( f, "#define TOTALBITS %d\n", totalbits );
-		fprintf( f, "#define FRAMES %d\n", tcells/(EXP_W*EXP_H/(TILE*TILE)) );
+		fprintf( f, "#define FRAMES %d\n", tcells/(EXP_W*EXP_H/(TILE_W*TILE_H)) );
 		fprintf( f, "extern const uint32_t glyphdata[%d];\n", glyphelemlist );
 		fprintf( f, "extern const %s rledata[%d];\n", (sizeof(T_RLE)<2)?"uint8_t":"uint16_t", rleelemlist );
 		fprintf( f, "extern const uint16_t huffdata[%d];\n", huffelemlist );
 		fprintf( f, "\n#endif\n" );
 
+		printf( "Grand Total Payload bytes: %d\n", (totalbits+7)/8 + (initgglyphs*TILE_W*TILE_H/8) + ((sizeof(T_RLE)<2)?1:2)*rleelemlist + huffelemlist * 2 );
 
 		fclose( f );
 

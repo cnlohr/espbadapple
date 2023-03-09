@@ -83,7 +83,7 @@ int video_decode( const char *filename, int reqw, int reqh)
 	int video_stream_index;
     int frame_count = 0;
     AVFrame *frame;
-    uint8_t inbuf[INBUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE];
+    uint8_t inbuf[INBUF_SIZE + AV_INPUT_BUFFER_PADDING_SIZE];
     AVPacket avpkt;
     int ret;
 	int i;
@@ -92,7 +92,7 @@ int video_decode( const char *filename, int reqw, int reqh)
     av_init_packet(&avpkt);
 
     /* set end of buffer to 0 (this ensures that no overreading happens for damaged mpeg streams) */
-    memset(inbuf + INBUF_SIZE, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+    memset(inbuf + INBUF_SIZE, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
 	printf( "Opening: %s\n", filename );
     if ((ret = avformat_open_input(&fmt_ctx, filename, NULL, NULL)) < 0) {

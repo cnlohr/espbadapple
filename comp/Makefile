@@ -1,24 +1,30 @@
-all : decodevideo rletest tiletest16 test_tilehuff example.gif
+all : decodevideo rletest rle255 tiletest16 test_tilehuff example.gif
 
 CFLAGS:=-O2 -g
 LDFLAGS:=-g
-LDLIBS:=-lX11 -lXinerama -lXext
+LDLIBS:=-lX11
 
 decodevideo : ffmdecode.o decodevideo.o
 	gcc -g -O0 -o $@ $^ -lavcodec -lavformat -lswscale -lavutil 
 
-rletest : rletest.o XDriver.o DrawFunctions.o
+rletest : rletest.o
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-tiletest16 :  tiletest16.o XDriver.o DrawFunctions.o gifenc.o
+rle255 : rle255.o
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-test_tilehuff : test_tilehuff.c outdata.c XDriver.c DrawFunctions.c gifenc.c
+tiletest16 :  tiletest16.o gifenc.o
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+tiletest8 :  tiletest8.o gifenc.o
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 96 64
+	./decodevideo badapple-sm8628149.mp4 64 48
 
 outdata.c : videoout.dat tiletest16
 	./tiletest16 1 badapple-sm8628149.mp4
@@ -27,6 +33,10 @@ outdata.c : videoout.dat tiletest16
 	./tiletest16 2 2 .005
 	./tiletest16 3 20000 .001
 	./tiletest16 4
+
+# To REALLY crank down
+# After running the above
+# ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .2  && ./tiletest16 4 && make example.gif
 
 example.gif : test_tilehuff
 	./test_tilehuff
@@ -59,4 +69,4 @@ example.gif : test_tilehuff
 # #define SUPERTINY
 
 clean :
-	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff
+	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff tiletest8 tiletest16

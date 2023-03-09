@@ -2,8 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+
+
 #define CNFG_IMPLEMENTATION
+
 #include "rawdraw_sf.h"
+
 int gwidth;
 int gheight;
 int firstframe = 1;
@@ -40,14 +44,8 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 
 	int color = 0;
 	int runningtime = 0;
-
-#define COMPWIDTH 2048
-
-#if COMPWIDTH > 128
-	uint16_t compbuffer[16384];
-#else
 	uint8_t compbuffer[16384];
-#endif
+
 	//encode
 	for( y = 0; y < height; y++ )
 	for( x = 0; x < width; x++ )
@@ -65,9 +63,9 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		else
 		{
 			runningtime++;
-			if( runningtime >= COMPWIDTH )
+			if( runningtime >= 256 )
 			{
-				compbuffer[comppl++] = (runningtime-1) | COMPWIDTH;
+				compbuffer[comppl++] = (runningtime-1);// | COMPWIDTH;
 				runningtime = 0;
 			}
 		}
@@ -75,43 +73,24 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 
 	compbuffer[comppl++] = runningtime;
 
-#if COMPWIDTH == 2048
-	if( comppl & 1 )
-	{
-		compbuffer[comppl++] = 0;
-	}
-
-	for( i = 0; i < comppl/2; i++ )
-	{
-		uint8_t first = compbuffer[i*2+0]&0xff;
-		uint8_t second = compbuffer[i*2+1]&0xff;
-		uint8_t third = (((compbuffer[i*2+0]>>4)&0xf0)|(compbuffer[i*2+1]>>8));
-		fprintf( f, "%c%c%c", first, second, third );
-		wordcount += 3;
-	}
-#elif COMPWIDTH == 128
 	fwrite( compbuffer, comppl, 1, f );
 	wordcount += comppl;
-#elif COMPWIDTH == 32768
-	fwrite( compbuffer, comppl, 2, f );
-	wordcount += comppl*2;
-#else
-	#error not-outputtable-compwidth
-#endif
 
 	color = 0;
 	runningtime = compbuffer[0];
+
+	int wasruntime = compbuffer[0];
 	int thispl = 1;
 	uint32_t data[width*height];
 	int dpl = 0;
 	for( y = 0; y < height; y++ )
 	for( x = 0; x < width; x++ )
 	{
-		if( !(runningtime&(COMPWIDTH-1)) )
+		if( runningtime == 0 )
 		{
-			if( !(runningtime & COMPWIDTH) )
-				color = !color;
+			if( wasruntime != 255 ) color = !color;
 			runningtime = compbuffer[thispl++];
+			wasruntime = runningtime;
 		}
 		else
 			runningtime--;
@@ -125,10 +104,10 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		CNFGColor( 0xffffff );
 		CNFGTackSegment( 100, i, 200, i );*/
 	}
-	CNFGUpdateScreenWithBitmap( data, width, height );
-//	CNFGSwapBuffers();
-//	usleep( 20000 );
+	CNFGBlitImage( data, 0, 0, width, height );
+	CNFGSwapBuffers();
 
+	//usleep( 2000 );
 	printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
 
 	maxframe = frame;
@@ -136,17 +115,26 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 
 int main( int argc, char ** argv )
 {
-	f = fopen( "rawdata.dat", "wb" );
+	f = fopen( "rle255.dat", "wb" );
 	int line;
 	
 	int width, height;
 	int frame = 0;
 	FILE * f = fopen( "videoout.dat", "rb" );
-	fscanf( f, "%d %d\n", &width, &height );
+	int r = fscanf( f, "%d %d\n", &width, &height );
+	if( r != 2 )
+	{
+		fprintf( stderr, "Error: Video format\n" );
+		return -9;
+	}
 	while( !feof(f) )
 	{
 		uint8_t buffer[width*height];
-		fread( buffer, width, height, f );
+		int r = fread( buffer, width, height, f );
+		if( r != height )
+		{
+			fprintf( stderr, "Error reading video\n" );
+		}
 		got_video_frame( buffer, width, width, height, frame++ );
 	}
 	printf( "Total: %d bytes\n", wordcount );
