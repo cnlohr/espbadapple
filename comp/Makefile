@@ -36,7 +36,7 @@ outdata.c : videoout.dat tiletest16
 
 # To REALLY crank down
 # After running the above
-# ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .2  && ./tiletest16 4 && make example.gif
+# ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .15 && ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .15 && ./tiletest16 4 && make example.gif
 
 example.gif : test_tilehuff
 	./test_tilehuff
