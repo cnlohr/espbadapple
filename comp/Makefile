@@ -24,7 +24,7 @@ test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 64 48
+	./decodevideo badapple-sm8628149.mp4 504 384
 
 outdata.c : videoout.dat tiletest16
 	./tiletest16 1 badapple-sm8628149.mp4
@@ -70,3 +70,4 @@ example.gif : test_tilehuff
 
 clean :
 	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff tiletest8 tiletest16
+

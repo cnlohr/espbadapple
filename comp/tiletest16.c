@@ -77,8 +77,8 @@ int maxframe;
 int * framenos;
 
 //#define FOR_ESP8266
-#define SUPERTINY
-//#define TINYWITHFLASH
+//#define SUPERTINY
+#define TINYWITHFLASH
 
 #ifdef SUPERTINY
 
@@ -87,25 +87,19 @@ int * framenos;
 #define HALFTONE
 #define EVERY_OTHER_FRAME 1
 #define SFILL 0
-#define LIMIT 0x60
-#define LIMITA 0xa0
-#define LIMITB 0x18
 #define USE_PREVIOUS_THRESH 12 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 6
 #define USE_DELTA_FRAMES
 
 #elif defined( TINYWITHFLASH )
 
-#define TILE_W 8
-#define TILE_H 8
+#define TILE_W 12
+#define TILE_H 12
 #define HALFTONE
 #define EVERY_OTHER_FRAME 0
 #define SFILL 0
-#define LIMIT 0x60
-#define LIMITA 0xa0
-#define LIMITB 0x18
-#define USE_PREVIOUS_THRESH 8 //For delta-frames.
-#define USE_PREVIOUS_THRESH_S 4
+#define USE_PREVIOUS_THRESH 12 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 6
 #define USE_DELTA_FRAMES
 
 #elif defined(FOR_ESP8266)
@@ -115,9 +109,6 @@ int * framenos;
 #define TILE_H 16
 #define HALFTONE
 #define SFILL 2
-#define LIMIT 0x60
-#define LIMITA 0xa0
-#define LIMITB 0x18
 #define USE_PREVIOUS_THRESH 8 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 4
 #define USE_DELTA_FRAMES
@@ -130,8 +121,6 @@ int * framenos;
 #define TILE_H 16
 #define HALFTONE
 #define SFILL 3
-#define LIMITA 0xa0
-#define LIMITB 0x20
 
 #define USE_PREVIOUS_THRESH 4 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 2
@@ -141,7 +130,9 @@ int * framenos;
 #endif
 
 
-
+#define LIMIT 0x60
+#define LIMITA 0xa0
+#define LIMITB 0x18
 
 //In our source data, we have 357 instances of exceeding RLE lenght if 8 bits.  It is less total
 //data to store RLEs as doubles.
@@ -176,15 +167,20 @@ typedef uint64_t tiledata;
 #define GlyphsEqual( a, b ) ((a) == (b))
 #define SetGlyph( a, b ) a = b;
 #elif TILE_W==8 && TILE_H==4
+// Probably doesn't work?
 typedef uint32_t tiledata;
 #define GlyphsEqual( a, b ) ((a) == (b))
 #define SetGlyph( a, b ) a = b;
+#elif TILE_W==12 && TILE_H==12
+typedef uint16_t tiledata[9];
+#define GlyphsEqual( a, b ) (memcmp(a,b,sizeof(tiledata))==0)
+#define SetGlyph( a, b ) memcpy( a, b, sizeof(tiledata) );
 #elif TILE_W==16 && TILE_H==16
 typedef uint16_t tiledata[16];
 #define GlyphsEqual( a, b ) ( ((uint64_t*)a)[0] == ((uint64_t*)b)[0] && ((uint64_t*)a)[1] == ((uint64_t*)b)[1] && ((uint64_t*)a)[2] == ((uint64_t*)b)[2] && ((uint64_t*)a)[3] == ((uint64_t*)b)[3] )
 #define SetGlyph( a, b ) memcpy( a, b, 32 );
 #else
-#error TILE_W,TILE_H must be 8,4 or 8,8 or 16,16
+#error TILE_W,TILE_H must be 8,4 or 8,8, 12,12 or 16,16
 #endif
 
 struct glyph
@@ -242,6 +238,14 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 		BitsSetTable256[ (mismask>>8)&0xff ] +
 		BitsSetTable256[ (mismask>>16)&0xff ] +
 		BitsSetTable256[ (mismask>>24)&0xff ];
+#elif TILE_W==12 && TILE_H==12
+	int ct = 0;
+	for( i = 0; i < 9; i++ )
+	{
+		uint16_t diff = a[i]^b[i];
+		ct += BitsSetTable256[diff>>8] + BitsSetTable256[diff & 0xff];
+		if( ct >= mintocare ) { return mintocare; }
+	}
 #elif TILE_W==16
 	int ct = 0;
 	for( i = 0; i < 16; i++ )
@@ -250,7 +254,6 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 		ct += BitsSetTable256[diff>>8] + BitsSetTable256[diff & 0xff];
 		if( ct >= mintocare ) { return mintocare; }
 	}
-
 #endif
 
 	return ct;
@@ -308,7 +311,38 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			glyph <<= 1;
 			glyph |= on;
 		}
+#if TILE_H == 4
+		thisframe[(x/8)+(y*width)/32] = glyph;
+#else
 		thisframe[(x/8)+(y*width)/64] = glyph;
+#endif
+#elif TILE_W == 12
+		int bipl = 0;
+		uint32_t tglyph = 0;
+		for( bity = 0; bity < TILE_H; bity++ )
+		{
+			for( bitx = 0; bitx < TILE_W; bitx++ )
+			{
+#ifndef HALFTONE
+				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
+#else
+				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
+#endif
+				tglyph <<= 1;
+				tglyph |= on?1:0;
+				tglyph &= 0xffff;
+				//printf( "%c", on?'o':' ' );
+				if( (bipl & 0xf) == 0xf )
+				{
+				//	printf( "{%04x}", tglyph );
+					glyph[(bipl>>4)] = tglyph;
+				}
+				bipl++;
+			}
+		}
+	//	int kx; for( kx = 0; kx < 9; kx++ ) printf( "%04x ", glyph[kx] );
+	//	printf( "\n" );
+		SetGlyph( thisframe[(x/12)+(y*width)/144], glyph );
 #elif TILE_W == 16
 		for( bity = 0; bity < TILE_H; bity++ )
 		{
@@ -514,7 +548,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			{
 #if TILE_W==8
 				uint64_t bit = (glyphdata>>((TILE_W*TILE_H-1)-(px+py*TILE_W))) & 1;
-#else
+#elif TILE_W==12
+				int bit = (glyphdata[(px+py*TILE_W)/16] >> (15-((px+py*TILE_W)%16))) & 1;
+#elif TILE_W==16
 				int bit = glyphdata[py] & (1<<(15-px));
 #endif
 				uint32_t dat = bit?0xf00000:0x00000000;
@@ -834,7 +870,7 @@ int main( int argc, char ** argv )
 		printf( "%d Symbols used... But writing %d\n", highest_used_symbol, glyphct );
 		for( i = 0; i < glyphct; i++ )
 		{
-#if TILE_W==16
+#if TILE_W==16 || TILE_W==12
 			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, ((uint64_t*)gglyphs[i].dat.dat)[0] );
 #else
 			printf( "%6d: %6d %16lx\n", i, gglyphs[i].qty, gglyphs[i].dat.dat );
