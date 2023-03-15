@@ -78,6 +78,7 @@ int * framenos;
 
 //#define FOR_ESP8266
 #define SUPERTINY
+//#define TINYWITHFLASH
 
 #ifdef SUPERTINY
 
@@ -91,6 +92,20 @@ int * framenos;
 #define LIMITB 0x18
 #define USE_PREVIOUS_THRESH 12 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 6
+#define USE_DELTA_FRAMES
+
+#elif defined( TINYWITHFLASH )
+
+#define TILE_W 8
+#define TILE_H 8
+#define HALFTONE
+#define EVERY_OTHER_FRAME 0
+#define SFILL 0
+#define LIMIT 0x60
+#define LIMITA 0xa0
+#define LIMITB 0x18
+#define USE_PREVIOUS_THRESH 8 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 4
 #define USE_DELTA_FRAMES
 
 #elif defined(FOR_ESP8266)
@@ -697,7 +712,8 @@ int main( int argc, char ** argv )
 		int keepglyph = 0;
 		for( i = 0; i < glyphct; i++ )
 		{
-			printf( "Glyph: %d: ", i );
+			if( ( i % 1000 ) == 0 || i == glyphct-1 ) printf( "Glyph: %d / Kept %d / %d\n", i, keepglyph, i );
+		//	printf( "Glyph: %d: ", i );
 			//int closest = 0xffffff;
 			//int closestindex = -1;
 			int cutoff_mark;
@@ -726,7 +742,7 @@ int main( int argc, char ** argv )
 					{
 						//Nerf lower count.  It's always 'i'
 						gglyphs[i].qty = 0;
-						printf( "Nix  %2d\n", bd );
+		//				printf( "Nix  %2d\n", bd );
 						break;
 					}
 
@@ -735,8 +751,9 @@ int main( int argc, char ** argv )
 
 //			printf( "%3d ", closest );
 
-			if( j == i )
-				printf( "Keep (%d) %d (%d)\n",keepglyph++, best, gglyphs[j].qty );
+			if( j == i ) keepglyph++;
+		//	if( j == i )
+		//		printf( "Keep (%d) %d (%d)\n",keepglyph++, best, gglyphs[j].qty );
 
 		}
 

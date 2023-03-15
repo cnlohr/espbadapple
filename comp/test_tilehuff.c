@@ -20,13 +20,13 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
-int tileupdatemap[FHEIGHT/TILEY*FWIDTH/TILEX];
+int tileupdatemap[TILEY*TILEX];
 
 
 void EmitFrametile( int16_t tile )
 {
-	int sf = 1<<SFILLE;
 	static int tileinframe = 0;
+	int sf = 1<<SFILLE;
 
 #if SFILLE > 0
 	int tilex = (tileinframe>>SFILLE)%(TILEX);
@@ -49,6 +49,7 @@ void EmitFrametile( int16_t tile )
 
 	if( tileinframe == TILEX*TILEY )
 	{
+
 		//Draw map to screen.
 		int x, y, lx, ly;
 		for( y = 0; y < TILEY; y++ )
@@ -84,8 +85,10 @@ void EmitFrametile( int16_t tile )
 		}
 
 		CNFGUpdateScreenWithBitmap( framebuffer, FWIDTH, FHEIGHT );
+		//CNFGBlitImage( framebuffer, 0, 0, FWIDTH, FHEIGHT );
 		//CNFGSwapBuffers();
 		//usleep(30000);
+
 		if( frame > 0 && frame < 6568 )
 		{
 			for( y = 0; y < FHEIGHT; y++ )
@@ -181,7 +184,7 @@ int main()
 		}
 	}
 
-    ge_close_gif(gif);
+	ge_close_gif(gif);
 
 	printf( "End ok.\n" );
 

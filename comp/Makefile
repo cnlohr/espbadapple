@@ -1,6 +1,6 @@
 all : decodevideo rletest rle255 tiletest16 test_tilehuff example.gif
 
-CFLAGS:=-O2 -g
+CFLAGS:=-O2 -g -Wno-unused-result
 LDFLAGS:=-g
 LDLIBS:=-lX11
 
@@ -8,19 +8,19 @@ decodevideo : ffmdecode.o decodevideo.o
 	gcc -g -O0 -o $@ $^ -lavcodec -lavformat -lswscale -lavutil 
 
 rletest : rletest.o
-	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 rle255 : rle255.o
-	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 tiletest16 :  tiletest16.o gifenc.o
-	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 tiletest8 :  tiletest8.o gifenc.o
-	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 test_tilehuff : test_tilehuff.c outdata.c gifenc.c
-	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
