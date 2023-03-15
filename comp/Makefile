@@ -24,13 +24,13 @@ test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 504 384
+	./decodevideo badapple-sm8628149.mp4 320 240
 
 outdata.c : videoout.dat tiletest16
 	./tiletest16 1 badapple-sm8628149.mp4
 	./tiletest16 2 2 -1
 	./tiletest16 3 20000 .001
-	./tiletest16 2 2 .005
+	./tiletest16 2 2 .002
 	./tiletest16 3 20000 .001
 	./tiletest16 4
 

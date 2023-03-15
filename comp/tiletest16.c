@@ -93,8 +93,8 @@ int * framenos;
 
 #elif defined( TINYWITHFLASH )
 
-#define TILE_W 12
-#define TILE_H 12
+#define TILE_W 8
+#define TILE_H 8
 #define HALFTONE
 #define EVERY_OTHER_FRAME 0
 #define SFILL 0
