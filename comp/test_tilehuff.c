@@ -69,6 +69,20 @@ void EmitFrametile( int16_t tile )
 					framebuffer[(lx+x*TILE_W)+(ly+y*TILE_H)*FWIDTH] = (gd[ly]&(1<<(TILE_W-lx-1)))?0xfffffff:0;
 				}
 			}
+#elif TILE_W == 12
+			uint16_t * gd = (uint16_t*)&glyphdata;
+			gd = &gd[tile*9];
+			int tp = 0;
+			for( ly = 0; ly < TILE_H; ly++ )
+			{
+				for( lx = 0; lx < TILE_W; lx++ )
+				{
+					int bon = ((gd[0]<<tp) & 0x8000);
+					tp++;
+					if( tp == 16 ) tp = 0, gd++;
+					framebuffer[(lx+x*TILE_W)+(ly+y*TILE_H)*FWIDTH] = bon?0xfffffff:0;
+				}
+			}
 #else
 			uint8_t * gd = (uint8_t*)&glyphdata;
 			gd = &gd[tile*TILE_W];
