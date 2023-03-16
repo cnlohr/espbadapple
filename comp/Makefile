@@ -27,11 +27,19 @@ videoout.dat : badapple-sm8628149.mp4 decodevideo
 	./decodevideo badapple-sm8628149.mp4 320 240
 
 outdata.c : videoout.dat tiletest16
-	./tiletest16 1 badapple-sm8628149.mp4
+	# Stage 1 has no properties.  It only takes in a video (which is actually videoout.dat) and outputs rawtiledata.dat
+	./tiletest16 1 #badapple-sm8628149.mp4
+	# Stage 2 [cutoff] [dynamic cutoff]
+	#  Where the cutoff value is defined by cutoff_mark = cutoff + cutoff_dyn * i+1;
 	./tiletest16 2 2 -1
+	# Stage 3 [tileout] [weight_toward_earlier_symbols]
+	#  Tileout is the max # of tiles we are allowed to use, i.e. cut off all but this #.
+	#  weight_toward_earlier_symbols --> How much should we prefer earlier symbols?
+	#  Note, see USE_PREVIOUS_THRESH for situations where we try to just re-use the tile that was already there.
 	./tiletest16 3 20000 .001
-	./tiletest16 2 2 .002
+	./tiletest16 2 2 .001  # Was 0.002
 	./tiletest16 3 20000 .001
+	# Produce final output.
 	./tiletest16 4
 
 # To REALLY crank down

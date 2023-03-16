@@ -98,8 +98,13 @@ int * framenos;
 #define HALFTONE
 #define EVERY_OTHER_FRAME 0
 #define SFILL 0
-#define USE_PREVIOUS_THRESH 12 //For delta-frames.
-#define USE_PREVIOUS_THRESH_S 6
+
+// This controls when we would say "good enough" for
+// an existing frame instead of jump to a new frame in the table.
+// Higher numbers will decrease the size of the compressed output
+
+#define USE_PREVIOUS_THRESH 0 //For delta-frames.
+#define USE_PREVIOUS_THRESH_S 0
 #define USE_DELTA_FRAMES
 
 #elif defined(FOR_ESP8266)
@@ -442,6 +447,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 				}
 			else
 			{
+				// Only look at the first two -> Is it all white or all black?
 				for( i = 0; i < 2; i++ )
 				{
 					if( GlyphsEqual( gglyphs[i].dat.dat , gl ) ) break;
@@ -820,6 +826,9 @@ int main( int argc, char ** argv )
 		printf( "Output %d glyphs\n", glyphct );
 
 	}
+
+
+
 	else if( stage == 3 )
 	{
 		if( argc < 4 )
@@ -884,6 +893,9 @@ int main( int argc, char ** argv )
 		fclose( f );
 		printf( "Quality loss: %d\n", total_quality_loss );
 	}
+
+
+
 	else if( stage == 4 )
 	{
 		//try compressing the outgframes.
