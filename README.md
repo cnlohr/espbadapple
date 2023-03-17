@@ -6,8 +6,7 @@ My shot at bad apple on an '8266.  The source video for bad apple is 512x384
 
 ### RLE
 
-My first attempt was with RLE on the raster image, and I tried a number of other tricks, like variable width integers, etc.  But nothing could get it compress all that much.  With the 512x384 res, it took about 1kB per frame to store.  Total size was about 11602173 bytes.
-
+My first attempt was with RLE on the raster image, and I tried a number of other tricks, like variable width integers, etc.  But nothing could get it compress all that much.  With the 512x384 res, it took about 1kB per frame to store.  Total size was about 11,602,173 bytes.
 
 ### What is this C64 demo doing?
 
