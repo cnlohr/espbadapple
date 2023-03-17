@@ -4,6 +4,9 @@
 #include <stdint.h>
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
+
+#include "encodingtools.h"
+
 int gwidth;
 int gheight;
 int firstframe = 1;
@@ -26,11 +29,28 @@ void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 int wordcount = 0;
 
+//#define COMPWIDTH 2048
+// This actually is dynamic.
+#define COMPWIDTH 1073741824
+
+#if COMPWIDTH > 32768
+uint32_t compbuffer[67108864];
+uint8_t odatastream[67108864];
+int odatatbitcount = 0;
+int comppl = 0;
+int lastcomp = 0;
+uint32_t histogram[1<<26];
+int color = 0;
+int runningtime = 0;
+#endif
+
+
+
+
 void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
 {
 	static int notfirst;
 	int i, x, y;
-	int comppl = 0;
 
 	if( !notfirst )
 	{
@@ -38,15 +58,17 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		notfirst = 1;
 	}
 
+#if COMPWIDTH > 32768
+#elif COMPWIDTH > 128
 	int color = 0;
 	int runningtime = 0;
-
-#define COMPWIDTH 2048
-
-#if COMPWIDTH > 128
-	uint16_t compbuffer[16384];
+	int comppl = 0;
+	uint16_t compbuffer[262144];
 #else
-	uint8_t compbuffer[16384];
+	int color = 0;
+	int runningtime = 0;
+	int comppl = 0;
+	uint8_t compbuffer[262144];
 #endif
 	//encode
 	for( y = 0; y < height; y++ )
@@ -75,7 +97,15 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 
 	compbuffer[comppl++] = runningtime;
 
-#if COMPWIDTH == 2048
+#if COMPWIDTH == 1073741824
+	for( i = lastcomp; i < comppl; i++ )
+	{
+		ETEmitUE( odatastream, sizeof(odatastream), &odatatbitcount, compbuffer[i] );
+		histogram[compbuffer[i]]++;
+	}
+	wordcount += (comppl-lastcomp);
+	lastcomp = comppl;	
+#elif COMPWIDTH == 2048
 	if( comppl & 1 )
 	{
 		compbuffer[comppl++] = 0;
@@ -149,6 +179,20 @@ int main( int argc, char ** argv )
 		fread( buffer, width, height, f );
 		got_video_frame( buffer, width, width, height, frame++ );
 	}
-	printf( "Total: %d bytes\n", wordcount );
+
+	int i;
+#if 1
+	for( i = 0; i < sizeof(histogram)/sizeof(histogram[0]); i++ )
+	{
+		if( histogram[i] ) printf( "%d: %d\n", i, histogram[i] );
+	}
+	printf( "\n" );
+#endif
+	printf( "Total: %d symbols/bytes\n", wordcount );
+
+
+#if COMPWIDTH > 32768
+	printf( "Total Bits: %d\n", odatatbitcount );
+#endif
 }
 

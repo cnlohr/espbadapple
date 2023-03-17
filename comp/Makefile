@@ -24,7 +24,7 @@ test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 320 240
+	./decodevideo badapple-sm8628149.mp4 512 384
 
 outdata.c : videoout.dat tiletest16
 	# Stage 1 has no properties.  It only takes in a video (which is actually videoout.dat) and outputs rawtiledata.dat
