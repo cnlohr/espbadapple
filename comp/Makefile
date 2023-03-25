@@ -4,10 +4,13 @@ CFLAGS:=-O2 -g -Wno-unused-result
 LDFLAGS:=-g
 LDLIBS:=-lX11
 
+hufftreegentest : hufftreegentest.c
+	gcc -g -O0 -o $@ $^
+
 decodevideo : ffmdecode.o decodevideo.o
 	gcc -g -O0 -o $@ $^ -lavcodec -lavformat -lswscale -lavutil 
 
-rletest : rletest.o
+rletest : rletest.c
 	gcc -o $@ $^ $(LDFLAGS) $(LDLIBS) $(CFLAGS)
 
 rle255 : rle255.o
@@ -24,7 +27,8 @@ test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 512 384
+	./decodevideo badapple-sm8628149.mp4 280 240
+#512 384
 
 outdata.c : videoout.dat tiletest16
 	# Stage 1 has no properties.  It only takes in a video (which is actually videoout.dat) and outputs rawtiledata.dat
@@ -77,5 +81,5 @@ example.gif : test_tilehuff
 # #define SUPERTINY
 
 clean :
-	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff tiletest8 tiletest16
+	rm -rf *.o *~ dectest outdata.c example.gif videoout.dat test_tilehuff tiletest8 tiletest16 hufftreegentest
 
