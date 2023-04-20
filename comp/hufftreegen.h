@@ -176,14 +176,14 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 		*out = realloc( *out, sizeof( huffup ) * newlen );
 		huffup * e = &(*out)[newlen-1];
 		e->value = ths->value;
-		printf( "p %d OEMIT---> %d\n", p, e->value );
+		printf( "T %d OEMIT---> %d (freq: %d)\n", p, e->value, ths->freq );
 		e->bitlen = *dstrlen;
 		e->bitstream = malloc( *dstrlen );
 		memcpy( e->bitstream, *dstr, *dstrlen );
 	}
 	else
 	{
-		printf( "P: %d / %d %d\n", p, tab[p].pair0, tab[p].pair1 );
+		printf( "P: %d / %d %d (freq: %d)\n", p, tab[p].pair0, tab[p].pair1, ths->freq );
 		int dla = *dstrlen;
 		*dstr = realloc( *dstr, ++(*dstrlen) );
 		(*dstr)[dla] = 0;
@@ -203,6 +203,7 @@ huffup * GenPairTable( huffelement * table, int * htlen )
 	int dstrlen = 0;
 	dstr[0] = 0;
 
+	// Generate the table from a tree, recursively.
 	InternalHuffT( table, 0, &ret, &huffuplen, &dstr, &dstrlen );
 	if( htlen ) *htlen = huffuplen;
 	return ret;

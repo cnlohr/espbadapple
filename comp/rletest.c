@@ -305,11 +305,12 @@ int main( int argc, char ** argv )
 
 	printf( "HHUFFS LL: %d\n", hufflen );
 
-        for( i = 0; i < hufflen; i++ )
-        {
-                huffelement * e = tree + i;
-                printf( "%d: %d [%d %d] [VAL %d] FREQ %d\n", i, e->is_term, e->pair0, e->pair1, e->value, e->freq );
-        }
+    for( i = 0; i < hufflen; i++ )
+    {
+            huffelement * e = tree + i;
+            printf( "%d: %d [%d %d] [VAL %d] FREQ %d\n", i, e->is_term, e->pair0, e->pair1, e->value, e->freq );
+    }
+	return -9;
 
 	int htlen = 0;
 	huffup * bitlists = GenPairTable( tree, &htlen );
@@ -321,7 +322,6 @@ int main( int argc, char ** argv )
 		flatlook[bitlists[i].value] = &bitlists[i];
 		printf( "%d : %d %d\n", i, bitlists[i].value, bitlists[i].bitlen );
 	}
-	return -9;
 	int totalbits = 0;
 	for( i = 0; i < comppl; i++ )
 	{
