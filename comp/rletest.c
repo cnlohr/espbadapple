@@ -32,18 +32,28 @@ void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 int wordcount = 0;
 
-//#define COMPWIDTH 2048
-// This actually is dynamic.
-#define COMPWIDTH 1073741824
+// Compression amounts are w/o hufftile on.
+//#define COMPWIDTH 255		// 5025397 bytes @ 280x240
+//#define COMPWIDTH 4095	// 6923202 bytes @ 280x240
+//#define COMPWIDTH 65535		// 9188240 bytes @ 280x240
+#define COMPWIDTH 1073741824	// 48134919/8 = 6016865 bytes @ 280x240
+
+//#define USE_HUFF_TREE 0
+
+// With huff tree  (TODO: Finish this)
 #define USE_HUFF_TREE 1
 
-#if COMPWIDTH > 32768
+
+
+
+uint32_t histogram[1<<25];
+
+#if COMPWIDTH > 65535
 uint32_t compbuffer[67108864];
 uint8_t odatastream[67108864];
 int odatatbitcount = 0;
 int comppl = 0;
 int lastcomp = 0;
-uint32_t histogram[1<<25];
 int color = 0;
 int runningtime = 0;
 #endif
@@ -71,9 +81,13 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		notfirst = 1;
 	}
 
-#if COMPWIDTH > 32768
+#if COMPWIDTH > 65535
+	int color = 0;
+	int runningtime = 0;
+	int comppl = 0;
+	uint16_t compbuffer[262144];
 	int startbl = odatatbitcount;
-#elif COMPWIDTH > 128
+#elif COMPWIDTH > 255
 	int color = 0;
 	int runningtime = 0;
 	int comppl = 0;
@@ -103,28 +117,30 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 			runningtime++;
 			if( runningtime >= COMPWIDTH )
 			{
-				compbuffer[comppl++] = (runningtime-1) | COMPWIDTH;
+				compbuffer[comppl++] = COMPWIDTH;
 				runningtime = 0;
 			}
 		}
 	}
 
-#if COMPWIDTH > 32768
-#else
+//#if COMPWIDTH > 65535
+//#else
 	compbuffer[comppl++] = runningtime;
-#endif
+//#endif
 
 #if COMPWIDTH == 1073741824
-	static int ocolor = 0;
-	static int thispl = -1;
-	for( i = lastcomp; i < comppl; i++ )
+//	static int ocolor = 0;
+//	static int thispl = -1;
+	int ocolor = 0;
+	int thispl = 1;
+	for( i = 0; i < comppl; i++ )
 	{
 		int cp = compbuffer[i];
 		ETEmitUE( odatastream, sizeof(odatastream), &odatatbitcount, cp );
 		histogram[cp]++;
 	}
 	wordcount += (comppl-lastcomp);
-#elif COMPWIDTH == 2048
+#elif COMPWIDTH == 4095
 	int thispl = 1;
 	int ocolor = 0;
 	if( comppl & 1 )
@@ -140,12 +156,12 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 		fprintf( f, "%c%c%c", first, second, third );
 		wordcount += 3;
 	}
-#elif COMPWIDTH == 128
+#elif COMPWIDTH == 255
 	int ocolor = 0;
 	fwrite( compbuffer, comppl, 1, f );
 	wordcount += comppl;
 	int thispl = 1;
-#elif COMPWIDTH == 32768
+#elif COMPWIDTH == 65535
 	int ocolor = 0;
 	fwrite( compbuffer, comppl, 2, f );
 	wordcount += comppl*2;
@@ -155,16 +171,19 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 #endif
 
 	int orunningtime = compbuffer[thispl-1];
+	int dontinvert = 0;
+	if( orunningtime == COMPWIDTH ) dontinvert = 1;
 	uint32_t data[width*height];
 	int dpl = 0;
 	for( y = 0; y < height; y++ )
 	for( x = 0; x < width; x++ )
 	{
-		if( !(orunningtime&(COMPWIDTH-1)) )
+		if( orunningtime == 0 )
 		{
-			if( !(runningtime & COMPWIDTH) )
-				ocolor = !ocolor;
+			if( !dontinvert ) ocolor = !ocolor;
+			dontinvert = 0;
 			orunningtime = compbuffer[thispl++];
+			if( orunningtime == COMPWIDTH ) dontinvert = 1;
 		}
 		else
 			orunningtime--;
@@ -181,12 +200,12 @@ void got_video_frame( const unsigned char * rgbbuffer, int linesize, int width, 
 	CNFGUpdateScreenWithBitmap( data, width, height );
 //	CNFGSwapBuffers();
 //	usleep( 20000 );
-#if COMPWIDTH > 32768
-	printf( "%d %d %d %d -> %d %d\n", frame, linesize, width, height, comppl-lastcomp, odatatbitcount - startbl );
-	lastcomp = comppl;
-#else
+//#if COMPWIDTH > 65535
+//	printf( "%d %d %d %d -> %d %d\n", frame, linesize, width, height, comppl-lastcomp, odatatbitcount - startbl );
+//	lastcomp = comppl;
+//#else
 	printf( "%d %d %d %d -> %d\n", frame, linesize, width, height, comppl );
-#endif
+//#endif
 	maxframe = frame;
 }
 
@@ -233,7 +252,7 @@ int main( int argc, char ** argv )
 #endif
 	printf( "Total: %d symbols/bytes\n", wordcount );
 
-#if COMPWIDTH > 32768
+#if COMPWIDTH > 65535
 	printf( "Total Bits: %d\n", odatatbitcount );
 #endif
 
