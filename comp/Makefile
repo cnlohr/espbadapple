@@ -42,9 +42,11 @@ outdata.c : videoout.dat tiletest16
 	# Produce final output.
 	./tiletest16 4
 
-# To REALLY crank down
-# After running the above
-# ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .15 && ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .15 && ./tiletest16 4 && make example.gif
+# To REALLY crank down (For running on the ch32v003)
+# After running the above -- but make sure you use SUPERTINY with tiletest16.c
+# ./decodevideo badapple-sm8628149.mp4 64 48
+#  note the main tuning parameter is the 0.10 / 0.15.
+# ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .10 && ./tiletest16 2 2 .1 && ./tiletest16 3 20000 .10 && ./tiletest16 4 && make example.gif
 
 example.gif : test_tilehuff
 	./test_tilehuff
