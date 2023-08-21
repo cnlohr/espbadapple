@@ -96,8 +96,8 @@ int * framenos;
 #define TILE_W 8
 #define TILE_H 8
 #define HALFTONE
-#define EVERY_OTHER_FRAME 0
-#define SFILL 0
+#define EVERY_OTHER_FRAME 1
+#define SFILL 1
 
 // This controls when we would say "good enough" for
 // an existing frame instead of jump to a new frame in the table.

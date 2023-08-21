@@ -27,7 +27,7 @@ test_tilehuff : test_tilehuff.c outdata.c gifenc.c
 
 
 videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 280 240
+	./decodevideo badapple-sm8628149.mp4 128 96
 #512 384
 
 outdata.c : videoout.dat tiletest16
@@ -40,9 +40,9 @@ outdata.c : videoout.dat tiletest16
 	#  Tileout is the max # of tiles we are allowed to use, i.e. cut off all but this #.
 	#  weight_toward_earlier_symbols --> How much should we prefer earlier symbols?
 	#  Note, see USE_PREVIOUS_THRESH for situations where we try to just re-use the tile that was already there.
-	./tiletest16 3 20000 .001
-	./tiletest16 2 2 .001  # Was 0.002
-	./tiletest16 3 20000 .001
+	./tiletest16 3 20000 .0005
+	./tiletest16 2 2 .0005  # Was 0.002
+	./tiletest16 3 20000 .0005
 	# Produce final output.
 	./tiletest16 4
 

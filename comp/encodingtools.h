@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-static int ETDeBruijnLog2( uint64_t v );
+static int ETDeBruijnLog2( uint64_t v );  // Used internally.
 static int ETEmitU( uint8_t * odata, int maxbits, int * tbytes, uint64_t data, int bits );
 
 // Exponential-Golumb Coding
@@ -13,7 +13,7 @@ static int ETEmitUE( uint8_t * odata, int maxbits, int * tbytes, int64_t data );
 
 
 
-
+// 
 static int ETDeBruijnLog2( uint64_t v )
 {
 	// https://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn
