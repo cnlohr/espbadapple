@@ -10,19 +10,19 @@ hufftreegentest : hufftreegentest.c
 decodevideo : ffmdecode.o decodevideo.o
 	gcc -g -O0 -o $@ $^ -lavcodec -lavformat -lswscale -lavutil 
 
-videoout.dat : badapple-sm8628149.mp4 decodevideo
-	./decodevideo badapple-sm8628149.mp4 96 64
+videoout-64x48.dat : badapple-sm8628149.mp4 decodevideo
+	./decodevideo $< 64 48 $@
 
-videocomp : videocomp.c
-	gcc -g -O0 -o $@ $^
+videocomp : videocomp.c gifenc.c
+	gcc -g -O4 -o $@ $^ -lX11
 
-example.gif : test_tilehuff
-	./test_tilehuff
+test-64x48.gif : videoout-64x48.dat videocomp 
+	./videocomp $< 64 48 $@
 
 
 # #define FOR_ESP8266
 # #define SUPERTINY
 
 clean :
-	rm -rf *.o *~ decodevideo videoout.dat
+	rm -rf *.o *~ decodevideo videoout-64x48.dat
 

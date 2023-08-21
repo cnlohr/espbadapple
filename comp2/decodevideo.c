@@ -30,15 +30,15 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 
 int main( int argc, char ** argv )
 {
-	if( argc != 4 )
+	if( argc != 5 )
 	{
-		fprintf( stderr, "Usage: [tool] [video] [out x] [out y]\n" );
+		fprintf( stderr, "Usage: [tool] [video] [out x] [out y] [outfile]\n" );
 		return -9;
 	}
 	targw = atoi( argv[2] );
 	targh = atoi( argv[3] );
 	data = malloc( targw*targh );
-	f = fopen( "videoout.dat", "wb" );
+	f = fopen( argv[4], "wb" );
 	fprintf( f, "%d %d\n", targw, targh );
 	setup_video_decode();
 	video_decode( argv[1], targw, targh );
