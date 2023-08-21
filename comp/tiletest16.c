@@ -77,15 +77,15 @@ int maxframe;
 int * framenos;
 
 //#define FOR_ESP8266
-//#define SUPERTINY
-#define TINYWITHFLASH
+#define SUPERTINY
+//#define TINYWITHFLASH
 
 #ifdef SUPERTINY
 
 #define TILE_W 16
 #define TILE_H 16
 #define HALFTONE
-#define EVERY_OTHER_FRAME 1
+#define EVERY_OTHER_FRAME 0
 #define SFILL 0
 #define USE_PREVIOUS_THRESH 12 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 6
@@ -267,7 +267,7 @@ int BitDiff( tiledata a, tiledata b, int mintocare )
 
 void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
 {
-#ifdef EVERY_OTHER_FRAME
+#if EVERY_OTHER_FRAME
 	if( frame % (EVERY_OTHER_FRAME+1) ) return;
 #endif
 	static int notfirst;

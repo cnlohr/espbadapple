@@ -110,7 +110,7 @@ void EmitFrametile( int16_t tile )
 			{
 				gif->frame[(x+y*FWIDTH)] = framebuffer[x+y*FWIDTH]?1:0;
 			}
-		        ge_add_frame(gif, 7);
+		        ge_add_frame(gif, 2);
 		}
 
 
