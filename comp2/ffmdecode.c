@@ -16,6 +16,8 @@
 #define INBUF_SIZE 4096
 
 static int request_w, request_h;
+struct SwsContext *resize;
+
 
 void setup_video_decode()
 {
@@ -31,41 +33,52 @@ static int decode_write_frame( AVCodecContext *avctx,
 							  AVFrame *frame, int *frame_count, AVPacket *pkt, int last, AVFrame* encoderRescaledFrame)
 {
 	int len, got_frame;
-	char buf[1024];
 
-	avcodec_send_packet( avctx, pkt );
+	do
+	{
+		if( pkt->size )
+		{
+			int sub = avcodec_send_packet( avctx, pkt );
+			printf( "SUB: %d\n", sub );
+		}
 
-	len = avcodec_receive_frame(avctx, frame );
-	if (len < 0) {
-		fprintf(stderr, "Error while decoding frame %d\n", *frame_count);
-		return len;
-	}
-	if( len == 0 )
-		got_frame = 1;
+		len = avcodec_receive_frame(avctx, frame );
+printf( "LEN %d %d\n", pkt->size, len );
+		if( len == -11 ) break;
+		if (len < 0) {
+			fprintf(stderr, "Error while decoding frame %d (%d)\n", *frame_count, len);
+			return len;
+		}
+		if( len == 0 )
+			got_frame = 1;
 
-	if( request_w == 0 && request_h == 0 ) { request_w = avctx->width; request_h = avctx->height; }
+		if( request_w == 0 && request_h == 0 ) { request_w = avctx->width; request_h = avctx->height; }
 
-	if (got_frame) {
-//		uint8_t myframedata[avctx->width * avctx->height * 3];
-		struct SwsContext *img_convert_ctx = sws_getContext(avctx->width, avctx->height, frame->format,
-			request_w, request_h, PIX_FMT_RGB24, SWS_FAST_BILINEAR , NULL, NULL, NULL); 
-		sws_scale(img_convert_ctx, ( const uint8_t * const * )frame->data, frame->linesize, 0, avctx->height,
-			encoderRescaledFrame->data, encoderRescaledFrame->linesize);
+		if (got_frame) {
+			int width2 = avctx->width;
+			int height2 = avctx->height;
 
-		got_video_frame( encoderRescaledFrame->data[0], encoderRescaledFrame->linesize[0],
-			request_w, request_h, *frame_count);
+			if( resize == 0 )
+				resize = sws_getContext(avctx->width, avctx->height, AV_PIX_FMT_YUV420P, width2, height2, PIX_FMT_RGB24, SWS_BICUBIC, NULL, NULL, NULL);
 
-//		got_video_frame( frame->data[0], frame->linesize[0],
-//			avctx->width, avctx->height, frame);
+			AVFrame* frame2 = av_frame_alloc();
+			uint8_t frame2_buffer[width2 * height2 * 4];
+			//avpicture_fill((AVPicture*)frame2, frame2_buffer, AV_PIX_FMT_RGB24, width2, height2);
+			sws_scale(resize, frame->data, frame->linesize, 0, avctx->height, frame2->data, frame2->linesize);
 
-		(*frame_count)++;
+			got_video_frame( frame2_buffer, frame2->linesize[0],
+				request_w, request_h, *frame_count);
 
-		//avcodec_free_frame(&encoderRescaledFrame);
-	}
-	if (pkt->data) {
-		pkt->size -= len;
-		pkt->data += len;
-	}
+			(*frame_count)++;
+
+			av_frame_free(&frame2);
+		}
+skip_frame_got:
+		if (pkt->data) {
+			pkt->size -= len;
+			pkt->data += len;
+		}
+	} while(1);
 	return 0;
 }
 
@@ -88,6 +101,7 @@ int video_decode( const char *filename, int reqw, int reqh)
 	const AVCodec *dec;
 
 	av_new_packet(&avpkt, sizeof( avpkt));
+
 
 	/* set end of buffer to 0 (this ensures that no overreading happens for damaged mpeg streams) */
 	memset(inbuf + INBUF_SIZE, 0, AV_INPUT_BUFFER_PADDING_SIZE);
@@ -122,11 +136,12 @@ int video_decode( const char *filename, int reqw, int reqh)
 	}
 
 	dec_ctx = fmt_ctx->streams[video_stream_index]->codec;
+
+	printf( "DEC CTX: %p id %d\n", dec_ctx, dec_ctx?dec_ctx->codec_id:0 );
 	dec = avcodec_find_decoder(dec_ctx->codec_id);
+	printf( "Dec: %p\n", dec );
 
 	encoderRescaledFrame = av_frame_alloc();
-	//av_frame_alloc(encoderRescaledFrame->data, encoderRescaledFrame->linesize,
-	//			  dec_ctx->width, dec_ctx->height, PIX_FMT_RGB24, 1);
 
 	printf( "Stream index: %d (%p %p)\n", video_stream_index, dec_ctx, dec );
 
@@ -145,30 +160,6 @@ int video_decode( const char *filename, int reqw, int reqh)
 	}
 
 	frame_count = 0;
-/*
-	for(;;) {
-		if ((ret = av_read_frame(fmt_ctx, &avpkt)) < 0)
-		{
-			printf( "MARK!" );
-			break;
-		}
-		printf( "HIT\n" );
-	   
-		avpkt.data = inbuf;
-		while (avpkt.size > 0)
-		{
-			printf( "SIZE %d!\n", avpkt.size );
-			if (decode_write_frame( dec_ctx, frame, &frame_count, &avpkt, 0) < 0)
-				exit(1);
-		}
-	}
-
-// some codecs, such as MPEG, transmit the I and P frame with a
-//latency of one frame. You must do the following to have a
-//chance to get the last frame of the video 
-
-*/
-
 	avpkt.data = NULL;
 	avpkt.size = 0;
 //	decode_write_frame( dec_ctx, frame, &frame_count, &avpkt, 1);
@@ -181,8 +172,9 @@ int video_decode( const char *filename, int reqw, int reqh)
 		{
 			while (avpkt.size > 0)
 			{
+				printf( "In Frame Size: %d\n", avpkt.size );
 				if (decode_write_frame( dec_ctx, frame, &frame_count, &avpkt, 0, encoderRescaledFrame) < 0)
-					exit(1);
+					continue;
 			}
 		}
 		else
