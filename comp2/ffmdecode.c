@@ -33,11 +33,15 @@ static int decode_write_frame( AVCodecContext *avctx,
 	int len, got_frame;
 	char buf[1024];
 
-	len = avcodec_decode_video2(avctx, frame, &got_frame, pkt);
+	avcodec_send_packet( avctx, pkt );
+
+	len = avcodec_receive_frame(avctx, frame );
 	if (len < 0) {
 		fprintf(stderr, "Error while decoding frame %d\n", *frame_count);
 		return len;
 	}
+	if( len == 0 )
+		got_frame = 1;
 
 	if( request_w == 0 && request_h == 0 ) { request_w = avctx->width; request_h = avctx->height; }
 
@@ -81,9 +85,9 @@ int video_decode( const char *filename, int reqw, int reqh)
 	AVPacket avpkt;
 	int ret;
 	int i;
-	AVCodec *dec;
+	const AVCodec *dec;
 
-	av_init_packet(&avpkt);
+	av_new_packet(&avpkt, sizeof( avpkt));
 
 	/* set end of buffer to 0 (this ensures that no overreading happens for damaged mpeg streams) */
 	memset(inbuf + INBUF_SIZE, 0, AV_INPUT_BUFFER_PADDING_SIZE);
@@ -121,8 +125,8 @@ int video_decode( const char *filename, int reqw, int reqh)
 	dec = avcodec_find_decoder(dec_ctx->codec_id);
 
 	encoderRescaledFrame = av_frame_alloc();
-	av_image_alloc(encoderRescaledFrame->data, encoderRescaledFrame->linesize,
-				  dec_ctx->width, dec_ctx->height, PIX_FMT_RGB24, 1);
+	//av_frame_alloc(encoderRescaledFrame->data, encoderRescaledFrame->linesize,
+	//			  dec_ctx->width, dec_ctx->height, PIX_FMT_RGB24, 1);
 
 	printf( "Stream index: %d (%p %p)\n", video_stream_index, dec_ctx, dec );
 
