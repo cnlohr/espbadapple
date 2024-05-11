@@ -145,17 +145,17 @@ int video_decode( const char *filename, int reqw, int reqh)
 
 	for (i = 0 ; i < fmt_ctx->nb_streams; i++){
 		printf( "%d\n", i );
-		if (fmt_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO ){
+		if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ){
 			video_stream_index = i;
 			break;
 		}
 
 	}
 
-	dec_ctx = fmt_ctx->streams[video_stream_index]->codec;
+	dec_ctx = fmt_ctx->video_codec->codecpar;
 
 	printf( "DEC CTX: %p id %d\n", dec_ctx, dec_ctx?dec_ctx->codec_id:0 );
-	dec = avcodec_find_decoder(dec_ctx->codec_id);
+	dec = avcodec_find_decoder(fmt_ctx->video_codec->type);
 	printf( "Dec: %p\n", dec );
 
 	encoderRescaledFrame = av_frame_alloc();
