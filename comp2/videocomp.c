@@ -62,19 +62,41 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 		for( ix = 0; ix < 8; ix++ )
 		{
 			uint8_t c = iof[ix];
-			printf( "%d %16llx ", c, ret );
+			printf( "%3d %16llx ", c, ret );
+
+#ifdef HALFTONE
 			if( c > 190 ) ret |= 1ULL<<bpl;
-			else if( c > 100 )
+#else
+			int evenodd = (x+y)&1;
+			if( c > 80+evenodd*120 ) ret |= 1ULL<<bpl;
+#endif
+
+/*			else if( c > 100 )
 			{
 				if( (x^y)&1 ) ret |= 1ULL<<bpl;
 			}
+*/
 			bpl++;
 		}
 		iof += stride;
 		printf( "-- %d %d %d %d %016llx\n", stride, ix, iy, bpl, ret );
 	}
-	printf( "%llx\n", ret );
+//	printf( "%llx\n", ret );
 	return ret;
+}
+
+void DrawBlock( int xofs, int yofs, blocktype b )
+{
+	uint32_t boo[BLOCKSIZE*BLOCKSIZE] = { 0 };
+	int i;
+	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+	{
+		if( b & (1<<i) )
+			boo[i] = 0xffffffff;
+		else
+			boo[i] = 0xff000000;
+	}
+	CNFGBlitImage( boo, xofs, yofs, BLOCKSIZE, BLOCKSIZE );
 }
 
 
@@ -91,7 +113,7 @@ int main( int argc, char ** argv )
 
 	FILE * f = fopen( argv[1], "rb" );
 	uint8_t * tbuf = malloc( w * h );
-	uint32_t * tempc = malloc( w * h * 4 );
+//	uint32_t * tempc = malloc( w * h * 4 );
 
 	CNFGSetup( "comp test", 640, 480 );
 	while( 1 )
@@ -102,15 +124,14 @@ int main( int argc, char ** argv )
 
 		if( r < 1 ) break;
 
-		for( i = 0; i < w*h; i++ )
-			tempc[i] = tbuf[i] << 0 | tbuf[i] << 8 | tbuf[i] << 16 | 0xff000000;
-		CNFGBlitImage( tempc, 0, 0, w, h );
+		//for( i = 0; i < w*h; i++ )
+		//	tempc[i] = tbuf[i] << 0 | tbuf[i] << 8 | tbuf[i] << 16 | 0xff000000;
 
 		for( y = 0; y < h / BLOCKSIZE; y++ )
 		for( x = 0; x < w / BLOCKSIZE; x++ )
 		{
 			blocktype b = ExtractBlock( tbuf, w, h, x, y );
-			printf( "%llx\n", b );
+			DrawBlock( x*BLOCKSIZE, y*BLOCKSIZE, b );
 			AppendBlock( b );
 		}
 
@@ -121,8 +142,9 @@ int main( int argc, char ** argv )
 		CNFGDrawText( cts, 2 );
 
 		CNFGSwapBuffers();
-		usleep(10000);
+		usleep(100000);
 	}
+	printf( "Found %d glyphs\n", numblocks );
 
 	return 0;
 fail:

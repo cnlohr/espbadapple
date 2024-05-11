@@ -83,7 +83,7 @@ static int decode_write_frame( AVCodecContext *avctx,
 			else
 			{
 //				printf( "%p %08x %d %d %d %d\n", frame->data, ((uint32_t*)frame2->data[0])[2] ,r, r2, frame2->linesize[0], *frame_count );
-				got_video_frame( ((uint32_t*)frame2->data[0]), frame2->linesize[0],width2, height2, *frame_count);
+				got_video_frame( ((uint8_t*)frame2->data[0]), frame2->linesize[0],width2, height2, *frame_count);
 //				printf( "%p %08x %d %d %d\n", frame->data, ((uint32_t*)frame2->data[0])[2] ,r, r2, frame2->linesize[0] );
 			}
 			av_freep( &frame2->data[0] );
@@ -152,10 +152,20 @@ int video_decode( const char *filename, int reqw, int reqh)
 
 	}
 
-	dec_ctx = fmt_ctx->video_codec->codecpar;
+
+
+
+    AVCodecParameters* inputCodecParameters = fmt_ctx->streams[video_stream_index]->codecpar;
+    dec = avcodec_find_decoder(inputCodecParameters->codec_id);
+    dec_ctx = avcodec_alloc_context3(dec);
+    if (avcodec_parameters_to_context(dec_ctx, inputCodecParameters) != 0)
+    {
+        fprintf( stderr, "Error: Can't get stream context\n" );
+        return -1;
+    }
+
 
 	printf( "DEC CTX: %p id %d\n", dec_ctx, dec_ctx?dec_ctx->codec_id:0 );
-	dec = avcodec_find_decoder(fmt_ctx->video_codec->type);
 	printf( "Dec: %p\n", dec );
 
 	encoderRescaledFrame = av_frame_alloc();

@@ -20,9 +20,10 @@ test-64x48.gif : videoout-64x48.dat videocomp
 	./videocomp $< 64 48 $@
 
 
-# #define FOR_ESP8266
-# #define SUPERTINY
+midclean :
+	rm -rf test-64x48.gif
 
-clean :
-	rm -rf *.o *~ decodevideo videoout-64x48.dat
+clean : midclean
+	rm -rf decodevideo videoout-64x48.dat
+	rm -rf *~ 
 
