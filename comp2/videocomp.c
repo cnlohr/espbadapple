@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
@@ -22,6 +23,29 @@ struct block
 struct block * allblocks;
 int numblocks;
 
+float ComputeDistance( const struct block * b, const struct block * c )
+{
+	int j;
+	float diff = 0;
+	const float * ib = b->intensity;
+	const float * ic = c->intensity;
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
+	{
+		float id = (ib[j] - ic[j]);
+		diff += id * id;
+	}
+	return sqrt( diff );
+}
+
+void BlockFillIntensity( struct block * b )
+{
+	int i;
+	for( i = 0; i < BLOCKSIZE * BLOCKSIZE; i++ )
+	{
+		b->intensity[i] += !!( b->blockdata & ( 1<< i ) );
+	}
+}
+
 void AppendBlock( blocktype b )
 {
 	int i;
@@ -44,25 +68,22 @@ void AppendBlock( blocktype b )
 		check->blockdata = b;
 	}
 	check->count++;
-	for( i = 0; i < BLOCKSIZE * BLOCKSIZE; i++ )
-	{
-		check->intensity[i] += !!( b & ( 1<< i ) );
-	}
+	BlockFillIntensity( check );
 }
 
 blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 {
-	int stride = (BLOCKSIZE)*iw;
-	uint8_t * iof = image + (y * stride) + (x * BLOCKSIZE);
+	int stride = iw;
+	uint8_t * iof = image + (y * BLOCKSIZE * stride) + (x * BLOCKSIZE);
 	blocktype ret = 0;
 	int ix, iy;
 	int bpl = 0;
+
 	for( iy = 0; iy < 8; iy++ )
 	{
 		for( ix = 0; ix < 8; ix++ )
 		{
 			uint8_t c = iof[ix];
-			printf( "%3d %16llx ", c, ret );
 
 #ifdef HALFTONE
 			if( c > 190 ) ret |= 1ULL<<bpl;
@@ -71,19 +92,39 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 			if( c > 80+evenodd*120 ) ret |= 1ULL<<bpl;
 #endif
 
-/*			else if( c > 100 )
-			{
-				if( (x^y)&1 ) ret |= 1ULL<<bpl;
-			}
-*/
 			bpl++;
 		}
 		iof += stride;
-		printf( "-- %d %d %d %d %016llx\n", stride, ix, iy, bpl, ret );
 	}
-//	printf( "%llx\n", ret );
 	return ret;
 }
+
+
+
+void ComputeKMeans()
+{
+	#define KMEANS 256
+	#define KMEANSITER 256
+	struct block kmeanses[KMEANS];
+
+	int it;
+	int km;
+	for( km = 0; km < KMEANS; km++ )
+	{
+		kmeanses[km].blockdata = 
+			(((blocktype)(rand()%0xffff))<<0ULL) |
+			(((blocktype)(rand()%0xffff))<<16ULL) |
+			(((blocktype)(rand()%0xffff))<<32ULL) |
+			(((blocktype)(rand()%0xffff))<<48ULL);
+		BlockFillIntensity( &kmeanses[km] );
+	}
+	for( it = 0; it < KMEANSITER; it++ )
+	{
+		// Go through it here!
+	}
+}
+
+
 
 void DrawBlock( int xofs, int yofs, blocktype b )
 {
@@ -91,7 +132,7 @@ void DrawBlock( int xofs, int yofs, blocktype b )
 	int i;
 	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 	{
-		if( b & (1<<i) )
+		if( b & (1ULL<<i) )
 			boo[i] = 0xffffffff;
 		else
 			boo[i] = 0xff000000;
@@ -113,7 +154,6 @@ int main( int argc, char ** argv )
 
 	FILE * f = fopen( argv[1], "rb" );
 	uint8_t * tbuf = malloc( w * h );
-//	uint32_t * tempc = malloc( w * h * 4 );
 
 	CNFGSetup( "comp test", 640, 480 );
 	while( 1 )
@@ -123,9 +163,6 @@ int main( int argc, char ** argv )
 		int r = fread( tbuf, w*h, 1, f );
 
 		if( r < 1 ) break;
-
-		//for( i = 0; i < w*h; i++ )
-		//	tempc[i] = tbuf[i] << 0 | tbuf[i] << 8 | tbuf[i] << 16 | 0xff000000;
 
 		for( y = 0; y < h / BLOCKSIZE; y++ )
 		for( x = 0; x < w / BLOCKSIZE; x++ )
@@ -142,9 +179,11 @@ int main( int argc, char ** argv )
 		CNFGDrawText( cts, 2 );
 
 		CNFGSwapBuffers();
-		usleep(100000);
 	}
 	printf( "Found %d glyphs\n", numblocks );
+
+	ComputeKMeans();
+
 
 	return 0;
 fail:
