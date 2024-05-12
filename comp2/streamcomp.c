@@ -63,8 +63,8 @@ int main( int argc, char ** argv )
 
 	for( frame = 0; frame < num_video_frames; frame++ )
 	{
-		CNFGClearFrame();
-		if( !CNFGHandleInput() ) break;
+		//CNFGClearFrame();
+		//if( !CNFGHandleInput() ) break;
 
 		int bx, by;
 		for( by = 0; by < video_h/BLOCKSIZE; by++ )
@@ -92,10 +92,10 @@ int main( int argc, char ** argv )
 			}
 
 			blocktype bt = glyphdata[glyphid];
-			DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+			//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 		}
 
-		CNFGSwapBuffers();
+		//CNFGSwapBuffers();
 	}
 
 	int tid = 0;
@@ -135,17 +135,69 @@ int main( int argc, char ** argv )
 		}
 
 		int hufflen;
+		huffup * hu;
 		huffelement * e = GenerateHuffmanTree( unique_tokens, token_counts, unique_tok_ct, &hufflen );
 		printf( "Huff len: %d\n", hufflen );
 
 		int htlen;
-		huffup * hu = GenPairTable( e, &htlen );
+		hu = GenPairTable( e, &htlen );
 
-		for( i = 0; i < nrtokens; i++ )
+		for( i = 0; i < htlen; i++ )
 		{
-		}		
+			int j;
+			printf( "%d - ", i );
+			int len = hu[i].bitlen;
+			printf( "%d\n", len );
+			for( j = 0; j <  len ; j++ )
+				printf( "%c", hu[i].bitstream[j] + '0' );
+			printf( "\n" );
+		}
+
+
+		// Go through video again.
+		for( frame = 0; frame < num_video_frames; frame++ )
+		{
+			//CNFGClearFrame();
+			//if( !CNFGHandleInput() ) break;
+
+			int bx, by;
+			for( by = 0; by < video_h/BLOCKSIZE; by++ )
+			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			{
+				uint32_t glyphid = streamdata[block++];
+
+				if( glyphid != blockmap[bx+by*(video_w/BLOCKSIZE)] )
+				{
+					if( running )
+					{
+						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+						token_stream[nrtokens++] = FLAG_RLE | running;
+					}
+
+					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+					token_stream[nrtokens++] = glyphid;
+
+					blockmap[bx+by*(video_w/BLOCKSIZE)] = glyphid;
+					running = 0;
+				}
+				else
+				{
+					running++;
+				}
+
+				blocktype bt = glyphdata[glyphid];
+				//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+			}
+
+			//CNFGSwapBuffers();
+		}
+
+
 	}
-	
+
+
+
+
 
 
 	CNFGClearFrame();

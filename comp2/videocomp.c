@@ -235,7 +235,7 @@ void ComputeKMeans()
 			float new_intensities[BLOCKSIZE*BLOCKSIZE];
 			float * kmf = k->intensity;
 			float count = mkd_cnt[km];
-			float * valf = &mkd_val[km];
+			float * valf = &mkd_val[km*BLOCKSIZE*BLOCKSIZE];
 			if( count == 0 )
 			{
 /*
