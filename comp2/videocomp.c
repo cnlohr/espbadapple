@@ -131,7 +131,7 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 		{
 			uint8_t c = iof[ix];
 
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 			if( c > 190 ) ret |= 1ULL<<bpl;
 #else
 			int evenodd = (ix+iy)&1;
@@ -149,7 +149,7 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 
 void ComputeKMeans()
 {
-	struct block* kmeanses_unaligned = calloc(KMEANS, sizeof(struct block));
+	struct block* kmeanses_unaligned = calloc(1, sizeof(struct block) * KMEANS + 31);
 	struct block* kmeanses = (struct block*) (((uintptr_t)(((uint8_t*)kmeanses_unaligned)+31))&(~31)); // force alignment
 
 	// Computed average
@@ -235,7 +235,7 @@ void ComputeKMeans()
 			float new_intensities[BLOCKSIZE*BLOCKSIZE];
 			float * kmf = k->intensity;
 			float count = mkd_cnt[km];
-			float * valf = &mkd_val[km];
+			float * valf = &mkd_val[km*BLOCKSIZE*BLOCKSIZE];
 			if( count == 0 )
 			{
 /*
@@ -511,6 +511,11 @@ int main( int argc, char ** argv )
 	FILE * f = fopen( argv[1], "rb" );
 	uint8_t * tbuf = malloc( video_w * video_h );
 
+	fseek(f, 0, SEEK_END);
+	int frame_count = ftell(f) / (video_w * video_h);
+	rawVideoData = malloc(frame_count * video_w * video_h);
+	fseek(f, 0, SEEK_SET);
+
 	int frames = 0;
 	CNFGSetup( "comp test", 1800, 900 );
 	while( 1 )
@@ -538,7 +543,6 @@ int main( int argc, char ** argv )
 		CNFGSwapBuffers();
 
 		frames++;
-		rawVideoData = realloc( rawVideoData, frames * video_w * video_h );
 		memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 
 		//usleep(10000);

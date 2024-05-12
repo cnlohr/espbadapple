@@ -19,7 +19,7 @@
 
 // DO NOT change this without code changes!
 #define BLOCKSIZE 8
-#define HALFTONE  1
+#define HALFTONE_EN  1
 typedef uint64_t blocktype;
 
 struct block

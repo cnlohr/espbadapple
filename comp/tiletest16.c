@@ -84,7 +84,7 @@ int * framenos;
 
 #define TILE_W 16
 #define TILE_H 16
-#define HALFTONE
+#define HALFTONE_EN
 #define EVERY_OTHER_FRAME 0
 #define SFILL 0
 #define USE_PREVIOUS_THRESH 12 //For delta-frames.
@@ -95,7 +95,7 @@ int * framenos;
 
 #define TILE_W 8
 #define TILE_H 8
-#define HALFTONE
+#define HALFTONE_EN
 #define EVERY_OTHER_FRAME 1
 #define SFILL 1
 
@@ -112,7 +112,7 @@ int * framenos;
 
 #define TILE_W 16
 #define TILE_H 16
-#define HALFTONE
+#define HALFTONE_EN
 #define SFILL 2
 #define USE_PREVIOUS_THRESH 8 //For delta-frames.
 #define USE_PREVIOUS_THRESH_S 4
@@ -124,7 +124,7 @@ int * framenos;
 
 #define TILE_W 16
 #define TILE_H 16
-#define HALFTONE
+#define HALFTONE_EN
 #define SFILL 3
 
 #define USE_PREVIOUS_THRESH 4 //For delta-frames.
@@ -308,7 +308,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( bity = 0; bity < TILE_H; bity++ )
 		for( bitx = 0; bitx < TILE_W; bitx++ )
 		{
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 			int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
 #else
 			int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
@@ -328,7 +328,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		{
 			for( bitx = 0; bitx < TILE_W; bitx++ )
 			{
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
 #else
 				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
@@ -354,7 +354,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			int tglyph = 0;
 			for( bitx = 0; bitx < TILE_W; bitx++ )
 			{
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>LIMIT;
 #else
 				int on = rgbbuffer[(int)(((x+bitx)))+(int)((y+bity))*linesize]>(((bitx & 1) == (bity & 1))?LIMITA:LIMITB);
@@ -414,7 +414,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( y = 0; y < height; y++ )
 		for( x = 0; x < width; x++ )
 		{
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 			int on = rgbbuffer[(int)((x))+(int)(y)*linesize]>LIMIT;
 #else
 			int on = rgbbuffer[(int)((x))+(int)(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
@@ -514,7 +514,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 			int lastdiffC = BitDiff( gl, gglyphs[i].dat.dat, 1000 );
 
 			//If the recommended glyph is 0 or 1, and it doesn't match perfectly, make it so.
-#ifdef HALFTONE
+#ifdef HALFTONE_EN
 			int disable_rle_for_this = i<3 && lastdiffS;
 #else
 			int disable_rle_for_this = i<2 && lastdiffS;
@@ -568,7 +568,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		for( y = 0; y < height; y++ )
 		for( x = 0; x < width; x++ )
 		{
-#ifndef HALFTONE
+#ifndef HALFTONE_EN
 			int on = rgbbuffer[(x)+(y)*linesize]>LIMIT;
 #else
 			int on = rgbbuffer[(x)+(y)*linesize]>(((x & 1) == (y & 1))?LIMITA:LIMITB);
