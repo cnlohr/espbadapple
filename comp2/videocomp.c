@@ -13,6 +13,21 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
+
+// Doing MSE flattens out the glyph usage
+// BUT by not MSE'ing it looks the same to me
+// but it "should" be better 
+//#define MSE
+
+// Target glyphs, and how quickly to try approaching it.
+#define TARGET_GLYPH_COUNT 256
+#define GLYPH_COUNT_REDUCE_PER_FRAME 5
+// How many glpyhs to start at?
+#define KMEANS 4096
+// How long to train?
+#define KMEANSITER 512
+
+
 #define BLOCKSIZE 8
 #define HALFTONE  1
 typedef uint64_t blocktype;
@@ -37,6 +52,18 @@ int numblocks;
 
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
 
+void UpdateBlockDataFromIntensity( struct block * k )
+{
+	int i;
+	blocktype bt = 0;
+	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+	{
+		if( k->intensity[i] > 0.5 )
+			bt |= (1ULL<<i);
+	}
+	k->blockdata = bt;
+}
+
 
 float ComputeDistance( const struct block * b, const struct block * c )
 {
@@ -53,8 +80,6 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	}
 	return  diff ;
 */
-
-//#define MSE
 
 	__m256 rundiff = _mm256_set1_ps( 0 );
 	__m256 negzero = _mm256_set1_ps( -0.0f );
@@ -156,8 +181,6 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 
 void ComputeKMeans()
 {
-	#define KMEANS 2048
-	#define KMEANSITER 2560
 	struct block kmeanses[KMEANS] __attribute__((aligned(256))) = { 0 } ;
 
 	// Computed average
@@ -267,6 +290,7 @@ void ComputeKMeans()
 					//k->intensity[i] = k->intensity[i] * 0.9 + new_intensities[i] * 0.1;
 					k->intensity[i] = new_intensities[i];
 				}
+				UpdateBlockDataFromIntensity( k );
 			}
 			k->count = count;
 		}
@@ -342,8 +366,8 @@ void ComputeKMeans()
 			int killoffretry = 0;
 			if( videoframeno > 1 )
 			{
-				int remaintokill = goodglyphs - 256;
-				if( remaintokill > 10 ) remaintokill = 10;
+				int remaintokill = goodglyphs - TARGET_GLYPH_COUNT;
+				if( remaintokill > GLYPH_COUNT_REDUCE_PER_FRAME ) remaintokill = GLYPH_COUNT_REDUCE_PER_FRAME;
 				if( remaintokill < 0 ) remaintokill = 0;
 				killoffretry = remaintokill;
 			}
@@ -384,7 +408,7 @@ void ComputeKMeans()
 			}
 
 			CNFGPenX = 0;
-			CNFGPenY = 400;
+			CNFGPenY = 600;
 			char cts[1024];
 			sprintf( cts, "Glyphs: %d\nFrames: %d\n", goodglyphs,videoframeno );
 			CNFGDrawText( cts, 2 );
@@ -421,6 +445,7 @@ void ComputeKMeans()
 
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, &b, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 		}
 
