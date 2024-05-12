@@ -196,8 +196,8 @@ void ComputeKMeans()
 	struct block kmeanses[KMEANS] __attribute__((aligned(256))) = { 0 } ;
 
 	// Computed average
-	float mkd_val[KMEANS][BLOCKSIZE*BLOCKSIZE];
-	float mkd_cnt[KMEANS];
+	float mkd_val[KMEANS][BLOCKSIZE*BLOCKSIZE] = { 0 };
+	float mkd_cnt[KMEANS] = { 0 };
 	int   kmeansdead[KMEANS] = { 0 };
 
 	int i;
@@ -432,10 +432,11 @@ void ComputeKMeans()
 
 
 		// Use new k-means blocks to render next video frame.
+		int thisframe = rand() % num_video_frames;
 		for( y = 0; y < video_h/BLOCKSIZE; y++ )
 		for( x = 0; x < video_w/BLOCKSIZE; x++ )
 		{
-			uint8_t * tbuf = &rawVideoData[videoframeno*video_w*video_h];
+			uint8_t * tbuf = &rawVideoData[thisframe*video_w*video_h];
 			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
 			struct block b = { 0 };
 			b.blockdata = bt;
@@ -467,6 +468,11 @@ void ComputeKMeans()
 
 	// One KMeans is computed, output the glyphs to a file, and re-render the video stream.
 	FILE * fTiles = fopen( tilesFile, "wb" );
+	if( !fTiles )
+	{
+		fprintf( stderr, "Failed to open tile file for writing\n" );
+		exit( -7 );
+	}
 	for( km = 0; km < KMEANS; km++ )
 	{
 		if( kmeansdead[km] ) continue;
@@ -475,6 +481,11 @@ void ComputeKMeans()
 	fclose( fTiles );
 
 	FILE * fStream = fopen( streamFile, "wb" );
+	if( !fStream )
+	{
+		fprintf( stderr, "Failed to open stream file for writing\n" );
+		exit( -7 );
+	}
 
 	for( videoframeno = 0; videoframeno < num_video_frames; videoframeno++ )
 	{
@@ -491,6 +502,7 @@ void ComputeKMeans()
 			BlockFillIntensity( &b );
 
 			uint32_t mink = 0;
+			uint32_t minkwrite = 0;
 			float mka = 1e20;
 			uint32_t outkmid = 0;
 			for( km = 0; km < KMEANS; km++ )
@@ -501,7 +513,8 @@ void ComputeKMeans()
 				if( fd < mka )
 				{
 					mka = fd;
-					mink = outkmid;
+					mink = km;
+					minkwrite = outkmid;
 				}
 				outkmid++;
 			}
@@ -511,11 +524,11 @@ void ComputeKMeans()
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 			
-			fwrite( &mink, sizeof( mink ), 1, fStream );
+			fwrite( &minkwrite, sizeof( minkwrite ), 1, fStream );
 		}
-		fclose( fStream );
 		CNFGSwapBuffers();
 	}
+	fclose( fStream );
 
 }
 

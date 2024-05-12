@@ -2,8 +2,8 @@ all : decodevideo
 
 CFLAGS:=-O2 -g -Wno-unused-result -mavx2
 LDFLAGS:=-g -lX11 -lm
-RESX=96
-RESY=64
+RESX=64
+RESY=48
 RES:=${RESX}x${RESY}
 
 hufftreegentest : hufftreegentest.c
@@ -26,6 +26,6 @@ midclean :
 	rm -rf test-${RES}.gif videocomp
 
 clean : midclean
-	rm -rf decodevideo videoout-${RES}.dat tiles-${RES}.dat
+	rm -rf decodevideo videoout-${RES}.dat tiles-${RES}.dat stream-${RES}.dat
 	rm -rf *~ 
 
