@@ -114,7 +114,7 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	__m128 back  = _mm256_extractf128_ps( vdiff_s1, 1 );
 	__m128 vdiff_s2  = _mm_hadd_ps( front, back );
 	__m128 vdiff_s3  = _mm_hadd_ps( _mm_set1_ps( 0 ), vdiff_s2 );
-	float diffA = vdiff_s3[0] + vdiff_s3[1];
+	float diffA = vdiff_s3[3] + vdiff_s3[2];
 	//float diffB = rundiff[0] + rundiff[1] + rundiff[2] + rundiff[3] + rundiff[4] + rundiff[5] + rundiff[6] + rundiff[7];
 	diff = diffA;
 
