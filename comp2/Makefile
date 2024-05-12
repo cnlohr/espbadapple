@@ -2,8 +2,8 @@ all : decodevideo
 
 CFLAGS:=-O2 -g -Wno-unused-result -mavx2
 LDFLAGS:=-g -lX11 -lm
-RESX=128
-RESY=96
+RESX=64
+RESY=48
 RES:=${RESX}x${RESY}
 
 hufftreegentest : hufftreegentest.c

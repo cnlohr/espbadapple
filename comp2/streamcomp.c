@@ -61,6 +61,12 @@ int main( int argc, char ** argv )
 	int nrtokens = 0;
 	uint32_t * token_stream = 0;
 
+	int tid = 0;
+
+#if 0
+	// for 64x48, 736735 bits needed
+	// This method rasterizes left-to-right and top-to-bottom.
+
 	for( frame = 0; frame < num_video_frames; frame++ )
 	{
 		//CNFGClearFrame();
@@ -98,7 +104,6 @@ int main( int argc, char ** argv )
 		//CNFGSwapBuffers();
 	}
 
-	int tid = 0;
 	printf( "Processed %d frames\n", frame );
 	printf( "Number of stream TIDs: %d\n", nrtokens );
 
@@ -142,6 +147,8 @@ int main( int argc, char ** argv )
 		int htlen;
 		hu = GenPairTable( e, &htlen );
 
+
+#if 0
 		for( i = 0; i < htlen; i++ )
 		{
 			int j;
@@ -152,7 +159,12 @@ int main( int argc, char ** argv )
 				printf( "%c", hu[i].bitstream[j] + '0' );
 			printf( "\n" );
 		}
+#endif
 
+		char * bitstreamo = 0;
+		int bistreamlen = 0;
+
+		block = 0;
 
 		// Go through video again.
 		for( frame = 0; frame < num_video_frames; frame++ )
@@ -170,12 +182,30 @@ int main( int argc, char ** argv )
 				{
 					if( running )
 					{
-						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-						token_stream[nrtokens++] = FLAG_RLE | running;
+						uint32_t thistok = FLAG_RLE | running;
+
+						int h;
+						for( h = 0; h < htlen; h++ )
+							if( hu[h].value == thistok ) break;
+						int b;
+						for( b = 0; b < hu[h].bitlen; b++ )
+						{
+							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+							bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+						}
 					}
 
-					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-					token_stream[nrtokens++] = glyphid;
+					uint32_t thistok = glyphid;
+					int h;
+					for( h = 0; h < htlen; h++ )
+						if( hu[h].value == thistok ) break;
+					int b;
+					for( b = 0; b < hu[h].bitlen; b++ )
+					{
+						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+						bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+					}
+
 
 					blockmap[bx+by*(video_w/BLOCKSIZE)] = glyphid;
 					running = 0;
@@ -193,9 +223,165 @@ int main( int argc, char ** argv )
 		}
 
 
+		printf( "Bitstream Length Bits: %d\n", bistreamlen );
+	}
+#else
+
+	// this method does block-at-a-time, full video per block.
+	// apples-to-apples, takes 659079 bits, an 11% savings!
+	{
+		int bx, by;
+		for( by = 0; by < video_h/BLOCKSIZE; by++ )
+		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+		{
+			uint32_t lastblock = 0;
+
+			for( frame = 0; frame < num_video_frames; frame++ )
+			{
+
+				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
+				if( glyphid != lastblock )
+				{
+					if( running )
+					{
+						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+						token_stream[nrtokens++] = FLAG_RLE | running;
+					}
+
+					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+					token_stream[nrtokens++] = glyphid;
+
+					lastblock = glyphid;
+					running = 0;
+				}
+				else
+				{
+					running++;
+				}
+			}
+		}
+
+		int tid = 0;
+		printf( "Processed %d frames\n", frame );
+		printf( "Number of stream TIDs: %d\n", nrtokens );
+
+		uint8_t * huffman_data;
+		uint32_t huffman_bit_count = 0;
+		uint16_t huffman_dictionary = 0;
+
+		// Compress the TIDs
+		{
+			uint32_t * unique_tokens = 0;
+			uint32_t * token_counts = 0;
+			int unique_tok_ct = 0;
+			int i;
+			for( i = 0; i < nrtokens; i++ )
+			{
+				uint32_t t = token_stream[i];
+				int j;
+				for( j = 0; j < unique_tok_ct; j++ )
+				{
+					if( unique_tokens[j] == t ) break;
+				}
+				if( j == unique_tok_ct )
+				{
+					unique_tokens = realloc( unique_tokens, ( unique_tok_ct + 1) * sizeof( uint32_t ) );
+					token_counts = realloc( token_counts,  ( unique_tok_ct + 1) * sizeof( uint32_t ) );
+					unique_tokens[unique_tok_ct] = t;
+					token_counts[unique_tok_ct] = 1;
+					unique_tok_ct++;
+				}
+				else
+				{
+					token_counts[j]++;
+				}
+			}
+
+			int hufflen;
+			huffup * hu;
+			huffelement * e = GenerateHuffmanTree( unique_tokens, token_counts, unique_tok_ct, &hufflen );
+			printf( "Huff len: %d\n", hufflen );
+
+			int htlen;
+			hu = GenPairTable( e, &htlen );
+
+
+#if 0
+		for( i = 0; i < htlen; i++ )
+		{
+			int j;
+			printf( "%d - ", i );
+			int len = hu[i].bitlen;
+			printf( "%d\n", len );
+			for( j = 0; j <  len ; j++ )
+				printf( "%c", hu[i].bitstream[j] + '0' );
+			printf( "\n" );
+		}
+#endif
+
+			char * bitstreamo = 0;
+			int bistreamlen = 0;
+
+			block = 0;
+
+			int bx, by;
+			for( by = 0; by < video_h/BLOCKSIZE; by++ )
+			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			{
+				uint32_t lastblock = 0;
+
+				for( frame = 0; frame < num_video_frames; frame++ )
+				{
+					uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
+					if( glyphid != lastblock) 
+					{
+						if( running )
+						{
+							uint32_t thistok = FLAG_RLE | running;
+
+							int h;
+							for( h = 0; h < htlen; h++ )
+								if( hu[h].value == thistok ) break;
+							int b;
+							for( b = 0; b < hu[h].bitlen; b++ )
+							{
+								bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+								bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+							}
+						}
+
+						uint32_t thistok = glyphid;
+						int h;
+						for( h = 0; h < htlen; h++ )
+							if( hu[h].value == thistok ) break;
+						int b;
+						for( b = 0; b < hu[h].bitlen; b++ )
+						{
+							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+							bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+						}
+
+
+						lastblock = glyphid;
+						running = 0;
+					}
+					else
+					{
+						running++;
+					}
+
+					
+				}
+			}
+			//CNFGSwapBuffers();
+		printf( "Bitstream Length Bits: %d\n", bistreamlen );
+		}
+
 	}
 
-
+#endif
 
 
 
