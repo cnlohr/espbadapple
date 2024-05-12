@@ -20,7 +20,7 @@ test-64x48.gif : videoout-64x48.dat videocomp
 
 
 midclean :
-	rm -rf test-64x48.gif
+	rm -rf test-64x48.gif videocomp
 
 clean : midclean
 	rm -rf decodevideo videoout-64x48.dat
