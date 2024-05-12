@@ -71,7 +71,9 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	__m128 diffslo = _mm256_extractf128_ps( diffs, 0 );
 	__m128 diffshi  = _mm256_extractf128_ps( diffs, 1 );
 	__m128 diffssum  = _mm_hadd_ps( diffslo, diffshi );
-	diff = diffssum[0] + diffssum[1] + diffssum[2] + diffssum[3];
+	float OutputVal[4];
+	_mm_store_ps(OutputVal, diffssum);
+	diff = OutputVal[0] + OutputVal[1] + OutputVal[2] + OutputVal[3];
 
 #ifdef MSE
 	return sqrt(diff);
@@ -148,12 +150,13 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 
 void ComputeKMeans()
 {
-	struct block kmeanses[KMEANS] __attribute__((aligned(256))) = { 0 } ;
+	struct block* kmeanses_unaligned = calloc(KMEANS, sizeof(struct block));
+	struct block* kmeanses = (struct block*) (((uintptr_t)(((uint8_t*)kmeanses_unaligned)+31))&(~31)); // force alignment
 
 	// Computed average
-	float mkd_val[KMEANS][BLOCKSIZE*BLOCKSIZE] = { 0 };
-	float mkd_cnt[KMEANS] = { 0 };
-	int   kmeansdead[KMEANS] = { 0 };
+	float* mkd_val = calloc(KMEANS * BLOCKSIZE * BLOCKSIZE, sizeof(float));
+	float* mkd_cnt = calloc(KMEANS, sizeof(float));
+	int* kmeansdead = calloc(KMEANS, sizeof(int));
 
 	int i;
 	int it;
@@ -174,8 +177,8 @@ void ComputeKMeans()
 		CNFGClearFrame();
 		short w,h;
 		CNFGGetDimensions( &w, &h );
-		memset( mkd_val, 0, sizeof( mkd_val ) );
-		memset( mkd_cnt, 0, sizeof( mkd_cnt ) );
+		memset( mkd_val, 0, KMEANS * BLOCKSIZE * BLOCKSIZE * sizeof(float) );
+		memset( mkd_cnt, 0, KMEANS * sizeof(float) );
 
 		struct block * worstfit = 0;
 		float worstfitmatch = 0;
@@ -210,7 +213,7 @@ void ComputeKMeans()
 
 			for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 			{
-				mkd_val[mink][i] += b->intensity[i] * b->count;
+				mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += b->intensity[i] * b->count;
 			}
 			mkd_cnt[mink] += b->count;
 		}
@@ -233,7 +236,7 @@ void ComputeKMeans()
 			float new_intensities[BLOCKSIZE*BLOCKSIZE];
 			float * kmf = k->intensity;
 			float count = mkd_cnt[km];
-			float * valf = mkd_val[km];
+			float * valf = &mkd_val[km];
 			if( count == 0 )
 			{
 /*
@@ -263,8 +266,8 @@ void ComputeKMeans()
 		}
 
 		int x, y;
-		const int draww = BLOCKSIZE * 6.0;
-		const int drawh = BLOCKSIZE * 5.0;
+		const int draww = BLOCKSIZE * 6;
+		const int drawh = BLOCKSIZE * 5;
 		const int drawxofs = 300;
 		const int drawsperline = ceil( sqrt(goodglyphs ) );
 		int dk = 0;
