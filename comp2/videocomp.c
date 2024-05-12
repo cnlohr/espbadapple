@@ -23,16 +23,6 @@ uint8_t * rawVideoData;
 const char * tilesFile;
 const char * streamFile;
 
-struct block
-{
-	float intensity[BLOCKSIZE*BLOCKSIZE]; // For when we start culling blocks.
-	blocktype blockdata;
-	uint32_t count;
-	uint32_t scratch;
-	uint64_t extra1;
-	uint64_t extra2;
-};
-
 struct block * allblocks;
 struct block * allblocks_alloc;
 int numblocks;

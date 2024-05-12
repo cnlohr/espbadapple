@@ -13,10 +13,21 @@
 // How long to train?
 #define KMEANSITER 512
 
-
+// DO NOT change this without code changes!
 #define BLOCKSIZE 8
 #define HALFTONE  1
 typedef uint64_t blocktype;
+
+struct block
+{
+	float intensity[BLOCKSIZE*BLOCKSIZE]; // For when we start culling blocks.
+	blocktype blockdata;
+	uint32_t count;
+	uint32_t scratch;
+	uint64_t extra1;
+	uint64_t extra2;
+};
+
 
 #endif
 
