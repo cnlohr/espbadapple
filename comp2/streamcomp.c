@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "bacommon.h"
+#include "hufftreegen.h"
 
 int streamcount;
 uint32_t * streamdata;
@@ -27,6 +28,7 @@ int main( int argc, char ** argv )
 	fseek( f, 0, SEEK_END );
 	streamcount = ftell( f ) / sizeof( streamdata[0] );
 	streamdata = malloc( streamcount * sizeof( streamdata[0] ) );
+	fseek( f, 0, SEEK_SET );
 	fread( streamdata, streamcount, sizeof( streamdata[0] ), f );
 	fclose( f );
 
@@ -34,6 +36,7 @@ int main( int argc, char ** argv )
 	fseek( f, 0, SEEK_END );
 	glyphct = ftell( f ) / sizeof( glyphdata[0] );
 	glyphdata = malloc( glyphct * sizeof( glyphdata[0] ) );
+	fseek( f, 0, SEEK_SET );
 	fread( glyphdata, glyphct, sizeof( glyphdata[0] ) , f );
 	fclose( f );
 
@@ -41,16 +44,29 @@ int main( int argc, char ** argv )
 
 	printf( "Read %d glyphs, and %d elements (From %d frames)\n", glyphct, streamcount, num_video_frames );
 	int i;
-	int frames = 0;
+	int frame = 0;
+	int block = 0;
 	CNFGSetup( "comp test", 1800, 900 );
-	while( 1 )
+
+	uint32_t blockmap[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
+
+	for( frame = 0; frame < num_video_frames; frame++ )
 	{
 		CNFGClearFrame();
 		if( !CNFGHandleInput() ) break;
 
+		int bx, by;
+		for( by = 0; by < video_h/BLOCKSIZE; by++ )
+		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+		{
+			uint32_t glyphid = streamdata[block++];
+			blocktype bt = glyphdata[glyphid];
+			printf( "%d %d %d %d\n", bx, by, block, glyphid );
+			DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+		}
 
-		
-		CNFGSwapBuffers();		
+		CNFGSwapBuffers();
+		frame++;
 	}
 }
 

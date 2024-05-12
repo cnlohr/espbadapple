@@ -2,6 +2,8 @@
 #define _BACOMMON_H
 
 #include <stdint.h>
+#include <stdbool.h>
+
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
@@ -42,12 +44,8 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
-void DrawBlockBasic( int xofs, int yofs, blocktype bb )
-{
-	struct block b;
-	b.blockdata = bb;
-	DrawBlock( xofs, yofs, b, true );
-}
+void DrawBlockBasic( int xofs, int yofs, blocktype bb );
+void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
 
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 {
@@ -92,5 +90,13 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 }
 
 
+void DrawBlockBasic( int xofs, int yofs, blocktype bb )
+{
+	struct block b;
+	b.blockdata = bb;
+	DrawBlock( xofs, yofs, &b, true );
+}
+
 #endif
+
 
