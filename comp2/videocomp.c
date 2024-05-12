@@ -8,29 +8,13 @@
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
 
+#include "bacommon.h"
+
 void HandleKey( int keycode, int bDown ) { }
 void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
-
-// Doing MSE flattens out the glyph usage
-// BUT by not MSE'ing it looks the same to me
-// but it "should" be better 
-//#define MSE
-
-// Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 256
-#define GLYPH_COUNT_REDUCE_PER_FRAME 5
-// How many glpyhs to start at?
-#define KMEANS 4096
-// How long to train?
-#define KMEANSITER 512
-
-
-#define BLOCKSIZE 8
-#define HALFTONE  1
-typedef uint64_t blocktype;
 
 int video_w;
 int video_h;
