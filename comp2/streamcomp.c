@@ -137,6 +137,13 @@ int main( int argc, char ** argv )
 		int hufflen;
 		huffelement * e = GenerateHuffmanTree( unique_tokens, token_counts, unique_tok_ct, &hufflen );
 		printf( "Huff len: %d\n", hufflen );
+
+		int htlen;
+		huffup * hu = GenPairTable( e, &htlen );
+
+		for( i = 0; i < nrtokens; i++ )
+		{
+		}		
 	}
 	
 
