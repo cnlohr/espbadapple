@@ -2,8 +2,8 @@ all : decodevideo
 
 CFLAGS:=-O2 -g -Wno-unused-result -mavx2
 LDFLAGS:=-g -lX11 -lm
-RESX=64
-RESY=48
+RESX=128
+RESY=96
 RES:=${RESX}x${RESY}
 
 hufftreegentest : hufftreegentest.c
@@ -25,12 +25,12 @@ streamcomp : streamcomp.c gifenc.c
 	gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 video-${RES}.gif : streamcomp stream-${RES}.dat tiles-${RES}.dat
-	./streamcomp stream-${RES}.dat tiles-${RES}.dat video-${RES}.gif
+	./streamcomp stream-${RES}.dat tiles-${RES}.dat video-${RES}.gif ${RESX} ${RESY}
 
 midclean :
-	rm -rf test-${RES}.gif videocomp
+	rm -rf test-${RES}.gif streamcomp
 
 clean : midclean
-	rm -rf decodevideo videoout-${RES}.dat tiles-${RES}.dat stream-${RES}.dat
+	rm -rf decodevideo videocomp videoout-${RES}.dat tiles-${RES}.dat stream-${RES}.dat
 	rm -rf *~ 
 
