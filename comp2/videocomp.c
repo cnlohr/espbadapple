@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdbool.h>
 
+// Only used in compute distance function.
+#include <immintrin.h>
+
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
 
@@ -20,13 +23,16 @@ uint8_t * rawVideoData;
 
 struct block
 {
-	blocktype blockdata;
 	float intensity[BLOCKSIZE*BLOCKSIZE]; // For when we start culling blocks.
-	int count;
-	int scratch;
+	blocktype blockdata;
+	uint32_t count;
+	uint32_t scratch;
+	uint64_t extra1;
+	uint64_t extra2;
 };
 
 struct block * allblocks;
+struct block * allblocks_alloc;
 int numblocks;
 
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
@@ -36,7 +42,7 @@ float ComputeDistance( const struct block * b, const struct block * c )
 {
 	int j;
 	float diff = 0;
-	const float * ib = b->intensity;
+/*	const float * ib = b->intensity;
 	const float * ic = c->intensity;
 	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
 	{
@@ -46,6 +52,40 @@ float ComputeDistance( const struct block * b, const struct block * c )
 		diff += id;
 	}
 	return  diff ;
+*/
+
+//#define MSE
+
+	__m256 rundiff = _mm256_set1_ps( 0 );
+	__m256 negzero = _mm256_set1_ps( -0.0f );
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j+=8 )
+	{
+		__m256 ib, ic, diff;
+		ib = _mm256_load_ps( &b->intensity[j] );
+		ic = _mm256_load_ps( &c->intensity[j] );
+		diff = _mm256_sub_ps( ib, ic );
+
+#ifdef MSE
+		diff = _mm256_mul_ps( diff, diff );
+#else
+		diff = _mm256_andnot_ps( negzero, diff );
+#endif
+
+		rundiff = _mm256_add_ps( rundiff, diff );
+	}
+
+	__m128 front = _mm256_extractf128_ps( rundiff, 0 );
+	__m128 back  = _mm256_extractf128_ps( rundiff, 1 );
+	__m128 vdiff  = _mm_hadd_ps( front, back );
+	float diffA = vdiff[0] + vdiff[1] + vdiff[2] + vdiff[3];
+	//float diffB = rundiff[0] + rundiff[1] + rundiff[2] + rundiff[3] + rundiff[4] + rundiff[5] + rundiff[6] + rundiff[7];
+	diff = diffA;
+
+#ifdef MSE
+	return sqrt(diff);
+#else
+	return diff;
+#endif
 }
 
 void BlockFillIntensity( struct block * b )
@@ -72,7 +112,8 @@ struct block * AppendBlock( blocktype b )
 	if( check == bend )
 	{
 		numblocks++;
-		allblocks = realloc( allblocks, numblocks * sizeof( struct block ) );
+		allblocks_alloc = realloc( allblocks_alloc, numblocks * sizeof( struct block ) + 32 );
+		allblocks = (struct block*) (((uintptr_t)(((uint8_t*)allblocks_alloc)+31))&(~31)); // force alignment
 		check = allblocks + (numblocks - 1);
 		memset( check, 0, sizeof( struct block ) );
 		check->count = 0;
@@ -101,7 +142,7 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 			if( c > 190 ) ret |= 1ULL<<bpl;
 #else
 			int evenodd = (ix+iy)&1;
-			if( c > 80+evenodd*120 ) ret |= 1ULL<<bpl;
+			if( c > 100+evenodd*60 ) ret |= 1ULL<<bpl;
 #endif
 
 			bpl++;
@@ -117,7 +158,7 @@ void ComputeKMeans()
 {
 	#define KMEANS 2048
 	#define KMEANSITER 2560
-	struct block kmeanses[KMEANS] = { 0 };
+	struct block kmeanses[KMEANS] __attribute__((aligned(256))) = { 0 } ;
 
 	// Computed average
 	float mkd_val[KMEANS][BLOCKSIZE*BLOCKSIZE];
@@ -277,7 +318,7 @@ void ComputeKMeans()
 				// random glyph (this is bad.)  --> CONSIDER: What if we pick poorly represented glyphs?
 				whichmink->blockdata = worstfit->blockdata;
 				BlockFillIntensity( whichmink );
-				DrawBlock( 0, 400, &worstfit, false );
+				DrawBlock( 0, 400, worstfit, false );
 
 				//printf( "%d %d %016lx\n", whichmink - kmeanses, minct, whichmink->blockdata );
 			}
@@ -301,8 +342,8 @@ void ComputeKMeans()
 			int killoffretry = 0;
 			if( videoframeno > 1 )
 			{
-				int remaintokill = goodglyphs - 128;
-				if( remaintokill > 20 ) remaintokill = 20;
+				int remaintokill = goodglyphs - 256;
+				if( remaintokill > 10 ) remaintokill = 10;
 				if( remaintokill < 0 ) remaintokill = 0;
 				killoffretry = remaintokill;
 			}
@@ -436,6 +477,7 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 int main( int argc, char ** argv )
 {
 	char cts[1024];
+	srand( 0 );
 
 	if( argc != 5 ) goto fail;
 

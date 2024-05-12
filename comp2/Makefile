@@ -1,6 +1,6 @@
 all : decodevideo
 
-CFLAGS:=-O2 -g -Wno-unused-result
+CFLAGS:=-O2 -g -Wno-unused-result -mavx2
 LDFLAGS:=-g -lX11 -lm
 
 hufftreegentest : hufftreegentest.c
