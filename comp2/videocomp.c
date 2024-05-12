@@ -84,39 +84,28 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	return  diff ;
 */
 
-	__m256 rundiff0 = _mm256_set1_ps( 0 );
-	__m256 rundiff1 = _mm256_set1_ps( 0 );
-	__m256 negzero = _mm256_set1_ps( -0.0f );
-	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j += 8*2 )
+	__m256 diffs = _mm256_set1_ps( 0 );
+	const __m256 signmask = _mm256_set1_ps( -0.0f );
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j += 8 )
 	{
-		__m256 ib0, ib1, ic0, ic1, diff0, diff1;
-		ib0 = _mm256_load_ps( &b->intensity[j] );
-		ib1 = _mm256_load_ps( &b->intensity[j+8] );
-		ic0 = _mm256_load_ps( &c->intensity[j] );
-		ic1 = _mm256_load_ps( &c->intensity[j+8] );
-		diff0 = _mm256_sub_ps( ib0, ic0 );
-		diff1 = _mm256_sub_ps( ib1, ic1 );
+		__m256 intensityb, intensityc, diffhere;
+		intensityb = _mm256_load_ps( &b->intensity[j] );
+		intensityc = _mm256_load_ps( &c->intensity[j] );
+		diffhere = _mm256_sub_ps( intensityb, intensityc );
 
 #ifdef MSE
-		diff0 = _mm256_mul_ps( diff0, diff0 );
-		diff1 = _mm256_mul_ps( diff1, diff1 );
+		diffhere = _mm256_mul_ps( diffhere, diffhere );
 #else
-		diff0 = _mm256_andnot_ps( negzero, diff0 );
-		diff1 = _mm256_andnot_ps( negzero, diff1 );
+		diffhere = _mm256_andnot_ps( signmask, diffhere );
 #endif
 
-		rundiff0 = _mm256_add_ps( rundiff0, diff0 );
-		rundiff1 = _mm256_add_ps( rundiff1, diff1 );
+		diffs = _mm256_add_ps( diffs, diffhere );
 	}
 
-	__m256 vdiff_s1 = _mm256_hadd_ps( rundiff0, rundiff1 );
-	__m128 front = _mm256_extractf128_ps( vdiff_s1, 0 );
-	__m128 back  = _mm256_extractf128_ps( vdiff_s1, 1 );
-	__m128 vdiff_s2  = _mm_hadd_ps( front, back );
-	__m128 vdiff_s3  = _mm_hadd_ps( _mm_set1_ps( 0 ), vdiff_s2 );
-	float diffA = vdiff_s3[3] + vdiff_s3[2];
-	//float diffB = rundiff[0] + rundiff[1] + rundiff[2] + rundiff[3] + rundiff[4] + rundiff[5] + rundiff[6] + rundiff[7];
-	diff = diffA;
+	__m128 diffslo = _mm256_extractf128_ps( diffs, 0 );
+	__m128 diffshi  = _mm256_extractf128_ps( diffs, 1 );
+	__m128 diffssum  = _mm_hadd_ps( diffslo, diffshi );
+	diff = diffssum[0] + diffssum[1] + diffssum[2] + diffssum[3];
 
 #ifdef MSE
 	return sqrt(diff);
