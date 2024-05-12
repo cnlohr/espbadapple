@@ -34,7 +34,10 @@ typedef uint64_t blocktype;
 
 int video_w;
 int video_h;
+int num_video_frames;
 uint8_t * rawVideoData;
+const char * tilesFile;
+const char * streamFile;
 
 struct block
 {
@@ -452,6 +455,59 @@ void ComputeKMeans()
 		videoframeno++;
 		CNFGSwapBuffers();
 	}
+
+	// One KMeans is computed, output the glyphs to a file, and re-render the video stream.
+	FILE * fTiles = fopen( tilesFile, "wb" );
+	for( km = 0; km < KMEANS; km++ )
+	{
+		if( kmeansdead[km] ) continue;
+		fwrite( &kmeanses[km].blockdata, sizeof( kmeanses[km].blockdata ), 1, fTiles );
+	}
+	fclose( fTiles );
+
+	FILE * fStream = fopen( streamFile, "wb" );
+
+	for( videoframeno = 0; videoframeno < num_video_frames; videoframeno++ )
+	{
+		int x, y;
+		CNFGClearFrame();
+		// Use new k-means blocks to render next video frame.
+		for( y = 0; y < video_h/BLOCKSIZE; y++ )
+		for( x = 0; x < video_w/BLOCKSIZE; x++ )
+		{
+			uint8_t * tbuf = &rawVideoData[videoframeno*video_w*video_h];
+			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
+			struct block b = { 0 };
+			b.blockdata = bt;
+			BlockFillIntensity( &b );
+
+			uint32_t mink = 0;
+			float mka = 1e20;
+			uint32_t outkmid = 0;
+			for( km = 0; km < KMEANS; km++ )
+			{
+				struct block * k = &kmeanses[km];
+				if( kmeansdead[km] ) continue;
+				float fd = ComputeDistance( &b, k );
+				if( fd < mka )
+				{
+					mka = fd;
+					mink = outkmid;
+				}
+				outkmid++;
+			}
+
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, &b, false );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
+			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
+			
+			fwrite( &mink, sizeof( mink ), 1, fStream );
+		}
+		fclose( fStream );
+		CNFGSwapBuffers();
+	}
+
 }
 
 
@@ -504,12 +560,16 @@ int main( int argc, char ** argv )
 	char cts[1024];
 	srand( 0 );
 
-	if( argc != 5 ) goto fail;
+	if( argc != 6 ) goto fail;
 
 	video_w = atoi( argv[2] );
 	video_h = atoi( argv[3] );
 	if( video_w <= 0 || video_h <= 0 ) goto fail;
 	int x, y, i;
+
+	tilesFile = argv[4];
+	streamFile = argv[5];
+
 
 	FILE * f = fopen( argv[1], "rb" );
 	uint8_t * tbuf = malloc( video_w * video_h );
@@ -546,10 +606,10 @@ int main( int argc, char ** argv )
 
 		//usleep(10000);
 	}
+	num_video_frames = frames;
 	printf( "Found %d glyphs\n", numblocks );
 
 	ComputeKMeans();
-
 
 	return 0;
 fail:

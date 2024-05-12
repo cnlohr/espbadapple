@@ -18,14 +18,14 @@ videoout-${RES}.dat : badapple-sm8628149.mp4 decodevideo
 videocomp : videocomp.c gifenc.c
 	gcc -g -O4 -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
-test-${RES}.gif : videoout-${RES}.dat videocomp 
-	./videocomp $< ${RESX} ${RESY} $@
+stream-${RES}.dat tiles-${RES}.dat : videoout-${RES}.dat videocomp 
+	./videocomp $< ${RESX} ${RESY} tiles-${RES}.dat stream-${RES}.dat
 
 
 midclean :
 	rm -rf test-${RES}.gif videocomp
 
 clean : midclean
-	rm -rf decodevideo videoout-${RES}.dat
+	rm -rf decodevideo videoout-${RES}.dat tiles-${RES}.dat
 	rm -rf *~ 
 
