@@ -7,7 +7,6 @@
 
 #include "bacommon.h"
 
-
 int video_w;
 int video_h;
 int num_video_frames;
