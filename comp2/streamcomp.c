@@ -1,13 +1,5 @@
 #include <stdio.h>
-#define CNFG_IMPLEMENTATION
-#include "rawdraw_sf.h"
-
 #include "bacommon.h"
-
-void HandleKey( int keycode, int bDown ) { }
-void HandleButton( int x, int y, int button, int bDown ) { }
-void HandleMotion( int x, int y, int mask ) { }
-void HandleDestroy() { }
 
 int streamcount;
 uint32_t * streamdata;
@@ -55,6 +47,8 @@ int main( int argc, char ** argv )
 	{
 		CNFGClearFrame();
 		if( !CNFGHandleInput() ) break;
+
+
 		
 		CNFGSwapBuffers();		
 	}
