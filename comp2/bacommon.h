@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+
+#include "gifenc.h"
+
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
@@ -91,6 +94,38 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 	CNFGBlitImage( bobig, xofs, yofs, BLOCKSIZE*2, BLOCKSIZE*2 );
 }
 
+void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
+{
+
+	char boo[BLOCKSIZE*BLOCKSIZE] = { 0 };
+	int i;
+
+	{
+		blocktype b = bb->blockdata;
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+		{
+			if( b & (1ULL<<i) )
+				boo[i] = 1;
+			else
+				boo[i] = 0;
+		}
+	}
+
+//	uint32_t bobig[BLOCKSIZE*BLOCKSIZE*4];
+	int x, y;
+	for( y = 0; y < BLOCKSIZE; y++ )
+	for( x = 0; x < BLOCKSIZE; x++ )
+	{
+		char b = boo[x+y*BLOCKSIZE];
+		uint8_t * v = gif->frame;
+		v[(2*x+0+xofs) + (2*y+0 + yofs)*vw] = b;
+		v[(2*x+1+xofs) + (2*y+0 + yofs)*vw] = b;
+		v[(2*x+0+xofs) + (2*y+1 + yofs)*vw] = b;
+		v[(2*x+1+xofs) + (2*y+1 + yofs)*vw] = b;
+	}
+}
+
+
 
 void DrawBlockBasic( int xofs, int yofs, blocktype bb )
 {
@@ -98,6 +133,16 @@ void DrawBlockBasic( int xofs, int yofs, blocktype bb )
 	b.blockdata = bb;
 	DrawBlock( xofs, yofs, &b, true );
 }
+
+
+
+void BlockUpdateGif( ge_GIF * gif, int xofs, int yofs, int vw, blocktype bb )
+{
+	struct block b;
+	b.blockdata = bb;
+	DrawBlockGif( gif, xofs, yofs, vw, &b );
+}
+
 
 void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr )
 {

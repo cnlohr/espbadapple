@@ -2,6 +2,7 @@
 #include "bacommon.h"
 #define HUFFER_IMPLEMENTATION
 #include "hufftreegen.h"
+#include "gifenc.c"
 
 int streamcount;
 uint32_t * streamdata;
@@ -14,6 +15,9 @@ int video_h;
 int num_video_frames;
 
 #define FLAG_RLE 0x8000
+
+ge_GIF * gifout;
+
 
 int main( int argc, char ** argv )
 {
@@ -60,7 +64,10 @@ int main( int argc, char ** argv )
 
 	int tid = 0;
 
-#if 1
+#if 0
+	// For 64x48 (test1), huffman stream was 596979 bits @64x48
+	//  Or 671880 if not skipping extra runs.
+
 	int nrtokens = 0;
 	uint32_t * token_stream = 0;
 
@@ -106,10 +113,6 @@ int main( int argc, char ** argv )
 
 	printf( "Processed %d frames\n", frame );
 	printf( "Number of stream TIDs: %d\n", nrtokens );
-
-	uint8_t * huffman_data;
-	uint32_t huffman_bit_count = 0;
-	uint16_t huffman_dictionary = 0;
 
 	// Compress the TIDs
 	{
@@ -163,8 +166,10 @@ int main( int argc, char ** argv )
 
 		char * bitstreamo = 0;
 		int bistreamlen = 0;
+		memset( blockmap, 0, vbh*vbw*sizeof(uint32_t) );
 
 		block = 0;
+		running = 0;
 
 		// Go through video again.
 		for( frame = 0; frame < num_video_frames; frame++ )
@@ -188,6 +193,11 @@ int main( int argc, char ** argv )
 						for( h = 0; h < htlen; h++ )
 							if( hu[h].value == thistok ) break;
 						int b;
+						if( h == htlen )
+						{
+							fprintf( stderr, "Error: Can't find element %04x\n", thistok );
+							return -9;
+						}
 						for( b = 0; b < hu[h].bitlen; b++ )
 						{
 							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
@@ -271,265 +281,12 @@ int main( int argc, char ** argv )
 
 #elif 0
 
-	int nrtokens = 0;
-	uint32_t * token_stream = 0;
+
 
 	// this method does block-at-a-time, full video per block.
-	// apples-to-apples, huffman stream is 397697 bits.
-	// XXX TODO: Test but without the "don't include 0 length runs"
-
-	{
-		int bx, by;
-		uint32_t lastblock[vbh][vbw];
-		uint32_t running[vbh][vbw];
-		memset( lastblock, 0, sizeof( lastblock  )) ;
-		memset( running, 0, sizeof(running) );
-
-		// Go frame-at-a-time, but keep track of the last block and running, on a per-block basis.
-		for( frame = 0; frame < num_video_frames; frame++ )
-		{
-			for( by = 0; by < video_h/BLOCKSIZE; by++ )
-			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
-			{
-				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
-
-				if( running[by][bx] == 0 )
-				{
-					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-					token_stream[nrtokens++] = glyphid;
-
-					int forward;
-					for( forward = 0; frame + forward < num_video_frames; forward++ )
-						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
-							break;
-			
-					if( forward > 1 )
-					{
-						forward--;
-//printf( "+ %04x\n", FLAG_RLE | forward );
-						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-						token_stream[nrtokens++] = FLAG_RLE | forward;
-					}
-					running[by][bx] = forward;
-					lastblock[by][bx] = glyphid;
-				}
-				else
-				{
-					running[by][bx]--;
-				}
-			}
-		}
-
-		int tid = 0;
-		printf( "Processed %d frames\n", frame );
-		printf( "Number of stream TIDs: %d\n", nrtokens );
-
-		uint8_t * huffman_data;
-		uint32_t huffman_bit_count = 0;
-		uint16_t huffman_dictionary = 0;
-
-		// Compress the TIDs
-		uint32_t * unique_tokens = 0;
-		uint32_t * token_counts = 0;
-		int unique_tok_ct = 0;
-		int i;
-		for( i = 0; i < nrtokens; i++ )
-		{
-			uint32_t t = token_stream[i];
-			int j;
-			for( j = 0; j < unique_tok_ct; j++ )
-			{
-				if( unique_tokens[j] == t ) break;
-			}
-			if( j == unique_tok_ct )
-			{
-				unique_tokens = realloc( unique_tokens, ( unique_tok_ct + 1) * sizeof( uint32_t ) );
-				token_counts = realloc( token_counts,  ( unique_tok_ct + 1) * sizeof( uint32_t ) );
-				unique_tokens[unique_tok_ct] = t;
-				token_counts[unique_tok_ct] = 1;
-				unique_tok_ct++;
-			}
-			else
-			{
-				token_counts[j]++;
-			}
-		}
-
-		int hufflen;
-		huffup * hu;
-		huffelement * hufftree = GenerateHuffmanTree( unique_tokens, token_counts, unique_tok_ct, &hufflen );
-		printf( "Huff len: %d\n", hufflen );
-
-		int htlen;
-		hu = GenPairTable( hufftree, &htlen );
-
-/*
-printf( "HTLEN: %d\n", htlen );
-int tmp;
-for( tmp = 0; tmp < htlen; tmp++ )
-{
-	printf( "%04x : %d\n", hu[tmp].value, hu[tmp].bitlen );
-}
-*/
-#if 0
-	for( i = 0; i < htlen; i++ )
-	{
-		int j;
-		printf( "%d - ", i );
-		int len = hu[i].bitlen;
-		printf( "%d\n", len );
-		for( j = 0; j <  len ; j++ )
-			printf( "%c", hu[i].bitstream[j] + '0' );
-		printf( "\n" );
-	}
-#endif
-
-		char * bitstreamo = 0;
-		int bistreamlen = 0;
-
-		block = 0;
-
-		memset( running, 0, sizeof(running) );
-		memset( lastblock, 0, sizeof( lastblock ) );
-
-		// Same as above loop, but we are actually producing compressed output.
-		for( frame = 0; frame < num_video_frames; frame++ )
-		{
-			for( by = 0; by < video_h/BLOCKSIZE; by++ )
-			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
-			{
-				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
-
-				if( running[by][bx] == 0 )
-				{
-					//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-					//token_stream[nrtokens++] = glyphid;
-
-					// Instead do the compression.
-					int h;
-					for( h = 0; h < htlen; h++ )
-						if( hu[h].value == glyphid ) break;
-					if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", glyphid ); exit( -6 ); }
-					int b;
-//						printf( "EMIT: %04x\n",  glyphid );
-
-					for( b = 0; b < hu[h].bitlen; b++ )
-					{
-						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
-						bitstreamo[bistreamlen++] = hu[h].bitstream[b];
-					}
-
-					int forward;
-					for( forward = 0; frame + forward < num_video_frames; forward++ )
-						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
-							break;
-			
-					if( forward > 1 )
-					{
-						// Actually want frames _in the future_
-						forward--;
-//						printf( "EMIT_F: %04x\n", FLAG_RLE | forward );
-
-						//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-						//token_stream[nrtokens++] = FLAG_RLE | forward;
-						for( h = 0; h < htlen; h++ )
-							if( hu[h].value == (FLAG_RLE | forward) ) break;
-						if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", FLAG_RLE | forward ); exit( -6 ); }
-						for( b = 0; b < hu[h].bitlen; b++ )
-						{
-							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
-							bitstreamo[bistreamlen++] = hu[h].bitstream[b];
-						}
-					}
-					running[by][bx] = forward;
-					lastblock[by][bx] = glyphid;
-				}
-				else
-				{
-					running[by][bx]--;
-				}
-			}
-		}
-
-		//CNFGSwapBuffers();
-		printf( "Bitstream Length Bits: %d\n", bistreamlen );
-
-		int bitstream_place = 0;
-		//char * bitstreamo = 0;
-		//int bistreamlen = 0;
-		memset( running, 0, sizeof(running) );
-		memset( lastblock, 0, sizeof( lastblock ) );
-		int32_t next_tok = -1;
-
-		int k;
-		for( k = 0; k < 200; k++ )
-		{
-			printf( "%d", bitstreamo[k] );
-		}
-		printf( "\n" );
-
-		while( bitstream_place < bistreamlen )
-		{
-			CNFGClearFrame();
-			if( !CNFGHandleInput() ) break;
-			for( by = 0; by < vbh; by++ )
-			for( bx = 0; bx < vbw; bx++ )
-			{
-				if( running[by][bx] == 0 )
-				{
-					// Pull a token from "here"
-					huffelement * e = hufftree;
-					while( !e->is_term )
-					{
-						char c = bitstreamo[bitstream_place++];
-						if( c == 0 ) e = &hufftree[e->pair0];
-						else if( c == 1 ) e = &hufftree[e->pair1];
-						else fprintf( stderr, "Error: Invalid symbol %d\n", c );
-					}
-					uint32_t tok = e->value;
-					lastblock[by][bx] = tok;
-
-					// Peek ahead.
-					int place_backup = bitstream_place;
-					e = hufftree;
-					while( !e->is_term )
-					{
-						char c = bitstreamo[place_backup++];
-						if( c == 0 ) e = &hufftree[e->pair0];
-						else if( c == 1 ) e = &hufftree[e->pair1];
-						else fprintf( stderr, "Error: Invalid symbol %d\n", c );
-					}
-					uint32_t possible_rle = e->value;
-
-					if( possible_rle & FLAG_RLE )
-					{
-						// It WAS an RLE.
-						bitstream_place = place_backup;
-						running[by][bx] = possible_rle & (~FLAG_RLE);
-					}
-					else
-					{
-						running[by][bx] = 1;
-					}
-				}
-				else
-				{
-					running[by][bx]--;
-				}
-
-				uint32_t glyphid = lastblock[by][bx];
-				blocktype bt = glyphdata[glyphid];
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
-			}
-			usleep(1000);
-			CNFGSwapBuffers();
-			frame++;
-		}
-	}
-#else
-
-	// this method does block-at-a-time, full video per block.
-	// BUT, With SPLIT tables for glyph ID / huffman stream is 516224 bits
+	// BUT, With SPLIT tables for glyph ID / huffman stream is 516224 bits @64x48
+	// XXX DEAD END XXX
+	// This is for TWO huffman trees.
 
 	{
 		int nrtokens = 0;
@@ -578,10 +335,6 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		int tid = 0;
 		printf( "Processed %d frames\n", frame );
 		printf( "Number of stream TIDs: %d\n", nrtokens );
-
-		uint8_t * huffman_data;
-		uint32_t huffman_bit_count = 0;
-		uint16_t huffman_dictionary = 0;
 
 		// Compress the TIDs
 		uint32_t * unique_tokens[2] = { 0 };
@@ -727,11 +480,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		int32_t next_tok = -1;
 
 		int k;
-		for( k = 0; k < 200; k++ )
-		{
-			printf( "%d", bitstreamo[k] );
-		}
-		printf( "\n" );
+	//	for( k = 0; k < 200; k++ )
+	//	{
+	//		printf( "%d", bitstreamo[k] );
+	//	}
+	//	printf( "\n" );
 
 		while( bitstream_place < bistreamlen )
 		{
@@ -784,6 +537,277 @@ for( tmp = 0; tmp < htlen; tmp++ )
 	}
 
 
+
+#else
+
+	int nrtokens = 0;
+	uint32_t * token_stream = 0;
+
+	// this method does block-at-a-time, full video per block.
+	// apples-to-apples, huffman stream is 397697 bits @64x48. (Test 1)
+	// With forcing length every frame, 621525 bits @64x48. (i.e. no //if( forward > 1 ))
+	// XXX TODO: Test but without the "don't include 0 length runs"
+
+	{
+		int bx, by;
+		uint32_t lastblock[vbh][vbw];
+		uint32_t running[vbh][vbw];
+		memset( lastblock, 0, sizeof( lastblock  )) ;
+		memset( running, 0, sizeof(running) );
+
+		// Go frame-at-a-time, but keep track of the last block and running, on a per-block basis.
+		for( frame = 0; frame < num_video_frames; frame++ )
+		{
+			for( by = 0; by < video_h/BLOCKSIZE; by++ )
+			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			{
+				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
+				if( running[by][bx] == 0 )
+				{
+					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+					token_stream[nrtokens++] = glyphid;
+
+					int forward;
+					for( forward = 0; frame + forward < num_video_frames; forward++ )
+						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
+							break;
+			
+					if( forward > 1 )
+					{
+						forward--;
+						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+						token_stream[nrtokens++] = FLAG_RLE | forward;
+					}
+					running[by][bx] = forward;
+					lastblock[by][bx] = glyphid;
+				}
+				else
+				{
+					running[by][bx]--;
+				}
+			}
+		}
+
+		int tid = 0;
+		printf( "Processed %d frames\n", frame );
+		printf( "Number of stream TIDs: %d\n", nrtokens );
+
+		// Compress the TIDs
+		uint32_t * unique_tokens = 0;
+		uint32_t * token_counts = 0;
+		int unique_tok_ct = 0;
+		int i;
+		for( i = 0; i < nrtokens; i++ )
+		{
+			uint32_t t = token_stream[i];
+			int j;
+			for( j = 0; j < unique_tok_ct; j++ )
+			{
+				if( unique_tokens[j] == t ) break;
+			}
+			if( j == unique_tok_ct )
+			{
+				unique_tokens = realloc( unique_tokens, ( unique_tok_ct + 1) * sizeof( uint32_t ) );
+				token_counts = realloc( token_counts,  ( unique_tok_ct + 1) * sizeof( uint32_t ) );
+				unique_tokens[unique_tok_ct] = t;
+				token_counts[unique_tok_ct] = 1;
+				unique_tok_ct++;
+			}
+			else
+			{
+				token_counts[j]++;
+			}
+		}
+
+		int hufflen;
+		huffup * hu;
+		huffelement * hufftree = GenerateHuffmanTree( unique_tokens, token_counts, unique_tok_ct, &hufflen );
+		printf( "Huff len: %d\n", hufflen );
+
+		int htlen;
+		hu = GenPairTable( hufftree, &htlen );
+
+#if 1
+			for( i = 0; i < htlen; i++ )
+			{
+				int j;
+				printf( "%4d - %5d - ", i, hu[i].value );
+				int len = hu[i].bitlen;
+				printf( "%4d - FREQ:%6d - ", len, hu[i].freq );
+				for( j = 0; j <  len ; j++ )
+					printf( "%c", hu[i].bitstream[j] + '0' );
+				printf( "\n" );
+			}
+#endif
+
+/*
+printf( "HTLEN: %d\n", htlen );
+int tmp;
+for( tmp = 0; tmp < htlen; tmp++ )
+{
+	printf( "%04x : %d\n", hu[tmp].value, hu[tmp].bitlen );
+}
+*/
+#if 0
+	for( i = 0; i < htlen; i++ )
+	{
+		int j;
+		printf( "%d - ", i );
+		int len = hu[i].bitlen;
+		printf( "%d\n", len );
+		for( j = 0; j <  len ; j++ )
+			printf( "%c", hu[i].bitstream[j] + '0' );
+		printf( "\n" );
+	}
+#endif
+
+		char * bitstreamo = 0;
+		int bistreamlen = 0;
+
+		block = 0;
+
+		memset( running, 0, sizeof(running) );
+		memset( lastblock, 0, sizeof( lastblock ) );
+
+		// Same as above loop, but we are actually producing compressed output.
+		for( frame = 0; frame < num_video_frames; frame++ )
+		{
+			for( by = 0; by < video_h/BLOCKSIZE; by++ )
+			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			{
+				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
+				if( running[by][bx] == 0 )
+				{
+					//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+					//token_stream[nrtokens++] = glyphid;
+
+					// Instead do the compression.
+					int h;
+					for( h = 0; h < htlen; h++ )
+						if( hu[h].value == glyphid ) break;
+					if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", glyphid ); exit( -6 ); }
+					int b;
+//						printf( "EMIT: %04x\n",  glyphid );
+
+					for( b = 0; b < hu[h].bitlen; b++ )
+					{
+						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+						bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+					}
+
+					int forward;
+					for( forward = 0; frame + forward < num_video_frames; forward++ )
+						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
+							break;
+			
+					if( forward > 1 )
+					{
+						// Actually want frames _in the future_
+						forward--;
+//						printf( "EMIT_F: %04x\n", FLAG_RLE | forward );
+
+						//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
+						//token_stream[nrtokens++] = FLAG_RLE | forward;
+						for( h = 0; h < htlen; h++ )
+							if( hu[h].value == (FLAG_RLE | forward) ) break;
+						if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", FLAG_RLE | forward ); exit( -6 ); }
+						for( b = 0; b < hu[h].bitlen; b++ )
+						{
+							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+							bitstreamo[bistreamlen++] = hu[h].bitstream[b];
+						}
+					}
+					running[by][bx] = forward;
+					lastblock[by][bx] = glyphid;
+				}
+				else
+				{
+					running[by][bx]--;
+				}
+			}
+		}
+
+		//CNFGSwapBuffers();
+		printf( "Bitstream Length Bits: %d\n", bistreamlen );
+
+		int bitstream_place = 0;
+		//char * bitstreamo = 0;
+		//int bistreamlen = 0;
+		memset( running, 0, sizeof(running) );
+		memset( lastblock, 0, sizeof( lastblock ) );
+		int32_t next_tok = -1;
+
+
+		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
+		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, -1 );
+
+
+		while( bitstream_place < bistreamlen )
+		{
+			CNFGClearFrame();
+			if( !CNFGHandleInput() ) break;
+			for( by = 0; by < vbh; by++ )
+			for( bx = 0; bx < vbw; bx++ )
+			{
+				if( running[by][bx] == 0 )
+				{
+					// Pull a token from "here"
+					huffelement * e = hufftree;
+					while( !e->is_term )
+					{
+						char c = bitstreamo[bitstream_place++];
+						if( c == 0 ) e = &hufftree[e->pair0];
+						else if( c == 1 ) e = &hufftree[e->pair1];
+						else fprintf( stderr, "Error: Invalid symbol %d\n", c );
+					}
+					uint32_t tok = e->value;
+					lastblock[by][bx] = tok;
+
+					// Peek ahead.
+					int place_backup = bitstream_place;
+					e = hufftree;
+					while( !e->is_term )
+					{
+						char c = bitstreamo[place_backup++];
+						if( c == 0 ) e = &hufftree[e->pair0];
+						else if( c == 1 ) e = &hufftree[e->pair1];
+						else fprintf( stderr, "Error: Invalid symbol %d\n", c );
+					}
+					uint32_t possible_rle = e->value;
+
+					if( possible_rle & FLAG_RLE )
+					{
+						// It WAS an RLE.
+						bitstream_place = place_backup;
+						running[by][bx] = possible_rle & (~FLAG_RLE);
+					}
+					else
+					{
+						running[by][bx] = 1;
+					}
+				}
+				else
+				{
+					running[by][bx]--;
+				}
+
+				uint32_t glyphid = lastblock[by][bx];
+				blocktype bt = glyphdata[glyphid];
+				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+
+				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt );
+			}
+
+			ge_add_frame(gifout, 1);
+
+
+			CNFGSwapBuffers();
+			frame++;
+		}
+		ge_close_gif( gifout );
+	}
 #endif
 
 }

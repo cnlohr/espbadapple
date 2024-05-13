@@ -1,6 +1,7 @@
 all : decodevideo
 
 CFLAGS:=-O2 -g -Wno-unused-result -mavx2
+#  -fsanitize=address -static-libasan
 LDFLAGS:=-g -lX11 -lm
 RESX=64
 RESY=48
@@ -21,7 +22,7 @@ videocomp : videocomp.c
 stream-${RES}.dat tiles-${RES}.dat : videoout-${RES}.dat videocomp 
 	./videocomp $< ${RESX} ${RESY} tiles-${RES}.dat stream-${RES}.dat
 
-streamcomp : streamcomp.c gifenc.c
+streamcomp : streamcomp.c
 	gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 video-${RES}.gif : streamcomp stream-${RES}.dat tiles-${RES}.dat

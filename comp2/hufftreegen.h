@@ -216,12 +216,12 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 	if( ths->is_term )
 	{
 		int newlen = ++(*huffuplen);
-		*out = realloc( *out, sizeof( huffup ) * newlen );
+		*out = realloc( *out, sizeof( huffup ) * ( newlen ) );
 		huffup * e = &(*out)[newlen-1];
 		e->value = ths->value;
 	//	printf( "T %d OEMIT---> %d (freq: %d)\n", p, e->value, ths->freq );
 		e->bitlen = *dstrlen;
-		e->bitstream = malloc( *dstrlen );
+		e->bitstream = malloc( *dstrlen + 1 );
 		memcpy( e->bitstream, *dstr, *dstrlen );
 		e->freq = ths->freq;
 	}
