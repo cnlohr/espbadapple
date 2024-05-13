@@ -60,7 +60,7 @@ int main( int argc, char ** argv )
 
 	int tid = 0;
 
-#if 0
+#if 1
 	int nrtokens = 0;
 	uint32_t * token_stream = 0;
 
@@ -275,7 +275,7 @@ int main( int argc, char ** argv )
 	uint32_t * token_stream = 0;
 
 	// this method does block-at-a-time, full video per block.
-	// apples-to-apples, takes 538295 bits (AB TEST #4A)  34% smaller!!!
+	// apples-to-apples, huffman stream is 397697 bits.
 	// XXX TODO: Test but without the "don't include 0 length runs"
 
 	{
@@ -521,7 +521,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				blocktype bt = glyphdata[glyphid];
 				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 			}
-
+			usleep(1000);
 			CNFGSwapBuffers();
 			frame++;
 		}
@@ -529,7 +529,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 #else
 
 	// this method does block-at-a-time, full video per block.
-	// BUT, With SPLIT tables for glyph ID / 
+	// BUT, With SPLIT tables for glyph ID / huffman stream is 516224 bits
 
 	{
 		int nrtokens = 0;

@@ -65,11 +65,14 @@ static void PercDown( int p, int size, huffelement * tab, int * heap )
 		int right = left+1;
 		int smallest = p;
 		hufffreq tf = f;
-		if( left < size && (tf = tab[heap[left]].freq ) < f )
+		hufffreq fcomp = f;
+//		printf( "LEFTRIGHT [%d] %d %d // %d %d %d\n", p, left, right, f, tab[heap[left]].freq, tab[heap[right]].freq );
+		if( left < size && (tf = tab[heap[left]].freq ) < fcomp )
 		{
 			smallest = left;
+			fcomp = tf;
 		}
-		if( right < size && (tf = tab[heap[right]].freq ) < f )
+		if( right < size && (tf = tab[heap[right]].freq ) < fcomp )
 		{
 			smallest = right;
 		}
@@ -132,7 +135,7 @@ printf( "Adding I: %d\n", i );
 			int pf = tab[ph].freq;
 			if( pf <= tf ) // All is well.
 				break;
-			printf( "Flipping %d / %d  [ %d / %d ] [ %d / %d ]\n", parent, p, ph, h, pf, tf );
+		//	printf( "Flipping %d / %d  [ %d / %d ] [ %d / %d ]\n", parent, p, ph, h, pf, tf );
 			// Otherwise, flip.
 			minheap[parent] = h;
 			minheap[p] = ph;
@@ -178,19 +181,29 @@ for( tmp=0; tmp<minhlen;tmp++)
 		e->pair0 = minheap[0];
 		minheap[0] = minheap[--minhlen];
 
+	//	printf( "PREPERC!!!\n" );
+	//	PrintHeap( minheap, minhlen, tab );
+
 		// Percolate-down.
 		PercDown( 0, minhlen, tab, minheap );
+
+	//	printf( "FIRST!!!\n" );
+	//	PrintHeap( minheap, minhlen, tab );
+
 
 		e->pair1 = minheap[0];
 
 		e->is_term = 0;
 
-		printf( "In %d join %d, %d (F: %d, %d)\n", i, e->pair0, e->pair1, tab[e->pair0].freq, tab[e->pair1].freq );
+	//	printf( "In %d join %d, %d (F: %d, %d)\n", i, e->pair0, e->pair1, tab[e->pair0].freq, tab[e->pair1].freq );
 
 		e->freq = tab[e->pair0].freq + tab[e->pair1].freq;
 
 		minheap[0] = i;
 		PercDown( 0, minhlen, tab, minheap );
+
+	//	printf( "SECOND!!!\n" );
+	//	PrintHeap( minheap, minhlen, tab );
 	}
 
 
@@ -206,7 +219,7 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 		*out = realloc( *out, sizeof( huffup ) * newlen );
 		huffup * e = &(*out)[newlen-1];
 		e->value = ths->value;
-		printf( "T %d OEMIT---> %d (freq: %d)\n", p, e->value, ths->freq );
+	//	printf( "T %d OEMIT---> %d (freq: %d)\n", p, e->value, ths->freq );
 		e->bitlen = *dstrlen;
 		e->bitstream = malloc( *dstrlen );
 		memcpy( e->bitstream, *dstr, *dstrlen );
@@ -214,7 +227,7 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 	}
 	else
 	{
-		printf( "P: %d / %d %d (freq: %d)\n", p, tab[p].pair0, tab[p].pair1, ths->freq );
+	//	printf( "P: %d / %d %d (freq: %d)\n", p, tab[p].pair0, tab[p].pair1, ths->freq );
 		int dla = *dstrlen;
 		*dstr = realloc( *dstr, ++(*dstrlen) );
 		(*dstr)[dla] = 0;
