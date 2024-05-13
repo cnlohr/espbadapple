@@ -64,7 +64,7 @@ int main( int argc, char ** argv )
 
 	int tid = 0;
 
-#if 0
+#ifdef COMPRESSION_BLOCK_RASTER
 	// For 64x48 (test1), huffman stream was 596979 bits @64x48
 	//  Or 671880 if not skipping extra runs.
 
@@ -279,9 +279,7 @@ int main( int argc, char ** argv )
 		frame++;
 	} while( tid < nrtokens );
 
-#elif 0
-
-
+#elif defined( COMPRESSION_TWO_HUFF )
 
 	// this method does block-at-a-time, full video per block.
 	// BUT, With SPLIT tables for glyph ID / huffman stream is 516224 bits @64x48
@@ -538,7 +536,7 @@ int main( int argc, char ** argv )
 
 
 
-#else
+#elif defined( COMPRESSION_UNIFIED_BY_BLOCK )
 
 	int nrtokens = 0;
 	uint32_t * token_stream = 0;

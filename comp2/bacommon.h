@@ -10,15 +10,15 @@
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
-//#define MSE
+#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
 #define TARGET_GLYPH_COUNT 256
-#define GLYPH_COUNT_REDUCE_PER_FRAME 5
+#define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
-#define KMEANS 8192
+#define KMEANS 1024
 // How long to train?
-#define KMEANSITER 512
+#define KMEANSITER 100
 
 // DO NOT change this without code changes!
 #define BLOCKSIZE 8
@@ -35,6 +35,16 @@ struct block
 	uint64_t extra2;
 };
 
+// THINGS TO NOTE:
+
+// try different stream compression schemes
+//#define COMPRESSION_BLOCK_RASTER
+//#define COMPRESSION_TWO_HUFF
+#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
+
+// Try with blur on/off
+// NOTE: To disable, comment out completely.
+#define BLUR_BASE 1.0
 
 
 

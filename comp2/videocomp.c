@@ -94,8 +94,9 @@ void BlockFillIntensity( struct block * b )
 	}
 }
 
-struct block * AppendBlock( blocktype b )
+void AppendBlock( struct block * bck )
 {
+	blocktype b = bck->blockdata;
 	int i;
 	struct block * check = allblocks;
 	struct block * bend = check + numblocks;
@@ -118,10 +119,10 @@ struct block * AppendBlock( blocktype b )
 	}
 	check->count++;
 	BlockFillIntensity( check );
-	return check;
+//	return check;
 }
 
-blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
+void ExtractBlock( uint8_t * image, int iw, int ih, int x, int y, struct block * bb )
 {
 	int stride = iw;
 	uint8_t * iof = image + (y * BLOCKSIZE * stride) + (x * BLOCKSIZE);
@@ -129,9 +130,9 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 	int ix, iy;
 	int bpl = 0;
 
-	for( iy = 0; iy < 8; iy++ )
+	for( iy = 0; iy < BLOCKSIZE; iy++ )
 	{
-		for( ix = 0; ix < 8; ix++ )
+		for( ix = 0; ix < BLOCKSIZE; ix++ )
 		{
 			uint8_t c = iof[ix];
 
@@ -143,10 +144,39 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 #endif
 
 			bpl++;
+			bb->intensity[ix+iy*BLOCKSIZE] = c / 255.0;
 		}
 		iof += stride;
 	}
-	return ret;
+
+	bb->blockdata = ret;
+
+	// Run box blur on image to get better semantic matching.
+
+#ifdef BLUR_BASE
+	float intensitycopy[BLOCKSIZE*BLOCKSIZE];
+	memcpy( intensitycopy, bb->intensity, sizeof( intensitycopy ) );
+	int ty, tx;
+	for( iy = 0; iy < BLOCKSIZE; iy++ )
+	for( ix = 0; ix < BLOCKSIZE; ix++ )
+	{
+		float intensity = 0;
+		float sum = 0;
+		for( ty = 0; ty < BLOCKSIZE; ty++ )
+		for( tx = 0; tx < BLOCKSIZE; tx++ )
+		{
+			float dist = sqrt( (ty-iy)*(ty-iy) + (tx-ix)*(tx-ix) );
+			float cell = intensitycopy[tx+ty*BLOCKSIZE];
+			float contrib = 1.0/exp( dist / BLUR_BASE );
+			intensity += cell * contrib;
+			sum += contrib;
+		}
+		bb->intensity[ix+iy*BLOCKSIZE] = intensity/ sum;
+	}
+#else
+	// Doing this would override block values with "intensities"
+	BlockFillIntensity( bb );
+#endif
 }
 
 
@@ -400,9 +430,7 @@ void ComputeKMeans()
 		for( x = 0; x < video_w/BLOCKSIZE; x++ )
 		{
 			uint8_t * tbuf = &rawVideoData[thisframe*video_w*video_h];
-			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
-			bb->blockdata = bt;
-			BlockFillIntensity( bb );
+			ExtractBlock( tbuf, video_w, video_h, x, y, bb );
 
 			int mink = 0;
 			float mka = 1e20;
@@ -463,9 +491,7 @@ void ComputeKMeans()
 		for( x = 0; x < video_w/BLOCKSIZE; x++ )
 		{
 			uint8_t * tbuf = &rawVideoData[videoframeno*video_w*video_h];
-			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
-			btemp->blockdata = bt;
-			BlockFillIntensity( btemp );
+			ExtractBlock( tbuf, video_w, video_h, x, y, btemp );
 
 			uint32_t mink = 0;
 			uint32_t minkwrite = 0;
@@ -542,9 +568,10 @@ int main( int argc, char ** argv )
 		for( y = 0; y < video_h / BLOCKSIZE; y++ )
 		for( x = 0; x < video_w / BLOCKSIZE; x++ )
 		{
-			blocktype b = ExtractBlock( tbuf, video_w, video_h, x, y );
-			struct block * bck = AppendBlock( b );
-			DrawBlock( x*BLOCKSIZE*2, y*BLOCKSIZE*2, bck, false );
+			struct block bck;
+			ExtractBlock( tbuf, video_w, video_h, x, y, &bck );
+			AppendBlock( &bck );
+			DrawBlock( x*BLOCKSIZE*2, y*BLOCKSIZE*2, &bck, false );
 		}
 
 		sprintf( cts, "%d\n", numblocks );
