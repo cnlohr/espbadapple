@@ -743,6 +743,19 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
 		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, -1 );
 
+		{
+			FILE * f = fopen( "bitstream_out.dat", "wb" );
+			int jlen = (bistreamlen + 7) / 8;
+			int i;
+			uint8_t * payload = calloc( jlen, 1 ); 
+			for( i = 0; i < bistreamlen; i++ )
+			{
+				payload[i/8] |= bitstreamo[i]<<(i&7);
+			}
+			fwrite( payload, jlen, 1, f );
+			fclose( f );
+		}
+
 
 		while( bitstream_place < bistreamlen )
 		{

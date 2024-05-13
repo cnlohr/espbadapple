@@ -13,7 +13,7 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 512
+#define TARGET_GLYPH_COUNT 256
 #define GLYPH_COUNT_REDUCE_PER_FRAME 5
 // How many glpyhs to start at?
 #define KMEANS 8192

@@ -8,6 +8,10 @@ My shot at bad apple on an '8266.  The source video for bad apple is 512x384
 sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
+### TODO FROM HERE
+ * Perceptual/Semantic Loss Function
+ * De-Blocking Filter
+ * Motion Vectors
 
 
 ## Compression mechanisms.
