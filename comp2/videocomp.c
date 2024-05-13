@@ -48,6 +48,10 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	}
 	return  diff ;
 */
+		if( ((uintptr_t)&b->intensity[0])&31 || ((uintptr_t)&c->intensity[0])&31 )
+		{
+			printf( "%p %p\n", &b->intensity[0], &c->intensity[0] );
+		}
 
 	__m256 diffs = _mm256_set1_ps( 0 );
 	const __m256 signmask = _mm256_set1_ps( -0.0f );
@@ -149,10 +153,10 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 
 void ComputeKMeans()
 {
-	struct block* kmeanses_unaligned = calloc(1, sizeof(struct block) * KMEANS + 31);
-	struct block* kmeanses = (struct block*) (((uintptr_t)(((uint8_t*)kmeanses_unaligned)+31))&(~31)); // force alignment
+	void * kmeanses_free;
+	struct block* kmeanses = alignedcalloc( sizeof(struct block) * KMEANS, 5, &kmeanses_free );
 
-	// Computed average
+	// Computed averag
 	float* mkd_val = calloc(KMEANS * BLOCKSIZE * BLOCKSIZE, sizeof(float));
 	float* mkd_cnt = calloc(KMEANS, sizeof(float));
 	int* kmeansdead = calloc(KMEANS, sizeof(int));
@@ -332,7 +336,7 @@ void ComputeKMeans()
 		{
 			int minct = 100000000;
 			int whichmink = 0;
-			int killoffretry = 0;
+			int killoffretry = 1;
 			if( videoframeno > 1 )
 			{
 				int remaintokill = goodglyphs - TARGET_GLYPH_COUNT;
@@ -387,6 +391,8 @@ void ComputeKMeans()
 			//	kmeansdead[whichmink] = 1;
 		}
 
+		void * bbfree;
+		struct block* bb = alignedcalloc( sizeof(struct block), 5, &bbfree );
 
 		// Use new k-means blocks to render next video frame.
 		int thisframe = rand() % num_video_frames;
@@ -395,9 +401,8 @@ void ComputeKMeans()
 		{
 			uint8_t * tbuf = &rawVideoData[thisframe*video_w*video_h];
 			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
-			struct block b = { 0 };
-			b.blockdata = bt;
-			BlockFillIntensity( &b );
+			bb->blockdata = bt;
+			BlockFillIntensity( bb );
 
 			int mink = 0;
 			float mka = 1e20;
@@ -405,7 +410,7 @@ void ComputeKMeans()
 			{
 				struct block * k = &kmeanses[km];
 				if( kmeansdead[km] ) continue;
-				float fd = ComputeDistance( &b, k );
+				float fd = ComputeDistance( bb, k );
 				if( fd < mka )
 				{
 					mka = fd;
@@ -413,11 +418,13 @@ void ComputeKMeans()
 				}
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, &b, false );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 		}
+
+		free( bbfree );
 
 		videoframeno++;
 		CNFGSwapBuffers();
@@ -444,6 +451,9 @@ void ComputeKMeans()
 		exit( -7 );
 	}
 
+	void * btfree;
+	struct block * btemp = alignedcalloc( sizeof(struct block), 5, &btfree );
+
 	for( videoframeno = 0; videoframeno < num_video_frames; videoframeno++ )
 	{
 		int x, y;
@@ -454,9 +464,8 @@ void ComputeKMeans()
 		{
 			uint8_t * tbuf = &rawVideoData[videoframeno*video_w*video_h];
 			blocktype bt = ExtractBlock( tbuf, video_w, video_h, x, y );
-			struct block b = { 0 };
-			b.blockdata = bt;
-			BlockFillIntensity( &b );
+			btemp->blockdata = bt;
+			BlockFillIntensity( btemp );
 
 			uint32_t mink = 0;
 			uint32_t minkwrite = 0;
@@ -466,7 +475,7 @@ void ComputeKMeans()
 			{
 				struct block * k = &kmeanses[km];
 				if( kmeansdead[km] ) continue;
-				float fd = ComputeDistance( &b, k );
+				float fd = ComputeDistance( btemp, k );
 				if( fd < mka )
 				{
 					mka = fd;
@@ -476,7 +485,7 @@ void ComputeKMeans()
 				outkmid++;
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, &b, false );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
@@ -486,7 +495,11 @@ void ComputeKMeans()
 		CNFGSwapBuffers();
 	}
 	fclose( fStream );
-
+	free( btfree );
+	free( mkd_val );
+	free( mkd_cnt );
+	free( kmeansdead );
+	free( kmeanses_free );
 }
 
 

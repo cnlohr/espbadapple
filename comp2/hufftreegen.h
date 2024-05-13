@@ -39,6 +39,7 @@ typedef struct
 	hufftype value;
 	int bitlen;
 	uint8_t * bitstream;
+	hufffreq freq;
 } huffup;
 
 huffup * GenPairTable( huffelement * table, int * htlen );
@@ -117,33 +118,59 @@ huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int 
 
 		// Append value to heap.
 		int h = i;
+
+/*
+printf( "Adding I: %d\n", i );
+*/
 		int p = minhlen++;
 		minheap[p] = i;
 
-		// Percolate the new value up the heap..
 		while( p )
 		{
 			int parent = (p-1)/2;
 			int ph = minheap[parent];
 			int pf = tab[ph].freq;
-			if( pf < tf ) // All is well.
+			if( pf <= tf ) // All is well.
 				break;
-
+			printf( "Flipping %d / %d  [ %d / %d ] [ %d / %d ]\n", parent, p, ph, h, pf, tf );
 			// Otherwise, flip.
 			minheap[parent] = h;
 			minheap[p] = ph;
-			tf = pf;
-			h = ph;
+			//tf = pf;
+			//h = ph;
 			p = parent;
 		}
-	}
 
+
+/*printf( "***HEAP*** %d\n", minhlen );
+int tmp;
+for( tmp=0; tmp<minhlen;tmp++)
+{
+	printf( "%d - FRQ: %d\n", minheap[tmp], tab[minheap[tmp]].freq );
+}
+*/
+
+	}
+/*
+int tmp;
+for( tmp=0;tmp<hl;tmp++ )
+{
+	printf( "> %4d %04x : %d %d : %d %d\n", tmp, tab[tmp].value, tab[tmp].freq, tab[tmp].is_term, tab[tmp].pair0, tab[tmp].pair1 );
+}
+*/
 	// We've filled in the second half of our huffman tree with leaves.
 	// And we've filled in our heap with all of those leaves.
 
 	// Next, pull off the first 2 elements from the heap, and process
 	// them into a new huffman tree node.
 
+/*
+printf( "***HEAP*** %d\n", minhlen );
+for( tmp=0; tmp<minhlen;tmp++)
+{
+	printf( "%d\n", minheap[tmp] );
+}
+*/
 	for( i = oecount-2; i >= 0; i-- )
 	{
 		huffelement * e = &tab[i];
@@ -155,7 +182,10 @@ huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int 
 		PercDown( 0, minhlen, tab, minheap );
 
 		e->pair1 = minheap[0];
+
 		e->is_term = 0;
+
+		printf( "In %d join %d, %d (F: %d, %d)\n", i, e->pair0, e->pair1, tab[e->pair0].freq, tab[e->pair1].freq );
 
 		e->freq = tab[e->pair0].freq + tab[e->pair1].freq;
 
@@ -180,6 +210,7 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 		e->bitlen = *dstrlen;
 		e->bitstream = malloc( *dstrlen );
 		memcpy( e->bitstream, *dstr, *dstrlen );
+		e->freq = ths->freq;
 	}
 	else
 	{

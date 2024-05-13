@@ -13,7 +13,7 @@
 #define TARGET_GLYPH_COUNT 256
 #define GLYPH_COUNT_REDUCE_PER_FRAME 5
 // How many glpyhs to start at?
-#define KMEANS 4096
+#define KMEANS 8192
 // How long to train?
 #define KMEANSITER 512
 
@@ -46,6 +46,8 @@ void HandleDestroy() { }
 
 void DrawBlockBasic( int xofs, int yofs, blocktype bb );
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
+void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr );
+
 
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 {
@@ -95,6 +97,15 @@ void DrawBlockBasic( int xofs, int yofs, blocktype bb )
 	struct block b;
 	b.blockdata = bb;
 	DrawBlock( xofs, yofs, &b, true );
+}
+
+void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr )
+{
+	uintptr_t alignment_mask = (1ULL<<align_bits)-1;
+	uintptr_t ret = (uintptr_t)calloc( size + alignment_mask, 1 );
+	*freeptr = (void*)ret;
+	ret = (ret + alignment_mask) & ~alignment_mask;
+	return (void*)ret;
 }
 
 #endif
