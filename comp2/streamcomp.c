@@ -800,7 +800,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt );
 			}
 
-			ge_add_frame(gifout, 1);
+			ge_add_frame(gifout, 2);
 
 
 			CNFGSwapBuffers();

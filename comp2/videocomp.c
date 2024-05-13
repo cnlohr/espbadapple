@@ -139,7 +139,7 @@ blocktype ExtractBlock( uint8_t * image, int iw, int ih, int x, int y )
 			if( c > 190 ) ret |= 1ULL<<bpl;
 #else
 			int evenodd = (ix+iy)&1;
-			if( c > 100+evenodd*60 ) ret |= 1ULL<<bpl;
+			if( c > 80+evenodd*80 ) ret |= 1ULL<<bpl;
 #endif
 
 			bpl++;
