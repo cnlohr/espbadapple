@@ -105,7 +105,7 @@ int main( int argc, char ** argv )
 				running++;
 			}
 
-			blocktype bt = glyphdata[glyphid];
+			blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
 			//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 		}
 
@@ -226,7 +226,7 @@ int main( int argc, char ** argv )
 					running++;
 				}
 
-				blocktype bt = glyphdata[glyphid];
+				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
 				//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 			}
 
@@ -271,10 +271,10 @@ int main( int argc, char ** argv )
 				if( !CNFGHandleInput() ) break;
 			}
 			uint32_t glyphid = blockmap[blockidhere];
-			blocktype bt = glyphdata[glyphid];
+			blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
 			int bx = blockidhere % vbw;
 			int by = blockidhere / vbw;
-			DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+			DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glpyhid );
 		}
 
 		frame++;
@@ -529,8 +529,8 @@ int main( int argc, char ** argv )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				blocktype bt = glyphdata[glyphid];
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glyphid );
 			}
 
 			CNFGSwapBuffers();
@@ -770,7 +770,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 
 		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
-		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, -1 );
+		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, 0 );
 
 		{
 			FILE * f = fopen( "bitstream_out.dat", "wb" );
@@ -846,10 +846,10 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				blocktype bt = glyphdata[glyphid];
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glpyhid );
 
-				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt );
+				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt, glpyhid );
 			}
 
 			ge_add_frame(gifout, 2);
@@ -1060,7 +1060,10 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		printf( "Bitstream Length Bits: %d\n", bistreamlen );
 		printf( "Huff Length: %d\n", hufflen * 32 );
 		printf( "Glyph Length: %d\n", glyphct * BLOCKSIZE * BLOCKSIZE );
+		int total_bits = bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE;
 		printf( "Total: %d\n", bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE ); 
+		printf( "Bytes: %d\n", (total_bits+7)/8 );
+		printf( "Bits Per Frame: %.1f\n", (float)total_bits/(float)num_video_frames );
 
 		int bitstream_place = 0;
 		//char * bitstreamo = 0;
@@ -1071,7 +1074,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 
 		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
-		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, -1 );
+		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, 0 );
 
 		{
 			FILE * f = fopen( "bitstream_out.dat", "wb" );
@@ -1138,14 +1141,14 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 				uint32_t glyphid = lastblock[by][bx];
 #if BLOCKSIZE==8
-				blocktype bt = glyphdata[glyphid];
+				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
 #else
 				blocktype bt;
-				memcpy( bt, glyphdata[glyphid], sizeof(bt) );
+				memcpy( bt, glyphdata[glyphid&GLYPH_INVERSION_MASK], sizeof(bt) );
 #endif
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
+				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glyphid );
 
-				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt );
+				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt, glyphid );
 			}
 
 			ge_add_frame(gifout, 2);

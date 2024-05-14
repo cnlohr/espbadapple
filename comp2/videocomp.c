@@ -18,8 +18,6 @@ struct block * allblocks;
 struct block * allblocks_alloc;
 int numblocks;
 
-void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
-
 void UpdateBlockDataFromIntensity( struct block * k )
 {
 	int i;
@@ -43,7 +41,7 @@ void UpdateBlockDataFromIntensity( struct block * k )
 }
 
 
-float ComputeDistance( const struct block * b, const struct block * c )
+float ComputeDistance( const struct block * b, const struct block * c, int * inversiontype )
 {
 	int j;
 	float diff = 0;
@@ -88,6 +86,58 @@ float ComputeDistance( const struct block * b, const struct block * c )
 	_mm_store_ps(OutputVal, diffssum);
 	diff = OutputVal[0] + OutputVal[1] + OutputVal[2] + OutputVal[3];
 
+
+#ifdef ALLOW_GLYPH_INVERSION
+	float firstdiff = diff;
+
+	diffs = _mm256_set1_ps( 0 );
+	const __m256 submask = _mm256_set1_ps( 1.0f );
+
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j += 8 )
+	{
+		__m256 intensityb, intensityc, diffhere;
+		intensityb = _mm256_load_ps( &b->intensity[j] );
+		intensityc = _mm256_load_ps( &c->intensity[j] );
+
+		intensityc = _mm256_sub_ps( submask, intensityc );
+
+		diffhere = _mm256_sub_ps( intensityb, intensityc );
+
+#ifdef MSE
+		diffhere = _mm256_mul_ps( diffhere, diffhere );
+#else
+		diffhere = _mm256_andnot_ps( signmask, diffhere );
+#endif
+
+		diffs = _mm256_add_ps( diffs, diffhere );
+	}
+
+	diffslo = _mm256_extractf128_ps( diffs, 0 );
+	diffshi  = _mm256_extractf128_ps( diffs, 1 );
+	diffssum  = _mm_hadd_ps( diffslo, diffshi );
+	_mm_store_ps(OutputVal, diffssum);
+	diff = OutputVal[0] + OutputVal[1] + OutputVal[2] + OutputVal[3];
+
+	if( diff > firstdiff )
+	{
+		diff = firstdiff;
+		if( inversiontype )
+			*inversiontype = 0;
+	}
+	else
+	{
+		if( inversiontype )
+			*inversiontype = 1;
+	}
+#else
+	{
+		if( inversiontype )
+			*inversiontype = 0;
+	}
+#endif
+
+
+
 #ifdef MSE
 	return sqrt(diff);
 #else
@@ -127,6 +177,18 @@ void AppendBlock( struct block * bck )
 		if( check->blockdata == b ) break;
 #else
 		if( memcmp( check->blockdata, b, sizeof(b) ) == 0 ) break;
+#endif
+
+#ifdef ALLOW_GLYPH_INVERSION
+#if BLOCKSIZE==8
+		if( ( check->blockdata ^ b ) == 0xFFFFFFFFFFFFFFFFULL ) break;
+#else
+		uint64_t * bcc = b;
+		int k;
+		for( k = 0; k < sizeof(b)/sizeof(b[0]); k++ )
+			if( (check->blockdata[k] ^ b[k]) != 0xFFFFFFFFFFFFFFFFULL ) break;
+		if( k == sizeof(b)/sizeof(b[0]) ) break;
+#endif
 #endif
 		check++;
 	}
@@ -263,40 +325,35 @@ void ComputeKMeans()
 		memset( mkd_val, 0, KMEANS * BLOCKSIZE * BLOCKSIZE * sizeof(float) );
 		memset( mkd_cnt, 0, KMEANS * sizeof(float) );
 
-		struct block * worstfit = 0;
-		float worstfitmatch = 0;
 		struct block * b = allblocks;
 		struct block * bend = b + numblocks;
 		for( ; b != bend; b++ )
 		{
 			int mink = 0;
 			float mka = 1e20;
+			int compinv = 0;
 			for( km = 0; km < KMEANS; km++ )
 			{
 				if( kmeansdead[km] ) continue;
 				struct block * k = &kmeanses[km];
-				float fd = ComputeDistance( b, k );
+				int citemp;
+				float fd = ComputeDistance( b, k, &citemp );
 				if( fd < mka )
 				{
+					compinv = citemp;
 					mka = fd;
 					mink = km;
 				}
-			}
-
-
-			if( mka > worstfitmatch )
-			{
-				float fd = ComputeDistance( b, &kmeanses[mink] );
-				int i;
-				worstfit = b;
-				worstfitmatch = mka;
 			}
 
 			b->scratch = mink;
 
 			for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 			{
-				mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += b->intensity[i] * b->count;
+				if( compinv )
+					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += (1.0-b->intensity[i]) * b->count;
+				else
+					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += b->intensity[i] * b->count;
 			}
 			mkd_cnt[mink] += b->count;
 		}
@@ -362,7 +419,7 @@ void ComputeKMeans()
 			dk++;
 
 			struct block * k = &kmeanses[i];
-			DrawBlock( x * draww + drawxofs, y * drawh, k, false );
+			DrawBlock( x * draww + drawxofs, y * drawh, k, false, 0 );
 
 			CNFGPenX = x * draww + drawxofs;
 			CNFGPenY = y * drawh + BLOCKSIZE*2+2;
@@ -484,21 +541,24 @@ void ComputeKMeans()
 
 			int mink = 0;
 			float mka = 1e20;
+			int inv = 0;
 			for( km = 0; km < KMEANS; km++ )
 			{
 				struct block * k = &kmeanses[km];
+				int invtemp;
 				if( kmeansdead[km] ) continue;
-				float fd = ComputeDistance( bb, k );
+				float fd = ComputeDistance( bb, k, &invtemp );
 				if( fd < mka )
 				{
+					inv = invtemp;
 					mka = fd;
 					mink = km;
 				}
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false );
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false, inv );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, inv );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, inv );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 		}
 
@@ -547,13 +607,16 @@ void ComputeKMeans()
 			uint32_t minkwrite = 0;
 			float mka = 1e20;
 			uint32_t outkmid = 0;
+			int invert = 0;
 			for( km = 0; km < KMEANS; km++ )
 			{
 				struct block * k = &kmeanses[km];
 				if( kmeansdead[km] ) continue;
-				float fd = ComputeDistance( btemp, k );
+				int tinv;
+				float fd = ComputeDistance( btemp, k, &tinv );
 				if( fd < mka )
 				{
+					invert = tinv;
 					mka = fd;
 					mink = km;
 					minkwrite = outkmid;
@@ -561,11 +624,16 @@ void ComputeKMeans()
 				outkmid++;
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false );
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false );
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, invert );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, invert );
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, invert );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
-			
+
+#ifdef ALLOW_GLYPH_INVERSION
+			if( invert )
+				minkwrite |= ALLOW_GLYPH_INVERSION;			
+#endif
+
 			fwrite( &minkwrite, sizeof( minkwrite ), 1, fStream );
 		}
 		CNFGSwapBuffers();
@@ -621,7 +689,7 @@ int main( int argc, char ** argv )
 			struct block bck;
 			ExtractBlock( tbuf, video_w, video_h, x, y, &bck );
 			AppendBlock( &bck );
-			DrawBlock( x*BLOCKSIZE*2, y*BLOCKSIZE*2, &bck, false );
+			DrawBlock( x*BLOCKSIZE*2, y*BLOCKSIZE*2, &bck, false, 0 );
 		}
 
 		sprintf( cts, "%d\n", numblocks );

@@ -13,16 +13,21 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 256
+#define TARGET_GLYPH_COUNT 128
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
 #define KMEANS 1024
 // How long to train?
 #define KMEANSITER 100
 
+// Completely comment out to disable tile inversion
+// Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
+// so theoretically you would need half the total tiles.
+#define ALLOW_GLYPH_INVERSION 0x2000
+
 // DO NOT change this without code changes!
 #ifndef BLOCKSIZE
-#warning Your toolchain should set blocksize.
+#warning Your toolchain should set blocksize (in the Makefile).
 #define BLOCKSIZE 8
 #endif
 
@@ -41,6 +46,11 @@
 //#define BLUR_BASE 1.0
 
 
+#ifdef ALLOW_GLYPH_INVERSION
+#define GLYPH_INVERSION_MASK ~ALLOW_GLYPH_INVERSION
+#else
+#define GLYPH_INVERSION_MASK ((uint32_t)-1)
+#endif
 
 
 #if BLOCKSIZE==8
@@ -81,12 +91,12 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
-void DrawBlockBasic( int xofs, int yofs, blocktype bb );
-void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
+void DrawBlockBasic( int xofs, int yofs, blocktype bb, int original_glyph_id  );
+void DrawBlock( int xofs, int yofs, struct block * bb, int boolean, int original_glyph_id  );
 void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr );
 
 
-void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
+void DrawBlock( int xofs, int yofs, struct block * bb, int boolean, int original_glyph_id )
 {
 	uint32_t boo[BLOCKSIZE*BLOCKSIZE] = { 0 };
 	int i;
@@ -128,10 +138,16 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 
 	uint32_t bobig[BLOCKSIZE*BLOCKSIZE*4];
 	int x, y;
+
+#ifdef ALLOW_GLYPH_INVERSION
+	uint32_t invertmask = (original_glyph_id&ALLOW_GLYPH_INVERSION)?0xffffff:0x000000;
+#else
+	uint32_t invertmask = 0;
+#endif
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		uint32_t v = boo[x+y*BLOCKSIZE];
+		uint32_t v = boo[x+y*BLOCKSIZE] ^ invertmask;
 		bobig[(2*x+0) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+1) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+0) + (2*y+1)*BLOCKSIZE*2] = v;
@@ -140,7 +156,7 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 	CNFGBlitImage( bobig, xofs, yofs, BLOCKSIZE*2, BLOCKSIZE*2 );
 }
 
-void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
+void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb, int original_glyph_id )
 {
 
 	char boo[BLOCKSIZE*BLOCKSIZE] = { 0 };
@@ -170,10 +186,16 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
 
 //	uint32_t bobig[BLOCKSIZE*BLOCKSIZE*4];
 	int x, y;
+#ifdef ALLOW_GLYPH_INVERSION
+	uint32_t invertmask = (original_glyph_id&ALLOW_GLYPH_INVERSION)?0x1:0x0;
+#else
+	uint32_t invertmask = 0;
+#endif
+
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		char b = boo[x+y*BLOCKSIZE];
+		char b = boo[x+y*BLOCKSIZE] ^ invertmask;
 		uint8_t * v = gif->frame;
 		v[(2*x+0+xofs) + (2*y+0 + yofs)*vw] = b;
 		v[(2*x+1+xofs) + (2*y+0 + yofs)*vw] = b;
@@ -184,20 +206,20 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
 
 
 
-void DrawBlockBasic( int xofs, int yofs, blocktype bb )
+void DrawBlockBasic( int xofs, int yofs, blocktype bb, int original_glyph_id )
 {
 	struct block b;
 	BBASSIGN( b.blockdata, bb );
-	DrawBlock( xofs, yofs, &b, true );
+	DrawBlock( xofs, yofs, &b, true, original_glyph_id );
 }
 
 
 
-void BlockUpdateGif( ge_GIF * gif, int xofs, int yofs, int vw, blocktype bb )
+void BlockUpdateGif( ge_GIF * gif, int xofs, int yofs, int vw, blocktype bb, int original_glyph_id )
 {
 	struct block b;
 	BBASSIGN( b.blockdata, bb );
-	DrawBlockGif( gif, xofs, yofs, vw, &b );
+	DrawBlockGif( gif, xofs, yofs, vw, &b, original_glyph_id );
 }
 
 
