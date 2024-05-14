@@ -12,6 +12,7 @@ sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-
  * Perceptual/Semantic Loss Function
  * De-Blocking Filter
  * Motion Vectors
+ * Add color inversion option for glyphs
 
 
 ## Compression mechanisms.

@@ -10,7 +10,7 @@
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
-#define MSE
+//#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
 #define TARGET_GLYPH_COUNT 256
@@ -21,9 +21,37 @@
 #define KMEANSITER 100
 
 // DO NOT change this without code changes!
+#ifndef BLOCKSIZE
+#warning Your toolchain should set blocksize.
 #define BLOCKSIZE 8
+#endif
+
 #define HALFTONE_EN  1
+
+// THINGS TO NOTE:
+
+// try different stream compression schemes
+//#define COMPRESSION_BLOCK_RASTER
+//#define COMPRESSION_TWO_HUFF
+//#define COMPRESSION_UNIFIED_BY_BLOCK_AND_TWO_HUFF // Mix of two huff and unified, by having both a unified, and block-only huff. >> Actually slightly larger because of overhead.
+#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
+
+// Try with blur on/off
+// NOTE: To disable, comment out completely.
+//#define BLUR_BASE 1.0
+
+
+
+
+#if BLOCKSIZE==8
 typedef uint64_t blocktype;
+#define BBASSIGN( to, from ) to = from
+#elif BLOCKSIZE==16
+typedef uint64_t blocktype[4];
+#define BBASSIGN( to, from ) memcpy( to, from, sizeof(blocktype) )
+#else
+#error UNSUPPORTED BLOCKSIZE
+#endif
 
 struct block
 {
@@ -31,20 +59,16 @@ struct block
 	blocktype blockdata;
 	uint32_t count;
 	uint32_t scratch;
+#if BLOCKSIZE==8
 	uint64_t extra1;
 	uint64_t extra2;
+#elif BLOCKSIZE==16
+	uint64_t extra1;
+	uint64_t extra2;
+	uint64_t extra3;
+#endif
 };
 
-// THINGS TO NOTE:
-
-// try different stream compression schemes
-//#define COMPRESSION_BLOCK_RASTER
-//#define COMPRESSION_TWO_HUFF
-#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
-
-// Try with blur on/off
-// NOTE: To disable, comment out completely.
-#define BLUR_BASE 1.0
 
 
 
@@ -68,7 +92,10 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 	int i;
 	if( boolean )
 	{
-		blocktype b = bb->blockdata;
+		blocktype b;
+		BBASSIGN( b, bb->blockdata );
+
+#if BLOCKSIZE==8
 		for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 		{
 			if( b & (1ULL<<i) )
@@ -76,6 +103,15 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean )
 			else
 				boo[i] = 0xff000000;
 		}
+#else
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+		{
+			if( b[i/64] & (1ULL<<(i&63)) )
+				boo[i] = 0xffffffff;
+			else
+				boo[i] = 0xff000000;
+		}
+#endif
 	}
 	else
 	{
@@ -111,7 +147,9 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
 	int i;
 
 	{
-		blocktype b = bb->blockdata;
+		blocktype b;
+		BBASSIGN( b, bb->blockdata );
+#if BLOCKSIZE==8
 		for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 		{
 			if( b & (1ULL<<i) )
@@ -119,6 +157,15 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
 			else
 				boo[i] = 0;
 		}
+#else
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+		{
+			if( b[i/64] & (1ULL<<(i&63)) )
+				boo[i] = 1;
+			else
+				boo[i] = 0;
+		}
+#endif
 	}
 
 //	uint32_t bobig[BLOCKSIZE*BLOCKSIZE*4];
@@ -140,7 +187,7 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb )
 void DrawBlockBasic( int xofs, int yofs, blocktype bb )
 {
 	struct block b;
-	b.blockdata = bb;
+	BBASSIGN( b.blockdata, bb );
 	DrawBlock( xofs, yofs, &b, true );
 }
 
@@ -149,7 +196,7 @@ void DrawBlockBasic( int xofs, int yofs, blocktype bb )
 void BlockUpdateGif( ge_GIF * gif, int xofs, int yofs, int vw, blocktype bb )
 {
 	struct block b;
-	b.blockdata = bb;
+	BBASSIGN( b.blockdata, bb );
 	DrawBlockGif( gif, xofs, yofs, vw, &b );
 }
 

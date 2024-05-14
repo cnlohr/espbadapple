@@ -12,9 +12,6 @@
 #include <unistd.h>
 #endif
 
-
-#warning ...
-
 /* helper to write a little-endian 16-bit number portably */
 #define write_num(fd, n) write((fd), (uint8_t []) {(n) & 0xFF, (n) >> 8}, 2)
 

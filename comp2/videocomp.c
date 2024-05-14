@@ -23,13 +23,23 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean );
 void UpdateBlockDataFromIntensity( struct block * k )
 {
 	int i;
+
+#if BLOCKSIZE==8
 	blocktype bt = 0;
 	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 	{
 		if( k->intensity[i] > 0.5 )
 			bt |= (1ULL<<i);
 	}
-	k->blockdata = bt;
+#else
+	blocktype bt = { 0 };
+	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+	{
+		if( k->intensity[i] > 0.5 )
+			bt[i/64] |= (1ULL<<(i&63));
+	}
+#endif
+	BBASSIGN( k->blockdata, bt );
 }
 
 
@@ -88,22 +98,36 @@ float ComputeDistance( const struct block * b, const struct block * c )
 void BlockFillIntensity( struct block * b )
 {
 	int i;
+
+#if BLOCKSIZE==8
 	for( i = 0; i < BLOCKSIZE * BLOCKSIZE; i++ )
 	{
 		b->intensity[i] = !!( b->blockdata & ( 1ULL << i ) );
 	}
+#else
+	for( i = 0; i < BLOCKSIZE * BLOCKSIZE; i++ )
+	{
+		b->intensity[i] = !!( b->blockdata[i/64] & ( 1ULL << (i&63) ) );
+	}
+#endif
 }
 
 void AppendBlock( struct block * bck )
 {
-	blocktype b = bck->blockdata;
+	blocktype b;
+	BBASSIGN( b, bck->blockdata );
 	int i;
 	struct block * check = allblocks;
 	struct block * bend = check + numblocks;
 
 	while( check != bend )
 	{
+
+#if BLOCKSIZE==8
 		if( check->blockdata == b ) break;
+#else
+		if( memcmp( check->blockdata, b, sizeof(b) ) == 0 ) break;
+#endif
 		check++;
 	}
 
@@ -115,7 +139,7 @@ void AppendBlock( struct block * bck )
 		check = allblocks + (numblocks - 1);
 		memset( check, 0, sizeof( struct block ) );
 		check->count = 0;
-		check->blockdata = b;
+		BBASSIGN( check->blockdata, b );
 	}
 	check->count++;
 	BlockFillIntensity( check );
@@ -126,7 +150,13 @@ void ExtractBlock( uint8_t * image, int iw, int ih, int x, int y, struct block *
 {
 	int stride = iw;
 	uint8_t * iof = image + (y * BLOCKSIZE * stride) + (x * BLOCKSIZE);
+
+
+#if BLOCKSIZE==8
 	blocktype ret = 0;
+#else
+	blocktype ret = {0};
+#endif
 	int ix, iy;
 	int bpl = 0;
 
@@ -137,10 +167,19 @@ void ExtractBlock( uint8_t * image, int iw, int ih, int x, int y, struct block *
 			uint8_t c = iof[ix];
 
 #ifndef HALFTONE_EN
+	#if BLOCKSIZE==8
 			if( c > 190 ) ret |= 1ULL<<bpl;
+	#else
+			if( c > 190 ) ret[bpl/64] |= 1ULL<<(bpl&63);
+	#endif
+
 #else
 			int evenodd = (ix+iy)&1;
+	#if BLOCKSIZE==8
 			if( c > 80+evenodd*80 ) ret |= 1ULL<<bpl;
+	#else
+			if( c > 80+evenodd*80 ) ret[bpl/64] |= 1ULL<<bpl;
+	#endif
 #endif
 
 			bpl++;
@@ -149,7 +188,7 @@ void ExtractBlock( uint8_t * image, int iw, int ih, int x, int y, struct block *
 		iof += stride;
 	}
 
-	bb->blockdata = ret;
+	BBASSIGN( bb->blockdata, ret );
 
 	// Run box blur on image to get better semantic matching.
 
@@ -196,11 +235,22 @@ void ComputeKMeans()
 	int km;
 	for( km = 0; km < KMEANS; km++ )
 	{
+
+	#if BLOCKSIZE==8
 		kmeanses[km].blockdata = 
 			(((blocktype)(rand()%0xffff))<<0ULL) |
 			(((blocktype)(rand()%0xffff))<<16ULL) |
 			(((blocktype)(rand()%0xffff))<<32ULL) |
 			(((blocktype)(rand()%0xffff))<<48ULL);
+	#else
+		for( int itx = 0; itx < sizeof(kmeanses[km].blockdata)/sizeof(kmeanses[km].blockdata[0]); itx++ )
+			kmeanses[km].blockdata[itx] = 
+				(((uint64_t)(rand()%0xffff))<<0ULL) |
+				(((uint64_t)(rand()%0xffff))<<16ULL) |
+				(((uint64_t)(rand()%0xffff))<<32ULL) |
+				(((uint64_t)(rand()%0xffff))<<48ULL);
+	#endif
+
 		BlockFillIntensity( &kmeanses[km] );
 	}
 
@@ -340,24 +390,24 @@ void ComputeKMeans()
 			}
 
 
-			if( 0 )
 			{
-				// random glyph (this is bad.)  --> CONSIDER: What if we pick poorly represented glyphs?
-				whichmink->blockdata = worstfit->blockdata;
-				BlockFillIntensity( whichmink );
-				DrawBlock( 0, 400, worstfit, false );
 
-				//printf( "%d %d %016lx\n", whichmink - kmeanses, minct, whichmink->blockdata );
-			}
-			else
-			{
 				// Mulligan
+
+				#if BLOCKSIZE==8
 				whichmink->blockdata = 
 					(((blocktype)(rand()%0xffff))<<0ULL) |
 					(((blocktype)(rand()%0xffff))<<16ULL) |
 					(((blocktype)(rand()%0xffff))<<32ULL) |
 					(((blocktype)(rand()%0xffff))<<48ULL);
-				BlockFillIntensity( whichmink );
+				#else
+				for( int itx = 0; itx < sizeof(kmeanses[km].blockdata)/sizeof(kmeanses[km].blockdata[0]); itx++ )
+					whichmink->blockdata[itx] = 
+						(((uint64_t)(rand()%0xffff))<<0ULL) |
+						(((uint64_t)(rand()%0xffff))<<16ULL) |
+						(((uint64_t)(rand()%0xffff))<<32ULL) |
+						(((uint64_t)(rand()%0xffff))<<48ULL);
+				#endif
 			}
 		}
 
