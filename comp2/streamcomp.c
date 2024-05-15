@@ -8,7 +8,8 @@ int streamcount;
 uint32_t * streamdata;
 
 int glyphct;
-blocktype * glyphdata;
+float * glyphfloat;
+struct block * glyphdata;
 
 int video_w;
 int video_h;
@@ -22,6 +23,9 @@ ge_GIF * gifout;
 
 int main( int argc, char ** argv )
 {
+	int frame = 0;
+	int i;
+	int block = 0;
 	CNFGSetup( "comp test", 1800, 900 );
 
 	if( argc != 6 )
@@ -43,18 +47,27 @@ int main( int argc, char ** argv )
 
 	f = fopen( argv[2], "rb" );
 	fseek( f, 0, SEEK_END );
-	glyphct = ftell( f ) / sizeof( glyphdata[0] );
-	glyphdata = malloc( glyphct * sizeof( glyphdata[0] ) );
+	glyphct = ftell( f ) / sizeof( glyphfloat[0] );
+	glyphfloat = malloc( glyphct * sizeof( glyphfloat[0] ) );
 	fseek( f, 0, SEEK_SET );
-	fread( glyphdata, glyphct, sizeof( glyphdata[0] ) , f );
+	fread( glyphfloat, glyphct, sizeof( glyphfloat[0] ) , f );
 	fclose( f );
+
+	glyphct = glyphct / (BLOCKSIZE*BLOCKSIZE);
+
+	glyphdata = malloc( glyphct * sizeof(glyphdata[0]) );
+	for( block = 0; block < glyphct; block++ )
+	{
+		struct block * bb = glyphdata + block;
+		float * fd = glyphfloat + block * BLOCKSIZE * BLOCKSIZE;
+		memcpy( bb->intensity, fd, sizeof( bb->intensity ) );
+		UpdateBlockDataFromIntensity( bb );
+	}
+
 
 	num_video_frames = streamcount / ( video_w * video_h / ( BLOCKSIZE * BLOCKSIZE ) );
 
 	printf( "Read %d glyphs, and %d elements (From %d frames)\n", glyphct, streamcount, num_video_frames );
-	int i;
-	int frame = 0;
-	int block = 0;
 
 	int vbh = video_h/BLOCKSIZE;
 	int vbw = video_w/BLOCKSIZE;
@@ -105,7 +118,7 @@ int main( int argc, char ** argv )
 				running++;
 			}
 
-			blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
+			//blocktype bt = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
 			//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 		}
 
@@ -226,7 +239,7 @@ int main( int argc, char ** argv )
 					running++;
 				}
 
-				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				//blocktype bt = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
 				//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 			}
 
@@ -271,10 +284,10 @@ int main( int argc, char ** argv )
 				if( !CNFGHandleInput() ) break;
 			}
 			uint32_t glyphid = blockmap[blockidhere];
-			blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
+			struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
 			int bx = blockidhere % vbw;
 			int by = blockidhere / vbw;
-			DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glpyhid );
+			DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
 		}
 
 		frame++;
@@ -529,8 +542,8 @@ int main( int argc, char ** argv )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glyphid );
+				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
 			}
 
 			CNFGSwapBuffers();
@@ -846,8 +859,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glpyhid );
+				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
 
 				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt, glpyhid );
 			}
@@ -1073,8 +1086,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		int32_t next_tok = -1;
 
 
-		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
-		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, 0 );
+		uint8_t palette[48] = { 0, 0, 0, 255, 255, 255 };
+		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 4, 0 );
 
 		{
 			FILE * f = fopen( "bitstream_out.dat", "wb" );
@@ -1140,15 +1153,9 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-#if BLOCKSIZE==8
-				blocktype bt = glyphdata[glyphid&GLYPH_INVERSION_MASK];
-#else
-				blocktype bt;
-				memcpy( bt, glyphdata[glyphid&GLYPH_INVERSION_MASK], sizeof(bt) );
-#endif
-				DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt, glyphid );
-
-				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt, glyphid );
+				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glyphid );
+				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, b->blockdata, glyphid );
 			}
 
 			ge_add_frame(gifout, 2);

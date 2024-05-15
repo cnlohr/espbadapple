@@ -18,28 +18,6 @@ struct block * allblocks;
 struct block * allblocks_alloc;
 int numblocks;
 
-void UpdateBlockDataFromIntensity( struct block * k )
-{
-	int i;
-
-#if BLOCKSIZE==8
-	blocktype bt = 0;
-	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
-	{
-		if( k->intensity[i] > 0.5 )
-			bt |= (1ULL<<i);
-	}
-#else
-	blocktype bt = { 0 };
-	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
-	{
-		if( k->intensity[i] > 0.5 )
-			bt[i/64] |= (1ULL<<(i&63));
-	}
-#endif
-	BBASSIGN( k->blockdata, bt );
-}
-
 
 float ComputeDistance( const struct block * b, const struct block * c, int * inversiontype )
 {
@@ -202,9 +180,14 @@ void AppendBlock( struct block * bck )
 		memset( check, 0, sizeof( struct block ) );
 		check->count = 0;
 		BBASSIGN( check->blockdata, b );
+		memcpy( check->intensity, bck->intensity, sizeof( check->intensity)  );
 	}
 	check->count++;
-	BlockFillIntensity( check );
+
+#ifdef ENCHALFTONE
+	BlockFillIntensity( check );  /// This would overwrite intensities with block data.
+#endif
+
 //	return check;
 }
 
@@ -276,7 +259,9 @@ void ExtractBlock( uint8_t * image, int iw, int ih, int x, int y, struct block *
 	}
 #else
 	// Doing this would override block values with "intensities"
+#ifdef ENCHALFTONE
 	BlockFillIntensity( bb );
+#endif
 #endif
 }
 
@@ -312,7 +297,6 @@ void ComputeKMeans()
 				(((uint64_t)(rand()%0xffff))<<32ULL) |
 				(((uint64_t)(rand()%0xffff))<<48ULL);
 	#endif
-
 		BlockFillIntensity( &kmeanses[km] );
 	}
 
@@ -556,7 +540,11 @@ void ComputeKMeans()
 				}
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false, inv );
+#ifdef ALLOW_GLYPH_INVERSION
+			if( inv ) inv = ALLOW_GLYPH_INVERSION;
+#endif
+
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, inv );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, inv );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
@@ -578,7 +566,7 @@ void ComputeKMeans()
 	for( km = 0; km < KMEANS; km++ )
 	{
 		if( kmeansdead[km] ) continue;
-		fwrite( &kmeanses[km].blockdata, sizeof( kmeanses[km].blockdata ), 1, fTiles );
+		fwrite( kmeanses[km].intensity, sizeof( kmeanses[km].intensity ), 1, fTiles );
 	}
 	fclose( fTiles );
 
@@ -624,7 +612,12 @@ void ComputeKMeans()
 				outkmid++;
 			}
 
-			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, invert );
+
+#ifdef ALLOW_GLYPH_INVERSION
+			if( invert ) invert = ALLOW_GLYPH_INVERSION;
+#endif
+
+			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, invert );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, invert );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );

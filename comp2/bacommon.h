@@ -45,6 +45,9 @@
 // NOTE: To disable, comment out completely.
 //#define BLUR_BASE 1.0
 
+// To target learning halftones or target gradients.
+#define ENCHALFTONE
+
 
 #ifdef ALLOW_GLYPH_INVERSION
 #define GLYPH_INVERSION_MASK ~ALLOW_GLYPH_INVERSION
@@ -91,6 +94,7 @@ void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
 void HandleDestroy() { }
 
+void UpdateBlockDataFromIntensity( struct block * k );
 void DrawBlockBasic( int xofs, int yofs, blocktype bb, int original_glyph_id  );
 void DrawBlock( int xofs, int yofs, struct block * bb, int boolean, int original_glyph_id  );
 void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr );
@@ -231,6 +235,38 @@ void * alignedcalloc( size_t size, uint32_t align_bits, void ** freeptr )
 	ret = (ret + alignment_mask) & ~alignment_mask;
 	return (void*)ret;
 }
+
+
+void UpdateBlockDataFromIntensity( struct block * k )
+{
+	int i;
+
+
+	blocktype ret = 0;
+	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
+	{
+		int ix = i % BLOCKSIZE;
+		int iy = i / BLOCKSIZE;
+		float ft = k->intensity[i];
+#ifndef HALFTONE_EN
+	#if BLOCKSIZE==8
+			if( ft > .7 ) ret |= 1ULL<<i;
+	#else
+			if( ft > .7 ) ret[bpl/64] |= 1ULL<<(i&63);
+	#endif
+
+#else
+			int evenodd = (ix+iy)&1;
+	#if BLOCKSIZE==8
+			if( ft > .35+evenodd*.35 ) ret |= 1ULL<<i;
+	#else
+			if( ft > .35+evenodd*.35 ) ret[bpl/64] |= 1ULL<<i;
+	#endif
+#endif
+	}
+	BBASSIGN( k->blockdata, ret );
+}
+
 
 #endif
 
