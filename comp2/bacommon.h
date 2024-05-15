@@ -13,7 +13,7 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 148
+#define TARGET_GLYPH_COUNT 128
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
 #define KMEANS 2048
@@ -48,6 +48,8 @@
 // To target learning halftones or target gradients.  Depends on HALFTONE_EN.
 #define ENCHALFTONE
 
+// If you want to try reducing FPS.
+//#define FPS_REDUCTION 2
 
 #ifdef ALLOW_GLYPH_INVERSION
 #define GLYPH_INVERSION_MASK ~ALLOW_GLYPH_INVERSION
@@ -242,7 +244,11 @@ void UpdateBlockDataFromIntensity( struct block * k )
 	int i;
 
 
+#if BLOCKSIZE==8
 	blocktype ret = 0;
+#else
+	blocktype ret = { 0 };
+#endif
 	for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 	{
 		int ix = i % BLOCKSIZE;
@@ -260,7 +266,7 @@ void UpdateBlockDataFromIntensity( struct block * k )
 	#if BLOCKSIZE==8
 			if( ft > .3+evenodd*.4 ) ret |= 1ULL<<i;
 	#else
-			if( ft > .3+evenodd*.4 ) ret[bpl/64] |= 1ULL<<i;
+			if( ft > .3+evenodd*.4 ) ret[i/64] |= 1ULL<<(i&63);
 	#endif
 #endif
 	}

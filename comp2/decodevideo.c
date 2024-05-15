@@ -1,4 +1,4 @@
-
+#include "bacommon.h"
 #include "ffmdecode.h"
 #include <stdio.h>
 #include <stdint.h>
@@ -8,6 +8,7 @@ int targw, targh;
 
 uint8_t * data;
 int frames;
+int recframes;
 FILE * f ;
 void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int height, int frame )
 {
@@ -15,6 +16,12 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	uint8_t * fd = data;
 	int x;
 	int y;
+
+#ifdef FPS_REDUCTION
+	if( (frames % FPS_REDUCTION) != 0 ) goto skipframe;
+#error xxx
+#endif
+
 	//printf( "* %d %d %d %p %p %d\n", width, height, linesize, fd, fd+width*height, frame );
 	for( y = 0; y < targh; y++ )
 	{
@@ -37,6 +44,8 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 		}
 	}
 	fwrite( data, targw, targh, f );
+	recframes++;
+skipframe:
 	frames++;	
 }
 
@@ -56,7 +65,7 @@ int main( int argc, char ** argv )
 	setup_video_decode();
 	video_decode( argv[1], targw, targh );
 	fclose( f );
-	printf( "Got %d frames\n", frames );
+	printf( "Got %d frames\n", recframes );
 	return 0;
 }
 
