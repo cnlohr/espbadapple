@@ -26,7 +26,7 @@ int main( int argc, char ** argv )
 	int frame = 0;
 	int i;
 	int block = 0;
-	CNFGSetup( "comp test", 1800, 900 );
+	CNFGSetup( "comp test", 1800, 1060 );
 
 	if( argc != 6 )
 	{

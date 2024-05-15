@@ -13,12 +13,12 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 128
+#define TARGET_GLYPH_COUNT 148
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
-#define KMEANS 1024
+#define KMEANS 2048
 // How long to train?
-#define KMEANSITER 100
+#define KMEANSITER 220
 
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
@@ -45,7 +45,7 @@
 // NOTE: To disable, comment out completely.
 //#define BLUR_BASE 1.0
 
-// To target learning halftones or target gradients.
+// To target learning halftones or target gradients.  Depends on HALFTONE_EN.
 #define ENCHALFTONE
 
 
@@ -250,17 +250,17 @@ void UpdateBlockDataFromIntensity( struct block * k )
 		float ft = k->intensity[i];
 #ifndef HALFTONE_EN
 	#if BLOCKSIZE==8
-			if( ft > .7 ) ret |= 1ULL<<i;
+			if( ft > .6 ) ret |= 1ULL<<i;
 	#else
-			if( ft > .7 ) ret[bpl/64] |= 1ULL<<(i&63);
+			if( ft > .6 ) ret[bpl/64] |= 1ULL<<(i&63);
 	#endif
 
 #else
 			int evenodd = (ix+iy)&1;
 	#if BLOCKSIZE==8
-			if( ft > .35+evenodd*.35 ) ret |= 1ULL<<i;
+			if( ft > .3+evenodd*.4 ) ret |= 1ULL<<i;
 	#else
-			if( ft > .35+evenodd*.35 ) ret[bpl/64] |= 1ULL<<i;
+			if( ft > .3+evenodd*.4 ) ret[bpl/64] |= 1ULL<<i;
 	#endif
 #endif
 	}

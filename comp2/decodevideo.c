@@ -15,7 +15,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	uint8_t * fd = data;
 	int x;
 	int y;
-	printf( "* %d %d %d %p %p %d\n", width, height, linesize, fd, fd+width*height, frame );
+	//printf( "* %d %d %d %p %p %d\n", width, height, linesize, fd, fd+width*height, frame );
 	for( y = 0; y < targh; y++ )
 	{
 		for( x = 0; x < targw; x++ )
@@ -56,6 +56,7 @@ int main( int argc, char ** argv )
 	setup_video_decode();
 	video_decode( argv[1], targw, targh );
 	fclose( f );
+	printf( "Got %d frames\n", frames );
 	return 0;
 }
 
