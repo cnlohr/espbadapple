@@ -34,6 +34,6 @@ midclean :
 	rm -rf test-${RES}.gif streamcomp
 
 clean : midclean
-	rm -rf decodevideo videocomp videoout-${RES}.dat tiles-${RES}.dat stream-${RES}.dat
+	rm -rf decodevideo videocomp videoout-${RES}.dat
 	rm -rf *~ 
 

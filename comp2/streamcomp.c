@@ -56,6 +56,7 @@ int main( int argc, char ** argv )
 	glyphct = glyphct / (BLOCKSIZE*BLOCKSIZE);
 
 	glyphdata = malloc( glyphct * sizeof(glyphdata[0]) );
+
 	for( block = 0; block < glyphct; block++ )
 	{
 		struct block * bb = glyphdata + block;
@@ -64,6 +65,21 @@ int main( int argc, char ** argv )
 		UpdateBlockDataFromIntensity( bb );
 	}
 
+	int * raw_block_frequencies = 0;
+	int num_raw_block_frequencies = 0;
+	for( i = 0; i < streamcount; i++ )
+	{
+		if( streamdata[i] >= num_raw_block_frequencies )
+		{
+			int osize = num_raw_block_frequencies;
+			num_raw_block_frequencies = streamdata[i] + 1;
+			raw_block_frequencies = realloc( raw_block_frequencies, num_raw_block_frequencies * sizeof( raw_block_frequencies[0] ) );
+			int j;
+			for( j = osize; j != num_raw_block_frequencies; j++ )
+				raw_block_frequencies[j] = 0;
+		}
+		raw_block_frequencies[streamdata[i]]++;
+	}
 
 	num_video_frames = streamcount / ( video_w * video_h / ( BLOCKSIZE * BLOCKSIZE ) );
 
@@ -118,7 +134,7 @@ int main( int argc, char ** argv )
 				running++;
 			}
 
-			//blocktype bt = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+			//blocktype bt = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 			//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 		}
 
@@ -239,7 +255,7 @@ int main( int argc, char ** argv )
 					running++;
 				}
 
-				//blocktype bt = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				//blocktype bt = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 				//DrawBlockBasic( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, bt );
 			}
 
@@ -284,7 +300,7 @@ int main( int argc, char ** argv )
 				if( !CNFGHandleInput() ) break;
 			}
 			uint32_t glyphid = blockmap[blockidhere];
-			struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+			struct block * b = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 			int bx = blockidhere % vbw;
 			int by = blockidhere / vbw;
 			DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
@@ -542,7 +558,7 @@ int main( int argc, char ** argv )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				struct block * b = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
 			}
 
@@ -859,7 +875,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				struct block * b = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glpyhid );
 
 				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, bt, glpyhid );
@@ -884,6 +900,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 	// XXX TODO: Test but without the "don't include 0 length runs"
 
 	{
+#ifdef ENCODE_HISTORY
+		int encode_history[ENCODE_HISTORY] = { 0 };
+		int encode_history_head = 0;
+		int total_hist = 0;
+#endif
+
 		int bx, by;
 		uint32_t lastblock[vbh][vbw];
 		uint32_t running[vbh][vbw];
@@ -901,7 +923,41 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				if( running[by][bx] == 0 )
 				{
 					token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-					token_stream[nrtokens++] = glyphid;
+					int emit_glyphid = glyphid;
+#ifdef ENCODE_HISTORY
+					int ihist = (encode_history_head - 1 + ENCODE_HISTORY) % ENCODE_HISTORY;
+					int ihistend = encode_history_head;
+					int ihistr = 0;
+					for( ; ihist != ihistend; ihist = ( ihist - 1 + ENCODE_HISTORY ) % ENCODE_HISTORY )
+					{
+						// TODO: Can we ignore the most common emitted blocks?
+//printf( "Check %d[%d] ==? %d   // %d %d\n", encode_history[ihist], ihist, emit_glyphid, ihist, ihistend ); 
+						if( encode_history[ihist] == emit_glyphid ) break;
+						ihistr++;
+						if( ihistr >= total_hist ) break;
+					}
+					if( ihist != ihistend && encode_history[ihist] == emit_glyphid && raw_block_frequencies[emit_glyphid] < ENCODE_HISTORY_MIN_FOR_SEL )
+					{
+						printf( "HITA %04x (%d %d)\n",  emit_glyphid, emit_glyphid, raw_block_frequencies[emit_glyphid] );
+						emit_glyphid = ihistr | ENCODE_HISTORY_FLAG;
+					}
+					else
+					{
+						encode_history[encode_history_head] = emit_glyphid;
+						encode_history_head = ( encode_history_head + 1 ) % ENCODE_HISTORY;
+						total_hist++;
+					}
+#endif
+
+#ifdef HUFFMAN_ALLOW_CODE_FOR_INVERT
+					int last = lastblock[by][bx];
+					if( (last ^ emit_glyphid) == GLYPH_INVERSION_MASK )
+						token_stream[nrtokens++] = GLYPH_NOATTRIB_MASK;
+					else
+						token_stream[nrtokens++] = emit_glyphid;
+#else
+					token_stream[nrtokens++] = emit_glyphid;
+#endif
 
 					int forward;
 					for( forward = 0; frame + forward < num_video_frames; forward++ )
@@ -967,7 +1023,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			for( i = 0; i < htlen; i++ )
 			{
 				int j;
-				printf( "%4d - %5d - ", i, hu[i].value );
+				printf( "%4d - %4x - ", i, hu[i].value );
 				int len = hu[i].bitlen;
 				printf( "%4d - FREQ:%6d - ", len, hu[i].freq );
 				for( j = 0; j <  len ; j++ )
@@ -1005,67 +1061,18 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		memset( running, 0, sizeof(running) );
 		memset( lastblock, 0, sizeof( lastblock ) );
 
-		// Same as above loop, but we are actually producing compressed output.
-		for( frame = 0; frame < num_video_frames; frame++ )
+		for( i = 0; i < nrtokens; i++ )
 		{
-			for( by = 0; by < video_h/BLOCKSIZE; by++ )
-			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			uint32_t t = token_stream[i];
+			int h;
+			for( h = 0; h < htlen; h++ )
+				if( hu[h].value == t ) break;
+			if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", t ); exit( -6 ); }
+			int b;
+			for( b = 0; b < hu[h].bitlen; b++ )
 			{
-				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
-
-				if( running[by][bx] == 0 )
-				{
-					//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-					//token_stream[nrtokens++] = glyphid;
-
-					// Instead do the compression.
-					int h;
-					for( h = 0; h < htlen; h++ )
-						if( hu[h].value == glyphid ) break;
-					if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", glyphid ); exit( -6 ); }
-					int b;
-//						printf( "EMIT: %04x\n",  glyphid );
-
-					for( b = 0; b < hu[h].bitlen; b++ )
-					{
-						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
-						bitstreamo[bistreamlen++] = hu[h].bitstream[b];
-					}
-
-					int forward;
-					for( forward = 0; frame + forward < num_video_frames; forward++ )
-						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
-							break;
-			
-					if( forward > 1 )
-					{
-						// Actually want frames _in the future_
-						forward--;
-//						printf( "EMIT_F: %04x\n", FLAG_RLE | forward );
-
-						//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
-						//token_stream[nrtokens++] = FLAG_RLE | forward;
-
-						if( forward >= FLAG_RLE )
-						{
-							fprintf( stderr, "Error: Run too long\n" );
-						}
-						for( h = 0; h < htlen; h++ )
-							if( hu[h].value == (FLAG_RLE | forward) ) break;
-						if( h == htlen ) { fprintf( stderr, "Error: Missing symbol %d\n", FLAG_RLE | forward ); exit( -6 ); }
-						for( b = 0; b < hu[h].bitlen; b++ )
-						{
-							bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
-							bitstreamo[bistreamlen++] = hu[h].bitstream[b];
-						}
-					}
-					running[by][bx] = forward;
-					lastblock[by][bx] = glyphid;
-				}
-				else
-				{
-					running[by][bx]--;
-				}
+				bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
+				bitstreamo[bistreamlen++] = hu[h].bitstream[b];
 			}
 		}
 
@@ -1103,6 +1110,13 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		}
 
 
+#ifdef ENCODE_HISTORY
+		memset( encode_history, 0, sizeof(encode_history) );
+		encode_history_head = 0;
+#endif
+
+
+
 		while( bitstream_place < bistreamlen )
 		{
 			CNFGClearFrame();
@@ -1122,6 +1136,33 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						else fprintf( stderr, "Error: Invalid symbol %d\n", c );
 					}
 					uint32_t tok = e->value;
+
+
+#ifdef ENCODE_HISTORY
+					if( tok & ENCODE_HISTORY_FLAG )
+					{
+						int behind = (tok & 0xfff)+1;
+						int histpos = (encode_history_head - behind + ENCODE_HISTORY*2) % ENCODE_HISTORY;
+						tok = encode_history[histpos];
+					}
+					else
+					{
+						encode_history[encode_history_head] = tok;
+						encode_history_head = ( encode_history_head + 1 ) % ENCODE_HISTORY;
+						total_hist++;
+					}
+#endif
+
+
+#ifdef HUFFMAN_ALLOW_CODE_FOR_INVERT
+					if( tok == GLYPH_NOATTRIB_MASK )
+					{
+						tok ^= GLYPH_INVERSION_MASK;
+					}
+#else
+					token_stream[nrtokens++] = emit_glyphid;
+#endif
+
 					lastblock[by][bx] = tok;
 
 					// Peek ahead.
@@ -1153,7 +1194,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				}
 
 				uint32_t glyphid = lastblock[by][bx];
-				struct block * b = &glyphdata[glyphid&GLYPH_INVERSION_MASK];
+				struct block * b = &glyphdata[glyphid&GLYPH_NOATTRIB_MASK];
 				DrawBlock( bx * BLOCKSIZE*2, by * BLOCKSIZE*2, b, true, glyphid );
 				BlockUpdateGif( gifout, bx * BLOCKSIZE*2, by * BLOCKSIZE*2, video_w*2, b->blockdata, glyphid );
 			}

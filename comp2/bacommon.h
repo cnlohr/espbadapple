@@ -13,7 +13,7 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 128
+#define TARGET_GLYPH_COUNT 256
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
 #define KMEANS 2048
@@ -23,7 +23,10 @@
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
 // so theoretically you would need half the total tiles.
-#define ALLOW_GLYPH_INVERSION 0x2000
+#define ALLOW_GLYPH_INVERSION
+// Flip only implemented for COMPRESSION_UNIFIED_BY_BLOCK, overall found to be net loss.
+// In almost all situations.
+//#define ALLOW_GLYPH_FLIP
 
 // DO NOT change this without code changes!
 #ifndef BLOCKSIZE
@@ -51,11 +54,46 @@
 // If you want to try reducing FPS.
 //#define FPS_REDUCTION 2
 
-#ifdef ALLOW_GLYPH_INVERSION
-#define GLYPH_INVERSION_MASK ~ALLOW_GLYPH_INVERSION
-#else
-#define GLYPH_INVERSION_MASK ((uint32_t)-1)
+// If you want to try allowing encode history (only currently implemented on UNIFIED_BY_BLOCK emissions...
+// Turns out it's worse.
+//#define ENCODE_HISTORY 14
+
+// Specifically generate a code for inverting color in huffman tree.
+#define HUFFMAN_ALLOW_CODE_FOR_INVERT
+
+// Speed up videocomp on appropriate systems.
+#define ENABLE_SSE
+
+
+
+
+
+#ifdef ENCODE_HISTORY
+#define ENCODE_HISTORY_FLAG 0x8000
+#define ENCODE_HISTORY_MIN_FOR_SEL 200
 #endif
+
+
+#if defined( HUFFMAN_ALLOW_CODE_FOR_INVERT ) && ! defined( ALLOW_GLYPH_INVERSION )
+#error Can't disable huffman invert and glyph inversion.
+#endif
+
+#if defined( ALLOW_GLYPH_INVERSION ) || defined( ALLOW_GLYPH_FLIP )
+#define ALLOW_GLYPH_ATTRIBUTES
+#endif
+
+
+#if defined( ALLOW_GLYPH_ATTRIBUTES )
+#define GLYPH_NOATTRIB_MASK 0x7ff
+#else
+#define GLYPH_NOATTRIB_MASK 0x3fff
+#define GLYPH_NOATTRIB_MASK ((uint32_t)-1)
+#endif
+
+// Just FYI the top two bits are stored for huffman tree properties and "is it a glyph or RLE?"
+#define GLYPH_INVERSION_MASK 0x2000
+#define GLYPH_FLIP_X_MASK    0x1000
+#define GLYPH_FLIP_Y_MASK    0x0800
 
 
 #if BLOCKSIZE==8
@@ -146,14 +184,16 @@ void DrawBlock( int xofs, int yofs, struct block * bb, int boolean, int original
 	int x, y;
 
 #ifdef ALLOW_GLYPH_INVERSION
-	uint32_t invertmask = (original_glyph_id&ALLOW_GLYPH_INVERSION)?0xffffff:0x000000;
+	uint32_t invertmask = (original_glyph_id&GLYPH_INVERSION_MASK)?0xffffff:0x000000;
 #else
 	uint32_t invertmask = 0;
 #endif
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		uint32_t v = boo[x+y*BLOCKSIZE] ^ invertmask;
+		int iy = ( original_glyph_id & GLYPH_FLIP_Y_MASK ) ? (BLOCKSIZE - 1 - y) : y;
+		int ix = ( original_glyph_id & GLYPH_FLIP_X_MASK ) ? (BLOCKSIZE - 1 - x) : x;
+		uint32_t v = boo[ix+iy*BLOCKSIZE] ^ invertmask;
 		bobig[(2*x+0) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+1) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+0) + (2*y+1)*BLOCKSIZE*2] = v;
@@ -193,7 +233,7 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb, 
 //	uint32_t bobig[BLOCKSIZE*BLOCKSIZE*4];
 	int x, y;
 #ifdef ALLOW_GLYPH_INVERSION
-	uint32_t invertmask = (original_glyph_id&ALLOW_GLYPH_INVERSION)?0x1:0x0;
+	uint32_t invertmask = (original_glyph_id&GLYPH_INVERSION_MASK)?0x1:0x0;
 #else
 	uint32_t invertmask = 0;
 #endif
@@ -201,7 +241,9 @@ void DrawBlockGif( ge_GIF * gif, int xofs, int yofs, int vw, struct block * bb, 
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		char b = boo[x+y*BLOCKSIZE] ^ invertmask;
+		int iy = ( original_glyph_id & GLYPH_FLIP_Y_MASK ) ? (BLOCKSIZE - 1 - y) : y;
+		int ix = ( original_glyph_id & GLYPH_FLIP_X_MASK ) ? (BLOCKSIZE - 1 - x) : x;
+		char b = boo[ix+iy*BLOCKSIZE] ^ invertmask;
 		uint8_t * v = gif->frame;
 		v[(2*x+0+xofs) + (2*y+0 + yofs)*vw] = b;
 		v[(2*x+1+xofs) + (2*y+0 + yofs)*vw] = b;

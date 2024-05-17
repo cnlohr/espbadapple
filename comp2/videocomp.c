@@ -23,21 +23,38 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 {
 	int j;
 	float diff = 0;
-/*	const float * ib = b->intensity;
-	const float * ic = c->intensity;
-	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
-	{
-		float id = (ib[j] - ic[j]);
-		//diff += id*id;
-		if( id < 0 ) id *= -1;
-		diff += id;
-	}
-	return  diff ;
-*/
 		if( ((uintptr_t)&b->intensity[0])&31 || ((uintptr_t)&c->intensity[0])&31 )
 		{
 			printf( "%p %p\n", &b->intensity[0], &c->intensity[0] );
 		}
+
+	const float * ccheckptr = c->intensity;
+
+#ifdef ALLOW_GLYPH_FLIP
+	int flip;
+	float flipdiff = 1e20;
+	int flipinvtype = 0;
+	int bestflip = 0;
+	float ccheck[BLOCKSIZE*BLOCKSIZE] __attribute__((aligned(256)));
+	memcpy( ccheck, ccheckptr, sizeof( ccheck ) );
+	ccheckptr = ccheck;
+	for( flip = 0; flip <= GLYPH_FLIP_Y_MASK + GLYPH_FLIP_X_MASK; flip += GLYPH_FLIP_Y_MASK )
+	{
+		const float * src = &c->intensity[0];
+		int x, y;
+		for( y = 0; y < BLOCKSIZE; y++ )
+		for( x = 0; x < BLOCKSIZE; x++ )
+		{
+			int iy = ( flip & GLYPH_FLIP_Y_MASK ) ? (BLOCKSIZE - 1 - y) : y;
+			int ix = ( flip & GLYPH_FLIP_X_MASK ) ? (BLOCKSIZE - 1 - x) : x;
+			ccheck[x+y*BLOCKSIZE] = src[ix+iy*BLOCKSIZE];
+		}
+		diff = 0;
+#endif
+
+
+
+#ifdef ENABLE_SSE
 
 	__m256 diffs = _mm256_set1_ps( 0 );
 	const __m256 signmask = _mm256_set1_ps( -0.0f );
@@ -45,7 +62,7 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 	{
 		__m256 intensityb, intensityc, diffhere;
 		intensityb = _mm256_load_ps( &b->intensity[j] );
-		intensityc = _mm256_load_ps( &c->intensity[j] );
+		intensityc = _mm256_load_ps( &ccheckptr[j] );
 		diffhere = _mm256_sub_ps( intensityb, intensityc );
 
 #ifdef MSE
@@ -75,7 +92,7 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 	{
 		__m256 intensityb, intensityc, diffhere;
 		intensityb = _mm256_load_ps( &b->intensity[j] );
-		intensityc = _mm256_load_ps( &c->intensity[j] );
+		intensityc = _mm256_load_ps( &ccheckptr[j] );
 
 		intensityc = _mm256_sub_ps( submask, intensityc );
 
@@ -105,7 +122,7 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 	else
 	{
 		if( inversiontype )
-			*inversiontype = 1;
+			*inversiontype = GLYPH_INVERSION_MASK;
 	}
 #else
 	{
@@ -113,8 +130,68 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 			*inversiontype = 0;
 	}
 #endif
+#else
+
+	// Non-SSE Fallback
+
+	const float * ib = b->intensity;
+	const float * ic = ccheckptr;
+	diff = 0;
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
+	{
+		float id = (ib[j] - ic[j]);
+#ifdef MSE
+		diff += id*id;
+#else
+		if( id < 0 ) id *= -1;
+		diff += id;
+#endif
+	}
+#ifdef ALLOW_GLYPH_INVERSION
+	float invdiff = 0;
+	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
+	{
+		float id = (ib[j] - (1.0 - ic[j]));
+#ifdef MSE
+		invdiff += id*id;
+#else
+		if( id < 0 ) id *= -1;
+		invdiff += id;
+#endif
+	}
+	if( invdiff < diff )
+	{
+		diff = invdiff;
+		if( inversiontype )
+			*inversiontype = GLYPH_INVERSION_MASK;
+	}
+	else
+	{
+		if( inversiontype )
+			*inversiontype = 0;
+	}
+	
+#endif
+
+#endif
 
 
+
+#ifdef ALLOW_GLYPH_FLIP
+		int ik;
+		if( diff < flipdiff )
+		{
+			bestflip = flip;
+			flipdiff = diff;
+			if( inversiontype )
+				flipinvtype = *inversiontype;
+		}
+	}
+
+	if( inversiontype )
+		*inversiontype = flipinvtype | bestflip;
+	diff = flipdiff;
+#endif
 
 #ifdef MSE
 	return sqrt(diff);
@@ -148,6 +225,16 @@ void AppendBlock( struct block * bck )
 	struct block * check = allblocks;
 	struct block * bend = check + numblocks;
 
+
+#ifdef ALLOW_GLYPH_FLIP
+//	int flip;
+//	for( flip = 0; flip <= GLYPH_FLIP_Y_MASK + GLYPH_FLIP_X_MASK; flip += GLYPH_FLIP_Y_MASK )
+//	{
+//		BBASSIGN( b, bck->blockdata );
+//		// Permute B accordingly, so we can check it.
+// I don't think we need to do anything here.
+#endif
+
 	while( check != bend )
 	{
 
@@ -156,6 +243,7 @@ void AppendBlock( struct block * bck )
 #else
 		if( memcmp( check->blockdata, b, sizeof(b) ) == 0 ) break;
 #endif
+
 
 #ifdef ALLOW_GLYPH_INVERSION
 #if BLOCKSIZE==8
@@ -168,8 +256,15 @@ void AppendBlock( struct block * bck )
 		if( k == sizeof(b)/sizeof(b[0]) ) break;
 #endif
 #endif
+
+
 		check++;
 	}
+
+#ifdef ALLOW_GLYPH_FLIP
+// I don't think we need to do anything here.
+//	}
+#endif
 
 	if( check == bend )
 	{
@@ -334,10 +429,16 @@ void ComputeKMeans()
 
 			for( i = 0; i < BLOCKSIZE*BLOCKSIZE; i++ )
 			{
-				if( compinv )
-					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += (1.0-b->intensity[i]) * b->count;
+				int iuse = i;
+				if( compinv & GLYPH_FLIP_X_MASK )
+					iuse = (BLOCKSIZE - 1 - (iuse % BLOCKSIZE)) + (iuse/BLOCKSIZE)*BLOCKSIZE;
+				if( compinv & GLYPH_FLIP_Y_MASK )
+					iuse = (iuse  % BLOCKSIZE) + (BLOCKSIZE - 1 - (iuse/BLOCKSIZE))*BLOCKSIZE;
+
+				if( compinv & GLYPH_INVERSION_MASK )
+					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += (1.0-b->intensity[iuse]) * b->count;
 				else
-					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += b->intensity[i] * b->count;
+					mkd_val[(BLOCKSIZE * BLOCKSIZE) * mink + i] += b->intensity[iuse] * b->count;
 			}
 			mkd_cnt[mink] += b->count;
 		}
@@ -540,10 +641,6 @@ void ComputeKMeans()
 				}
 			}
 
-#ifdef ALLOW_GLYPH_INVERSION
-			if( inv ) inv = ALLOW_GLYPH_INVERSION;
-#endif
-
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, bb, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, inv );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, inv );
@@ -613,19 +710,12 @@ void ComputeKMeans()
 			}
 
 
-#ifdef ALLOW_GLYPH_INVERSION
-			if( invert ) invert = ALLOW_GLYPH_INVERSION;
-#endif
-
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, invert );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, invert );
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 
-#ifdef ALLOW_GLYPH_INVERSION
-			if( invert )
-				minkwrite |= ALLOW_GLYPH_INVERSION;			
-#endif
+			minkwrite |= invert;			
 
 			fwrite( &minkwrite, sizeof( minkwrite ), 1, fStream );
 		}
