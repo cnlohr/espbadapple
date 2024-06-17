@@ -1449,7 +1449,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 #ifdef HUFFMAN_ALLOW_CODE_FOR_INVERT
 					if( tok == GLYPH_NOATTRIB_MASK )
 					{
-						tok ^= GLYPH_INVERSION_MASK;
+						tok = lastblock[by][bx] ^ GLYPH_INVERSION_MASK;
 					}
 #endif
 
