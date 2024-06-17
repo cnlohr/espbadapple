@@ -13,7 +13,7 @@
 //#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 256
+#define TARGET_GLYPH_COUNT 192
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
 #define KMEANS 2048
@@ -23,7 +23,7 @@
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
 // so theoretically you would need half the total tiles.
-#define ALLOW_GLYPH_INVERSION
+//#define ALLOW_GLYPH_INVERSION
 
 // Flip only implemented for COMPRESSION_UNIFIED_BY_BLOCK, overall found to be net loss.
 // In almost all situations.
@@ -60,16 +60,23 @@
 //#define ENCODE_HISTORY 14
 
 // Specifically generate a code for inverting color in huffman tree.
-#define HUFFMAN_ALLOW_CODE_FOR_INVERT
+//#define HUFFMAN_ALLOW_CODE_FOR_INVERT
 
 // Speed up videocomp on appropriate systems.
 #define ENABLE_SSE
 
 
-// I discovered this was acutally pretty bad. It's a huffman on the RLE of the glpyh data.
+//I stopped developing this route - cnl.
+// I discovered this was acutally pretty bad. It's a huffman on the RLE of the glpyh data. - roughly 1.5x bigger
 //#define GLYPH_COMPRESS_HUFFMAN_RUNS
-// Instead try doing it by data. OK This is bad, too.
+// Instead try doing it by data. OK This is bad, too. This does it on each 8-bit line of the glyph. - roughly 1.25x bigger.
 //#define GLYPH_COMPRESS_HUFFMAN_DATA
+
+// Suppress tile updates in output image, unless they change nontrivially. (sets the score)
+#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	10
+
+
+
 
 
 

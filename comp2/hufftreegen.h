@@ -258,10 +258,8 @@ huffup * GenPairTable( huffelement * table, int * htlen )
 int HuffmanAppendHelper( hufftype ** vals, hufffreq ** counts, int elems, hufftype t )
 {
 	int j;
-	printf( "Appending %d to list\n", t );
 	for( j = 0; j < elems; j++ )
 	{
-		printf( "Comping %d / %d / %d\n", j, (*vals)[j], t );
 		if( (*vals)[j] == t )
 		{
 			(*counts)[j]++;

@@ -416,7 +416,7 @@ int main( int argc, char ** argv )
 			hufftree[wt] = GenerateHuffmanTree( unique_tokens[wt], token_counts[wt], unique_tok_ct[wt], &hufflen[wt] );
 			printf( "Huff len: %d\n", hufflen[wt] );
 			hu[wt] = GenPairTable( hufftree[wt], &htlen[wt] );
-#if 1
+#if 0
 			for( i = 0; i < htlen[wt]; i++ )
 			{
 				int j;
@@ -949,6 +949,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					}
 #endif
 
+
 #ifdef HUFFMAN_ALLOW_CODE_FOR_INVERT
 					int last = lastblock[by][bx];
 					if( (last ^ emit_glyphid) == GLYPH_INVERSION_MASK )
@@ -961,8 +962,10 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 					int forward;
 					for( forward = 0; frame + forward < num_video_frames; forward++ )
+					{
 						if( streamdata[(bx+by*(vbw)) + vbw*vbh * (frame + forward)] != glyphid )
 							break;
+					}
 			
 					if( forward > 1 )
 					{
@@ -1231,6 +1234,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			hufftype * gcodes = 0;
 			hufffreq * gcounts = 0;
 			int numgs = 0;
+			int prev1 = -1;
+			int prev2 = -2;
 			for( i = 0; i < glyphct; i++ )
 			{
 				struct block * bb = glyphdata + i;
@@ -1240,7 +1245,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				for( b = 0; b < 8; b++ )
 				{
 					uint8_t line = ((bb->blockdata) >> (b*8)) & 0xff;
-					numgs = HuffmanAppendHelper( &gcodes, &gcounts, numgs, line );
+					int code = line;
+					if( line == prev1 ) code = 0xff; //XXX WARNING this is where we limit to 253 glyphs
+					else if( line == prev2 ) code = 0xfe;
+					prev2 = prev1;
+					prev1 = line;
+					numgs = HuffmanAppendHelper( &gcodes, &gcounts, numgs, code );
 				}
 			}
 			int hufflen = 0;
@@ -1267,6 +1277,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				fprintf( stderr, "Error: Glyph compression output not valid for this situation (HL: %d)\n", hufflen );
 				return -44;
 			}
+
 			for( i = 0; i < hufflen; i++ )
 			{
 				huffelement * e = het + i;
@@ -1301,6 +1312,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			fgo = fopen( "glyphstream_out_data.dat", "wb" );
 			uint8_t runout = 0;
 			uint8_t runcount = 0;
+			prev1 = -1;
+			prev2 = -2;
 			for( i = 0; i < glyphct; i++ )
 			{
 				struct block * bb = glyphdata + i;
@@ -1309,7 +1322,14 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				int run = 0;
 				for( b = 0; b < 8; b++ )
 				{
-					uint8_t line = ((bb->blockdata) >> (b*8)) & 0xff;
+					uint8_t line_check = ((bb->blockdata) >> (b*8)) & 0xff;
+
+					int line = line_check;
+					if( line_check == prev1 ) line = 0xff; //XXX WARNING this is where we limit to 253 glyphs
+					else if( line_check == prev2 ) line = 0xfe;
+					prev2 = prev1;
+					prev1 = line_check;
+
 					int j;
 					for( j = 0; j < hulen; j++ )
 					{
@@ -1370,12 +1390,55 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 		//CNFGSwapBuffers();
 		printf( "Bitstream Length Bits: %d\n", bistreamlen );
-		printf( "Huff Length: %d\n", hufflen * 32 );
+		printf( "Huff Length: %d\n", hufflen * 24 );
 		printf( "Glyph Length Bits: %d -> %d (compressed if used) \n", glyphct * BLOCKSIZE * BLOCKSIZE, glyphcompbits );
-		int total_bits = bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE;
-		printf( "Total: %d\n", bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE ); 
+		int total_bits = bistreamlen + hufflen * 24 +glyphct * BLOCKSIZE * BLOCKSIZE;
+		printf( "Total: %d\n", bistreamlen + hufflen * 24 +glyphct * BLOCKSIZE * BLOCKSIZE ); 
 		printf( "Bytes: %d\n", (total_bits+7)/8 );
 		printf( "Bits Per Frame: %.1f\n", (float)total_bits/(float)num_video_frames );
+
+		FILE * fH = fopen( "huffman_tree_table.dat", "wb" );
+		int ema = 0, emv = 0;
+		for( i = 0; i < hufflen; i++ )
+		{
+			huffelement * e = hufftree + i;
+			int A, B;
+			if( e->is_term )
+			{
+				if( e->value > 0xffff )
+				{
+					fprintf( stderr, "Error: Invalid value (%04x)\n", e->value );
+					return -6;
+				}
+				A = e->value & 0xff;
+				B = e->value >> 8;
+				if( e->value > emv ) emv = e->value;
+				B |= 0x800;
+			}
+			else
+			{
+				// This makes it easier to compress if we compress this.
+				A = e->pair0 - i;
+				B = e->pair1 - i;
+				if( A < 0 || B < 0 )
+				{
+					fprintf( stderr, "Error: Huffman tree going backwards\n" );
+				}
+
+				if( ema < A ) ema = A;
+				if( ema < B ) ema = B;
+
+				if( A > 0x7ff || B > 0x7ff )
+				{
+					fprintf( stderr, "Too Big (%d %d)\n", A, B );
+					return -5;
+				}
+			}
+			uint32_t VO = A | (B << 12);
+			fwrite( &VO, 3, 1, fH );
+		}
+		printf( "Max Huff ID: %d / %d\n", ema, emv );
+		fclose( fH );
 
 		int bitstream_place = 0;
 		//char * bitstreamo = 0;
@@ -1444,7 +1507,6 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						total_hist++;
 					}
 #endif
-
 
 #ifdef HUFFMAN_ALLOW_CODE_FOR_INVERT
 					if( tok == GLYPH_NOATTRIB_MASK )

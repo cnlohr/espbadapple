@@ -677,13 +677,25 @@ void ComputeKMeans()
 	void * btfree;
 	struct block * btemp = alignedcalloc( sizeof(struct block), 5, &btfree );
 
+	int blkw = video_w/BLOCKSIZE;
+	int blkh = video_h/BLOCKSIZE;
+	int32_t lastmink[blkw * blkh];
+	int32_t lastmink_write[blkw * blkh];
+	float lastmink_histused[blkw * blkh];
+	for( i = 0; i < blkw * blkh; i++ )
+	{
+		lastmink[i] = -1;
+		lastmink_write[i] = -1;
+		lastmink_histused[i] = 0;
+	}
+
 	for( videoframeno = 0; videoframeno < num_video_frames; videoframeno++ )
 	{
 		int x, y;
 		CNFGClearFrame();
 		// Use new k-means blocks to render next video frame.
-		for( y = 0; y < video_h/BLOCKSIZE; y++ )
-		for( x = 0; x < video_w/BLOCKSIZE; x++ )
+		for( y = 0; y < blkh; y++ )
+		for( x = 0; x < blkw; x++ )
 		{
 			uint8_t * tbuf = &rawVideoData[videoframeno*video_w*video_h];
 			ExtractBlock( tbuf, video_w, video_h, x, y, btemp );
@@ -709,6 +721,28 @@ void ComputeKMeans()
 				outkmid++;
 			}
 
+#if defined( REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES )
+			int lmk_in = lastmink[x + y * blkw];
+			int lmk_in_w = lastmink_write[x + y * blkw];
+			if( lmk_in >= 0 )
+			{
+				int lmk_inv = lmk_in_w & GLYPH_INVERSION_MASK;
+				int ltinv = 0;
+				float lastDist = ComputeDistance( btemp, &kmeanses[lmk_in], &ltinv );
+				if( ltinv == lmk_inv && lastDist + lastmink_histused[x+y*blkw]  < REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES )
+				{
+					// Override and don't update cell.
+					mink = lmk_in;
+					minkwrite = lastmink_write[x+y*blkw];
+					invert = ltinv;
+					lastmink_histused[x+y*blkw] += sqrt( lastDist );
+				}
+				else
+				{
+					lastmink_histused[x+y*blkw] = 0;
+				}
+			}
+#endif
 
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, invert );
@@ -716,6 +750,8 @@ void ComputeKMeans()
 			//memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
 
 			minkwrite |= invert;			
+			lastmink[x + y * blkw] = mink;
+			lastmink_write[x + y * blkw] = minkwrite;
 
 			fwrite( &minkwrite, sizeof( minkwrite ), 1, fStream );
 		}
