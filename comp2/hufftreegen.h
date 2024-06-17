@@ -32,6 +32,8 @@ typedef struct
 	hufftype value;
 } huffelement;
 
+int HuffmanAppendHelper( hufftype ** vals, hufffreq ** counts, int elems, hufftype t );
+
 huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int numpairs, int * hufflen );
 
 typedef struct
@@ -251,6 +253,27 @@ huffup * GenPairTable( huffelement * table, int * htlen )
 	InternalHuffT( table, 0, &ret, &huffuplen, &dstr, &dstrlen );
 	if( htlen ) *htlen = huffuplen;
 	return ret;
+}
+
+int HuffmanAppendHelper( hufftype ** vals, hufffreq ** counts, int elems, hufftype t )
+{
+	int j;
+	printf( "Appending %d to list\n", t );
+	for( j = 0; j < elems; j++ )
+	{
+		printf( "Comping %d / %d / %d\n", j, (*vals)[j], t );
+		if( (*vals)[j] == t )
+		{
+			(*counts)[j]++;
+			return elems;
+		}
+	}
+	elems++;
+	*vals = realloc( *vals, (elems)*sizeof(hufftype) );
+	*counts = realloc( *counts, (elems)*sizeof(hufffreq) );
+	(*vals)[elems-1] = t;
+	(*counts)[elems-1] = 1;
+	return elems;
 }
 
 #endif

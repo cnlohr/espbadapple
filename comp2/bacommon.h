@@ -24,6 +24,7 @@
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
 // so theoretically you would need half the total tiles.
 #define ALLOW_GLYPH_INVERSION
+
 // Flip only implemented for COMPRESSION_UNIFIED_BY_BLOCK, overall found to be net loss.
 // In almost all situations.
 //#define ALLOW_GLYPH_FLIP
@@ -65,6 +66,10 @@
 #define ENABLE_SSE
 
 
+// I discovered this was acutally pretty bad. It's a huffman on the RLE of the glpyh data.
+//#define GLYPH_COMPRESS_HUFFMAN_RUNS
+// Instead try doing it by data. OK This is bad, too.
+//#define GLYPH_COMPRESS_HUFFMAN_DATA
 
 
 
@@ -75,7 +80,7 @@
 
 
 #if defined( HUFFMAN_ALLOW_CODE_FOR_INVERT ) && ! defined( ALLOW_GLYPH_INVERSION )
-#error Can't disable huffman invert and glyph inversion.
+#error Cant disable huffman invert and glyph inversion.
 #endif
 
 #if defined( ALLOW_GLYPH_INVERSION ) || defined( ALLOW_GLYPH_FLIP )
@@ -87,7 +92,6 @@
 #define GLYPH_NOATTRIB_MASK 0x7ff
 #else
 #define GLYPH_NOATTRIB_MASK 0x3fff
-#define GLYPH_NOATTRIB_MASK ((uint32_t)-1)
 #endif
 
 // Just FYI the top two bits are stored for huffman tree properties and "is it a glyph or RLE?"

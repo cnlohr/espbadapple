@@ -1076,10 +1076,302 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			}
 		}
 
+
+		//////////////////////////////////////////////////////////////////////////
+		// GLYPH COMPRESSION
+		//////////////////////////////////////////////////////////////////////////
+
+		int glyphcompbits = 0;
+#ifdef GLYPH_COMPRESS_HUFFMAN
+#if BLOCKSIZE!=8
+		#error GLYPH_COMPRESS_HUFFMAN only works on 8-bit tiles
+#endif
+		{
+			// Try glyph compression
+			hufftype * gcodes = 0;
+			hufffreq * gcounts = 0;
+			int numgs = 0;
+			uint32_t * runs = 0;
+			int numruns = 0;
+			for( i = 0; i < glyphct; i++ )
+			{
+				struct block * bb = glyphdata + i;
+				int b;
+				int rc = 0;
+				int run = 0;
+				for( b = 0; b < 64; b++ )
+				{
+					if( rc != ((bb->blockdata>>b)&1) )
+					{
+						numgs = HuffmanAppendHelper( &gcodes, &gcounts, numgs, run );
+						runs = realloc( runs, (numruns+1)*sizeof(runs[0]));
+						runs[numruns] = run;
+						numruns++;
+						run = 0;
+					}
+					else
+					{
+						run++;
+					}
+				}
+				numgs = HuffmanAppendHelper( &gcodes, &gcounts, numgs, run );
+				runs = realloc( runs, (numruns+1)*sizeof(runs[0]));
+				runs[numruns] = run;
+				numruns++;
+			}
+			int i;
+			printf( "Numgsx: %d\n", numgs );
+			for( i = 0; i < numgs; i++ )
+			{
+				printf( "%3d-%3d-%3d\n", i, gcounts[i], gcodes[i] );
+			}
+			int hufflen = 0;
+			huffelement * het = GenerateHuffmanTree( gcodes, gcounts, numgs, &hufflen );
+
+			int hulen = 0;
+			huffup * hu = GenPairTable( het, &hulen );
+
+#if 0
+			printf( "HuffLens: %d %d\n", hufflen, hulen );
+			for( i = 0; i < hulen; i++ )
+			{
+				huffup * u = hu + i;
+				printf( "%3d%5d - ", u->value, u->freq );
+				int k = 0;
+				for( k = 0; k < u->bitlen; k++ )
+					printf( "%c", u->bitstream[k] + '0' );
+				printf( "\n" );
+			}
+#endif
+			FILE * fgo = fopen( "glyphstream_out_table.dat", "wb" );
+			if( hufflen > 255 )
+			{
+				fprintf( stderr, "Error: Glyph compression output not valid for this situation (HL: %d)\n", hufflen );
+				return -44;
+			}
+			for( i = 0; i < hufflen; i++ )
+			{
+				huffelement * e = het + i;
+				uint8_t A = 0;
+				uint8_t B = 0;
+				if( e->is_term )
+				{
+					A = 0;
+					if( e->value > 255 )
+					{
+						fprintf( stderr, "Error: Glyph compression output not valid for this situation (GV: %d)\n", e->value );
+						return -44;
+					}
+					B = e->value;
+				}
+				else
+				{
+					if( e->pair0 == 0 )
+					{
+						fprintf( stderr, "Error: Glyph compression output not valid for this situation (PAIR0: %d)\n", e->pair0 );
+						return -44;
+					}
+					A = e->pair0;
+					B = e->pair1;
+				}
+				fwrite( &A, 1, 1, fgo );
+				fwrite( &B, 1, 1, fgo );
+				glyphcompbits += 16;
+			}
+			fclose( fgo );
+
+			fgo = fopen( "glyphstream_out_data.dat", "wb" );
+			uint8_t runout = 0;
+			uint8_t runcount = 0;
+			for( i = 0; i < numruns; i++ )
+			{
+				uint32_t r = runs[i];
+				int j;
+				for( j = 0; j < hulen; j++ )
+				{
+					huffup * u = hu + j;
+					if( u->value == r )
+					{
+						int bl = u->bitlen;
+						glyphcompbits += bl;
+						int t;
+						for( t = 0; t < bl; t++ )
+						{
+							runout |= u->bitstream[t];
+							runout<<=1;
+							runcount++;
+							if( runcount == 8 )
+							{
+								runcount = 0;
+								fwrite( &runout, 1, 1, fgo );
+								runout = 0;
+								glyphcompbits+=8;
+							}
+						}
+						break;
+					}
+				}
+				if( j == hulen )
+				{
+					fprintf( stderr, "Error: could not find glyph element %d in table\n", r );
+				}
+			}
+			if( runcount )
+			{
+				fwrite( &runout, 1, 1, fgo );
+				glyphcompbits+=8;
+			}
+		}
+#elif defined( GLYPH_COMPRESS_HUFFMAN_DATA )
+#if BLOCKSIZE!=8
+		#error GLYPH_COMPRESS_HUFFMAN only works on 8-bit tiles
+#endif
+		{
+			// Try glyph compression
+			hufftype * gcodes = 0;
+			hufffreq * gcounts = 0;
+			int numgs = 0;
+			for( i = 0; i < glyphct; i++ )
+			{
+				struct block * bb = glyphdata + i;
+				int b;
+				int rc = 0;
+				int run = 0;
+				for( b = 0; b < 8; b++ )
+				{
+					uint8_t line = ((bb->blockdata) >> (b*8)) & 0xff;
+					numgs = HuffmanAppendHelper( &gcodes, &gcounts, numgs, line );
+				}
+			}
+			int hufflen = 0;
+			huffelement * het = GenerateHuffmanTree( gcodes, gcounts, numgs, &hufflen );
+
+			int hulen = 0;
+			huffup * hu = GenPairTable( het, &hulen );
+
+#if 1
+			printf( "HuffLens: %d %d\n", hufflen, hulen );
+			for( i = 0; i < hulen; i++ )
+			{
+				huffup * u = hu + i;
+				printf( "%3d %5d - ", u->value, u->freq );
+				int k = 0;
+				for( k = 0; k < u->bitlen; k++ )
+					printf( "%c", u->bitstream[k] + '0' );
+				printf( "\n" );
+			}
+#endif
+			FILE * fgo = fopen( "glyphstream_out_table.dat", "wb" );
+			if( hufflen > 255 )
+			{
+				fprintf( stderr, "Error: Glyph compression output not valid for this situation (HL: %d)\n", hufflen );
+				return -44;
+			}
+			for( i = 0; i < hufflen; i++ )
+			{
+				huffelement * e = het + i;
+				uint8_t A = 0;
+				uint8_t B = 0;
+				if( e->is_term )
+				{
+					A = 0;
+					if( e->value > 255 )
+					{
+						fprintf( stderr, "Error: Glyph compression output not valid for this situation (GV: %d)\n", e->value );
+						return -44;
+					}
+					B = e->value;
+				}
+				else
+				{
+					if( e->pair0 == 0 )
+					{
+						fprintf( stderr, "Error: Glyph compression output not valid for this situation (PAIR0: %d)\n", e->pair0 );
+						return -44;
+					}
+					A = e->pair0;
+					B = e->pair1;
+				}
+				fwrite( &A, 1, 1, fgo );
+				fwrite( &B, 1, 1, fgo );
+				glyphcompbits += 16;
+			}
+			fclose( fgo );
+
+			fgo = fopen( "glyphstream_out_data.dat", "wb" );
+			uint8_t runout = 0;
+			uint8_t runcount = 0;
+			for( i = 0; i < glyphct; i++ )
+			{
+				struct block * bb = glyphdata + i;
+				int b;
+				int rc = 0;
+				int run = 0;
+				for( b = 0; b < 8; b++ )
+				{
+					uint8_t line = ((bb->blockdata) >> (b*8)) & 0xff;
+					int j;
+					for( j = 0; j < hulen; j++ )
+					{
+						huffup * u = hu + j;
+						if( u->value == line )
+						{
+							int bl = u->bitlen;
+							glyphcompbits += bl;
+							int t;
+							for( t = 0; t < bl; t++ )
+							{
+								runout |= u->bitstream[t];
+								runout<<=1;
+								runcount++;
+								if( runcount == 8 )
+								{
+									runcount = 0;
+									fwrite( &runout, 1, 1, fgo );
+									runout = 0;
+									glyphcompbits+=8;
+								}
+							}
+							break;
+						}
+					}
+					if( j == hulen )
+					{
+						fprintf( stderr, "Error: could not find glyph element %d in table\n", line );
+					}
+				}
+			}
+			if( runcount )
+			{
+				fwrite( &runout, 1, 1, fgo );
+				glyphcompbits+=8;
+			}
+		}
+#endif
+
+
+
+		{
+			FILE * fgo = fopen( "glyph_stream_raw.dat", "wb" );
+			for( i = 0; i < glyphct; i++ )
+			{
+				struct block * bb = glyphdata + i;
+#if BLOCKSIZE==8
+				fwrite( &bb->blockdata, sizeof( bb->blockdata ), 1, fgo );
+#elif BLOCKSIZE==16
+				fwrite( bb->blockdata, sizeof( bb->blockdata ), 1, fgo );
+#else 
+				#error Confusing blocksize.
+#endif
+			}
+			fclose( fgo );
+		}
+
+
 		//CNFGSwapBuffers();
 		printf( "Bitstream Length Bits: %d\n", bistreamlen );
 		printf( "Huff Length: %d\n", hufflen * 32 );
-		printf( "Glyph Length: %d\n", glyphct * BLOCKSIZE * BLOCKSIZE );
+		printf( "Glyph Length Bits: %d -> %d (compressed if used) \n", glyphct * BLOCKSIZE * BLOCKSIZE, glyphcompbits );
 		int total_bits = bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE;
 		printf( "Total: %d\n", bistreamlen + hufflen * 32 +glyphct * BLOCKSIZE * BLOCKSIZE ); 
 		printf( "Bytes: %d\n", (total_bits+7)/8 );
@@ -1159,8 +1451,6 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					{
 						tok ^= GLYPH_INVERSION_MASK;
 					}
-#else
-					token_stream[nrtokens++] = emit_glyphid;
 #endif
 
 					lastblock[by][bx] = tok;
