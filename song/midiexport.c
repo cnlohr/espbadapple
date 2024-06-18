@@ -215,6 +215,9 @@ int main( int argc, char ** argv )
 	qsort( AllNoteEvents, notehead, sizeof( AllNoteEvents[0] ), NoteCompare );
 
 	int i;
+
+	FILE * fMRaw = fopen( "fmraw.dat", "wb" );
+	int eLastTime = 0;
 	for( i = 0; i < notehead; i++ )
 	{
 		struct NoteEvent * e = &AllNoteEvents[i];
@@ -228,9 +231,23 @@ int main( int argc, char ** argv )
 			if( e->Note < 1 )
 				e->Disable = 1;
 		}
-		fprintf( stderr, "%5d %4d %d %3d %d\n",
-			e->OnTime, e->OffTime - e->OnTime, e->Track, e->Note, e->Velocity );
+
+		if( !e->Disable )
+		{
+			fprintf( stderr, "%6d / %4d %4d %d %3d %d\n",
+				e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity );
+			uint8_t note_and_track = e->Note | (e->Track<<7);
+			uint16_t duration = (e->OffTime - e->OnTime);
+			uint16_t deltatime = (e->OnTime - eLastTime + 1);
+			uint8_t combda = duration/240 + (deltatime/240)<<4; 
+
+			// For video, show how big it is if you gzip with all the data, it's bigger than heatshrink after remvoing the entropy
+			fwrite( &combda, 1, 1, fMRaw );
+			fwrite( &note_and_track, 1, 1, fMRaw );
+			eLastTime = e->OnTime;
+		}
 	}
+	fclose( fMRaw );
 
 	#define NUM_VOICES 4
 	struct NoteEvent * voices[NUM_VOICES] = { 0 };
@@ -258,7 +275,7 @@ int main( int argc, char ** argv )
 				}
 				else
 				{
-					fprintf( stderr, "Adding %d (%d/%d) [%d]\n", nn->Note, t, highesttime, i );
+					//fprintf( stderr, "Adding %d (%d/%d) [%d]\n", nn->Note, t, highesttime, i );
 					voices[i] = nn;
 					fsin[i] = 0;
 				}
@@ -288,7 +305,7 @@ int main( int argc, char ** argv )
 					placeins *= 2.0;
 
 					int ofs = 2.0;
-					if( v->Track == 0 )
+					if( v->Track == 0 || 1 )
 					{
 						if( placeins > 1.0 ) placeins = 2.0 - placeins;
 						placeins = placeins * 2.0 - 1.0;
@@ -296,7 +313,7 @@ int main( int argc, char ** argv )
 					}
 					else
 					{
-						// A Tiny bit harher.
+						// A Tiny bit harher.  (Currently off)
 						if( placeins > 1.0 ) placeins = 2.0 - placeins;
 						placeins = placeins * 2.0 - 1.0;
 						placeins *= 0.5;
@@ -316,7 +333,7 @@ int main( int argc, char ** argv )
 		for( i = 0; i < NUM_VOICES; i++ )
 			if( voices[i] && t >= voices[i]->OffTime )
 			{
-				fprintf( stderr, "Removing %d [%d]\n", voices[i]->Note, i );
+				//fprintf( stderr, "Removing %d [%d]\n", voices[i]->Note, i );
 				voices[i] = 0;
 			}
 	}

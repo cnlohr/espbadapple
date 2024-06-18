@@ -33,13 +33,12 @@ video-${RES}.gif : streamcomp stream-${RES}.dat tiles-${RES}.dat
 midclean :
 	rm -rf test-${RES}.gif streamcomp
 
+test.mp4 : video-64x48x8.gif
+	ffmpeg -y -f f32le -ar 48000 -ac 1 -i ../song/track-float-48000.dat -r 30 -i video-64x48x8.gif -af adelay=1450 -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 30 test.mp4
+
 clean : midclean
 	rm -rf decodevideo videocomp videoout-${RES}.dat
 	rm -rf *~ 
 
 
-## For video
-#ffmpeg -i video-64x48x8.gif -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 60 test.mp4
-# or to slice in: ffmpeg -i track-float-48000.mp3 -i video-64x48x8.gif -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 60 test.mp4
-# ffmpeg -y -f f32le -ar 48000 -ac 1 -i ../song/track-float-48000.dat -r 30 -i video-64x48x8.gif -af adelay=1000 -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 30 test.mp4
 
