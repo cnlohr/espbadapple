@@ -1,8 +1,42 @@
-// Public Domain Huffman Table Creator
-//  2022-2024 cnlohr
-// You may license this under MIT/x11, NewBSD, CC0, MIT0 or Public Domain
-// Pass in a bunch of data, and the count of that data.
-// It will give you an optimal huffman tree.
+/*
+ Public Domain Huffman Table Creator
+  2022-2024 cnlohr
+ You may license this under MIT/x11, NewBSD, CC0, MIT0 or Public Domain
+ Pass in a bunch of data, and the count of that data.
+ It will give you an optimal huffman tree.
+
+ General approach:
+  1. Generate a list of symbols, and their counts.
+  2. If you want to use dynamic arrays, you can, just use HuffmanAppendHelper.
+  3. Pass this to GenerateHuffmanTree.
+  4. This generates a complete huffman tree, where each element will be a
+     central node to the tree (which will have pair0/pair1 for if you get a
+     0 or 1 in the bitstream) or a term node, where it means if you got here
+     you are done.
+  5. The huffelement * returned by GenerateHuffmanTree is how you DECODE a
+     bitstream.
+  6. You can then pass this to GenPairTable, and it will make a list of all
+     symbols, and the needed bitstream to encode that symbol.  Note the char *
+     is actually a seies of \000 and \001's.  Not ASCII, you can print them
+     by adding '0' to each element.
+
+ The workflow is:
+  1. Generate your list of counts/symbols.
+  2. Call GenerateHuffmanTree
+  3. Call GenPairTable
+  4. Write out in whatever way you choose the output of GenerateHuffmanTree
+  5. Encode your data with the output from GenPairTable and write it out.
+
+ To decode, load the huffman tree, however you choose.
+ Read through the bitstream, using the huffman tree and maintaining an index
+ everywhere along the way.
+
+ Usage:
+
+#define HUFFER_IMPLEMENTATION
+#include "hufftreegen.h"
+
+*/
 
 #ifndef _HUFFTREEGEN_H
 #define _HUFFTREEGEN_H
