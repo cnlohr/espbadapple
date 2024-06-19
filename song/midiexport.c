@@ -5,10 +5,6 @@
 
 int place = 0;
 
-#define F_SPS 48000
-
-#define TIMESCALE 44
-
 #define MAX_NOTE_EVENTS 65536
 
 #define FATAL( x... )	{ fprintf( stderr, x ); fprintf( stderr, "at byte %d\n", place ); exit( -5 ); }
@@ -129,6 +125,9 @@ int main( int argc, char ** argv )
 	int timenow = 0;
 	int highesttime = 0;
 
+	int minnote = 255;
+	int maxnote = 0;
+
 	struct NoteEvent * lastNote[128] = { 0 };	
 
 	for( trk = 0; trk < numTracks; trk++ )
@@ -171,20 +170,34 @@ int main( int argc, char ** argv )
 					b = read1(); // velocity
 					
 					struct NoteEvent * e = lastNote[a];
-					if( !e ) fprintf( stderr, "Matching note not found\n" );
+					if( !e )
+						fprintf( stderr, "Matching note not found\n" );
+					else
+						e->OffTime = timenow;
 					//fprintf( stderr, "Note off %d %02x %02x\n", minor, a, b );
-					e->OffTime = timenow;
+					lastNote[a] = 0;
 					break;
 				case 0x90:
 				{
 					a = read1(); // channel
 					b = read1(); // velocity
 
+					if( lastNote[a] )
+					{
+						fprintf( stderr, "Warning: Note at %d has no off\n", e->OnTime );
+						lastNote[a]->OffTime = timenow;
+					}
+
+
 					struct NoteEvent * e = &AllNoteEvents[notehead++];
 					if( MAX_NOTE_EVENTS == notehead ) FATAL( "Too many notes\n" );
 					e->OnTime = timenow;
 					e->Track = trk;
 					e->Note = a;
+
+					if( e->Note < minnote ) minnote = e->Note;
+					if( e->Note > maxnote ) maxnote = e->Note;
+
 					e->Velocity = b;
 					lastNote[a] = e;
 					//fprintf( stderr, "Note on  %d %02x %02x\n", minor, a, b );
@@ -226,7 +239,6 @@ int main( int argc, char ** argv )
 			{
 				e->OffTime = e->OnTime;
 				e->Disable = 1;
-				fprintf( stderr, "Warning: Note at %d has no off\n", e->OnTime );
 			}
 			if( e->Note < 1 )
 				e->Disable = 1;
@@ -234,111 +246,35 @@ int main( int argc, char ** argv )
 
 		if( !e->Disable )
 		{
-			fprintf( stderr, "%6d / %4d %4d %d %3d %d\n",
-				e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity );
-			uint8_t note_and_track = e->Note | (e->Track<<7);
-			uint16_t duration = (e->OffTime - e->OnTime);
+			uint8_t note_and_track = e->Note - minnote; // | (e->Track<<7);  XXX TODO: IF we want track data, add this back.
+			uint16_t duration = (e->OffTime - e->OnTime + 1);
 			uint16_t deltatime = (e->OnTime - eLastTime + 1);
-			uint8_t combda = duration/240 + (deltatime/240)<<4; 
+
+			if( duration/240-1 > 31 )
+			{
+				fprintf( stderr, "Error: Warning: Note Too Long\n" );
+				duration = 240*12;
+			}
+			if( deltatime/240 > 7 )
+			{
+				fprintf( stderr, "Error: Warning: Note Duration Too Long\n" );
+				deltatime = 7*240;
+			}
+			uint8_t combda = (((duration/240)-1)<<3) + (deltatime/240); 
+
+			fprintf( stderr, "%6d / %4d %4d %d %3d %d  -> %4d %4d -> %d %d %02x\n",
+				e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity, duration, deltatime, duration/240-1, deltatime/240, combda );
 
 			// For video, show how big it is if you gzip with all the data, it's bigger than heatshrink after remvoing the entropy
-			fwrite( &combda, 1, 1, fMRaw );
 			fwrite( &note_and_track, 1, 1, fMRaw );
+			fwrite( &combda, 1, 1, fMRaw );
 			eLastTime = e->OnTime;
 		}
 	}
 	fclose( fMRaw );
 
-	#define NUM_VOICES 4
-	struct NoteEvent * voices[NUM_VOICES] = { 0 };
-	float fsin[NUM_VOICES] = { 0 };
-
-	int notepl = 0;
-	int t;
-	int nextevent = 0;
-	for( t = 0; t < highesttime; t++ )
-	{
-		struct NoteEvent * nn = &AllNoteEvents[nextevent];
-		if( t >= nn->OnTime )
-		{
-			nextevent++;
-			if( !nn->Disable && nextevent < notehead ) 
-			{
-				int i;
-				for( i = 0; i < NUM_VOICES; i++ )
-				{
-					if( voices[i] == 0 ) break;
-				}
-				if( i == NUM_VOICES )
-				{
-					fprintf( stderr, "WARNING: At time %d, too many voices\n", i );
-				}
-				else
-				{
-					//fprintf( stderr, "Adding %d (%d/%d) [%d]\n", nn->Note, t, highesttime, i );
-					voices[i] = nn;
-					fsin[i] = 0;
-				}
-			}
-		}
-
-		int subsamp = 0;
-		for( subsamp = 0; subsamp < TIMESCALE; subsamp++ )
-		{
-			float sample = 0;
-			int i;
-			for( i = 0; i < NUM_VOICES; i++ )
-			{
-				struct NoteEvent * v = voices[i];
-				if( !v ) continue;
-				float f = pow( 2, (v->Note - 69)/12.0 ) * 440;
-
-//				if( v->Track == 0 )
-//				{
-//					sample += sin(fsin[i])*0.2;
-//				}
-//				else
-				{
-					float placeins = fsin[i] / 3.1415926535 / 2;
-					int pin = placeins;
-					placeins -= pin;
-					placeins *= 2.0;
-
-					int ofs = 2.0;
-					if( v->Track == 0 || 1 )
-					{
-						if( placeins > 1.0 ) placeins = 2.0 - placeins;
-						placeins = placeins * 2.0 - 1.0;
-						sample += placeins*0.2;
-					}
-					else
-					{
-						// A Tiny bit harher.  (Currently off)
-						if( placeins > 1.0 ) placeins = 2.0 - placeins;
-						placeins = placeins * 2.0 - 1.0;
-						placeins *= 0.5;
-						if( placeins > 0.0 ) placeins += 0.1; else placeins -= 0.1;
-						sample += placeins*0.4;
-					}
-				}
-
-				fsin[i] += f / F_SPS * 3.1415926 * 2.0;
-			}
-			//fprintf( stderr, "%f\n", sample );
-			fwrite( &sample, 1, 4, stdout );
-//			fflush( stdout );
-		}
-
-		int i;
-		for( i = 0; i < NUM_VOICES; i++ )
-			if( voices[i] && t >= voices[i]->OffTime )
-			{
-				//fprintf( stderr, "Removing %d [%d]\n", voices[i]->Note, i );
-				voices[i] = 0;
-			}
-	}
-	
-	fprintf( stderr, "%d / %d\n", t, highesttime );
+	fprintf( stderr, "Time Range: %d / %d\n", i, highesttime );
+	fprintf( stderr, "Note Range: %d / %d\n", minnote, maxnote );
 
 	return 0;
 }
