@@ -1,4 +1,6 @@
 // Public Domain Huffman Table Creator
+//  2022-2024 cnlohr
+// You may license this under MIT/x11, NewBSD, CC0, MIT0 or Public Domain
 // Pass in a bunch of data, and the count of that data.
 // It will give you an optimal huffman tree.
 
@@ -68,7 +70,6 @@ static void PercDown( int p, int size, huffelement * tab, int * heap )
 		int smallest = p;
 		hufffreq tf = f;
 		hufffreq fcomp = f;
-//		printf( "LEFTRIGHT [%d] %d %d // %d %d %d\n", p, left, right, f, tab[heap[left]].freq, tab[heap[right]].freq );
 		if( left < size && (tf = tab[heap[left]].freq ) < fcomp )
 		{
 			smallest = left;
@@ -123,10 +124,6 @@ huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int 
 
 		// Append value to heap.
 		int h = i;
-
-/*
-printf( "Adding I: %d\n", i );
-*/
 		int p = minhlen++;
 		minheap[p] = i;
 
@@ -137,7 +134,7 @@ printf( "Adding I: %d\n", i );
 			int pf = tab[ph].freq;
 			if( pf <= tf ) // All is well.
 				break;
-		//	printf( "Flipping %d / %d  [ %d / %d ] [ %d / %d ]\n", parent, p, ph, h, pf, tf );
+
 			// Otherwise, flip.
 			minheap[parent] = h;
 			minheap[p] = ph;
@@ -156,26 +153,7 @@ for( tmp=0; tmp<minhlen;tmp++)
 */
 
 	}
-/*
-int tmp;
-for( tmp=0;tmp<hl;tmp++ )
-{
-	printf( "> %4d %04x : %d %d : %d %d\n", tmp, tab[tmp].value, tab[tmp].freq, tab[tmp].is_term, tab[tmp].pair0, tab[tmp].pair1 );
-}
-*/
-	// We've filled in the second half of our huffman tree with leaves.
-	// And we've filled in our heap with all of those leaves.
 
-	// Next, pull off the first 2 elements from the heap, and process
-	// them into a new huffman tree node.
-
-/*
-printf( "***HEAP*** %d\n", minhlen );
-for( tmp=0; tmp<minhlen;tmp++)
-{
-	printf( "%d\n", minheap[tmp] );
-}
-*/
 	for( i = oecount-2; i >= 0; i-- )
 	{
 		huffelement * e = &tab[i];
@@ -183,21 +161,12 @@ for( tmp=0; tmp<minhlen;tmp++)
 		e->pair0 = minheap[0];
 		minheap[0] = minheap[--minhlen];
 
-	//	printf( "PREPERC!!!\n" );
-	//	PrintHeap( minheap, minhlen, tab );
-
 		// Percolate-down.
 		PercDown( 0, minhlen, tab, minheap );
-
-	//	printf( "FIRST!!!\n" );
-	//	PrintHeap( minheap, minhlen, tab );
-
 
 		e->pair1 = minheap[0];
 
 		e->is_term = 0;
-
-	//	printf( "In %d join %d, %d (F: %d, %d)\n", i, e->pair0, e->pair1, tab[e->pair0].freq, tab[e->pair1].freq );
 
 		e->freq = tab[e->pair0].freq + tab[e->pair1].freq;
 
@@ -221,7 +190,7 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 		*out = realloc( *out, sizeof( huffup ) * ( newlen ) );
 		huffup * e = &(*out)[newlen-1];
 		e->value = ths->value;
-	//	printf( "T %d OEMIT---> %d (freq: %d)\n", p, e->value, ths->freq );
+
 		e->bitlen = *dstrlen;
 		e->bitstream = malloc( *dstrlen + 1 );
 		memcpy( e->bitstream, *dstr, *dstrlen );
@@ -229,7 +198,6 @@ void InternalHuffT( huffelement * tab, int p, huffup ** out, int * huffuplen, ui
 	}
 	else
 	{
-	//	printf( "P: %d / %d %d (freq: %d)\n", p, tab[p].pair0, tab[p].pair1, ths->freq );
 		int dla = *dstrlen;
 		*dstr = realloc( *dstr, ++(*dstrlen) );
 		(*dstr)[dla] = 0;
