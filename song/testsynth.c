@@ -5,7 +5,7 @@
 #define MAXNOTES 65536
 #define F_SPS 48000
 #define TIMESCALE ((F_SPS*60)/(138*2))
-#define NUM_VOICES 3
+#define NUM_VOICES 4
 
 // XXX TODO: Can we remove track # from the note #?
 
@@ -34,6 +34,7 @@ int main()
 	int nexttrel = 0;
 	int trun = 0;
 	int playout = 0;
+	int ending = 0;
 	for( t = 0; t < tend; t++ )
 	{
 		fprintf( stderr, "T: %d\n", t );
@@ -48,7 +49,7 @@ int main()
 			}
 		}
 
-		while( t >= nexttrel )
+		while( t >= nexttrel && !ending )
 		{
 
 			int i;
@@ -72,6 +73,9 @@ int main()
 			{
 				tend = t + 8;
 				nexttrel = 10000;
+				ending = 1;
+				fprintf( stderr, "Ending at %d\n", tend );
+				break;
 			}
 			else
 			{
