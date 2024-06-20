@@ -73,7 +73,7 @@
 //#define GLYPH_COMPRESS_HUFFMAN_DATA
 
 // Suppress tile updates in output image, unless they change nontrivially. (sets the score)
-#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	10
+#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	2
 
 
 

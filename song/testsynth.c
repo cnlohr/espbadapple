@@ -4,7 +4,7 @@
 
 #define MAXNOTES 65536
 #define F_SPS 48000
-#define TIMESCALE ((F_SPS*60)/(138*2))
+#define TIMESCALE ((F_SPS*60)/(138*4))
 #define NUM_VOICES 4
 
 // XXX TODO: Can we remove track # from the note #?
@@ -37,14 +37,14 @@ int main()
 	int ending = 0;
 	for( t = 0; t < tend; t++ )
 	{
-		fprintf( stderr, "T: %d\n", t );
+//		fprintf( stderr, "T: %d\n", t );
 
 		int i;
 		for( i = 0; i < NUM_VOICES; i++ )
 		{
 			if( voices[i] && tstop[i] <= t )
 			{
-				fprintf( stderr, "Removing [%d]\n", i );
+//				fprintf( stderr, "Removing [%d]\n", i );
 				voices[i] = 0;
 			}
 		}
@@ -65,7 +65,7 @@ int main()
 			{
 				voices[i] = (next_note & 0xff) + 47;
 				tstop[i] = ((next_note >> 11) & 0x1f) + t + 1;
-				fprintf( stderr, "Adding [%04x] (%d/%d) [%d]\n", next_note, t, tstop[i], i );
+//				fprintf( stderr, "Adding [%04x] (%d/%d) [%d]\n", next_note, t, tstop[i], i );
 				fsin[i] = 0;
 			}
 
@@ -74,17 +74,19 @@ int main()
 				tend = t + 8;
 				nexttrel = 10000;
 				ending = 1;
-				fprintf( stderr, "Ending at %d\n", tend );
+//				fprintf( stderr, "Ending at %d\n", tend );
 				break;
 			}
 			else
 			{
-				nexttrel = t + ((next_note >> 8) & 0x7);
-				fprintf( stderr, "NEXT: %d -> %d (%04x)\n", t, nexttrel, next_note );
+				int endurement = ((next_note >> 8) & 0x7);
+				if( endurement == 7 ) endurement = 8; // XXX Special case scenario at ending.
+				nexttrel = t + endurement;
+//				fprintf( stderr, "NEXT: %d -> %d (%04x)\n", t, nexttrel, next_note );
 			}
 		}
 
-		fprintf( stderr, "%2d %2d %2d %2d\n", voices[0], voices[1], voices[2], voices[3] );
+//		fprintf( stderr, "%2d %2d %2d %2d\n", voices[0], voices[1], voices[2], voices[3] );
 
 
 		int subsamp = 0;

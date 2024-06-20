@@ -250,20 +250,29 @@ int main( int argc, char ** argv )
 			uint16_t duration = (e->OffTime - e->OnTime + 1);
 			uint16_t deltatime = (e->OnTime - eLastTime + 1);
 
-			if( duration/240-1 > 31 )
+			if( duration/120-1 > 31 )
 			{
-				fprintf( stderr, "Error: Warning: Note Too Long\n" );
-				duration = 240*12;
+				fprintf( stderr, "Error: Warning: Note Too Long (at %d/%d/%d)\n", e->OnTime, i, notehead );
+				duration = 120*12;
 			}
-			if( deltatime/240 > 7 )
+			if( deltatime/120 == 7 )
 			{
-				fprintf( stderr, "Error: Warning: Note Duration Too Long\n" );
-				deltatime = 7*240;
+				fprintf( stderr, "Error: Warning: Interval Is exactly 7; special case, not allowed.\n" );
+				deltatime = 7*120;
 			}
-			uint8_t combda = (((duration/240)-1)<<3) + (deltatime/240); 
+			if( deltatime/120 == 8 )
+			{
+				deltatime = 7*120;
+			}
+			if( deltatime/120 > 8 )
+			{
+				fprintf( stderr, "Error: Warning: Interval Too Long (at %d/%d/%d) (%d)\n", e->OnTime, i, notehead, deltatime );
+				deltatime = 7*120;
+			}
+			uint8_t combda = (((duration/120)-1)<<3) + (deltatime/120); 
 
-			fprintf( stderr, "%6d / %4d %4d %d %3d %d  -> %4d %4d -> %d %d %02x\n",
-				e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity, duration, deltatime, duration/240-1, deltatime/240, combda );
+//			fprintf( stderr, "%6d / %4d %4d %d %3d %d  -> %4d %4d -> %d %d %02x\n",
+	//			e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity, duration, deltatime, duration/120-1, deltatime/120, combda );
 
 			// For video, show how big it is if you gzip with all the data, it's bigger than heatshrink after remvoing the entropy
 			fwrite( &note_and_track, 1, 1, fMRaw );

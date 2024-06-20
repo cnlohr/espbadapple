@@ -899,6 +899,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 	// With forcing length every frame, 621525 bits @64x48. (i.e. no //if( forward > 1 ))
 	// XXX TODO: Test but without the "don't include 0 length runs"
 
+
+	// For generating visualization of block transitions.
+	int block_transition_counts[num_raw_block_frequencies][num_raw_block_frequencies];
+
+	memset( block_transition_counts, 0, sizeof(block_transition_counts) );
+
 	{
 #ifdef ENCODE_HISTORY
 		int encode_history[ENCODE_HISTORY] = { 0 };
@@ -974,6 +980,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						token_stream[nrtokens++] = FLAG_RLE | forward;
 					}
 					running[by][bx] = forward;
+					block_transition_counts[lastblock[by][bx]][glyphid]++;
 					lastblock[by][bx] = glyphid;
 				}
 				else
@@ -981,6 +988,20 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					running[by][bx]--;
 				}
 			}
+		}
+
+		{
+			FILE * fTransitions = fopen( "stats_glyph_transitions.csv", "w" );
+			int f, t;
+			for( t = 0; t < num_raw_block_frequencies; t++ )
+			{
+				for( f = 0; f < num_raw_block_frequencies; f++ )
+				{
+					fprintf( fTransitions, "%d,", block_transition_counts[f][t] );
+				}
+				fprintf( fTransitions, "\n" );
+			}
+			fclose( fTransitions );
 		}
 
 		int tid = 0;
