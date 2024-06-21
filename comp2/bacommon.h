@@ -10,10 +10,12 @@
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
-//#define MSE
+#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 192
+#define TARGET_GLYPH_COUNT 256
+
+// The following 3 are for tuning the K-Means front-end.
 #define GLYPH_COUNT_REDUCE_PER_FRAME 10
 // How many glpyhs to start at?
 #define KMEANS 2048
@@ -43,7 +45,14 @@
 //#define COMPRESSION_BLOCK_RASTER
 //#define COMPRESSION_TWO_HUFF
 //#define COMPRESSION_UNIFIED_BY_BLOCK_AND_TWO_HUFF // Mix of two huff and unified, by having both a unified, and block-only huff. >> Actually slightly larger because of overhead.
-#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
+//THESE NEXT TWO Are interesting:
+#define COMPRESSION_TWO_HUFF_TRY_2 // Two separate huffman trees, one for glyph, one for runlength.
+//#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
+
+// NOTE: ONLY AVAILABLE ON COMPRESSION_TWO_HUFF_TRY_2, Don't emit a second huffman table. Use Exponential-Golomb coding.
+//#ifdef COMPRESSION_TWO_HUFF_TRY_2
+//#define USE_UEGB // Exponential-Golomb coding  Not worth it
+//#endif
 
 // Try with blur on/off
 // NOTE: To disable, comment out completely.
@@ -60,7 +69,11 @@
 //#define ENCODE_HISTORY 14
 
 // Specifically generate a code for inverting color in huffman tree.
-//#define HUFFMAN_ALLOW_CODE_FOR_INVERT
+#ifdef ALLOW_GLYPH_INVERSION
+#ifdef COMPRESSION_UNIFIED_BY_BLOCK //Only valid for this.
+#define HUFFMAN_ALLOW_CODE_FOR_INVERT
+#endif
+#endif
 
 // Speed up videocomp on appropriate systems.
 #define ENABLE_SSE
@@ -73,7 +86,7 @@
 //#define GLYPH_COMPRESS_HUFFMAN_DATA
 
 // Suppress tile updates in output image, unless they change nontrivially. (sets the score)
-#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	2
+//#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	2
 
 
 
@@ -95,16 +108,17 @@
 #endif
 
 
-#if defined( ALLOW_GLYPH_ATTRIBUTES )
+// Consider tweaking this and glyph_inversion_mask.
 #define GLYPH_NOATTRIB_MASK 0x7ff
-#else
-#define GLYPH_NOATTRIB_MASK 0x3fff
-#endif
 
 // Just FYI the top two bits are stored for huffman tree properties and "is it a glyph or RLE?"
-#define GLYPH_INVERSION_MASK 0x2000
-#define GLYPH_FLIP_X_MASK    0x1000
-#define GLYPH_FLIP_Y_MASK    0x0800
+#if TARGET_GLYPH_COUNT <= 2048
+#define GLYPH_INVERSION_MASK 0x800
+#else
+#error cant do inversion mask
+#endif
+#define GLYPH_FLIP_X_MASK    0x2000
+#define GLYPH_FLIP_Y_MASK    0x1000
 
 
 #if BLOCKSIZE==8
@@ -122,13 +136,14 @@ struct block
 	float intensity[BLOCKSIZE*BLOCKSIZE]; // For when we start culling blocks.
 	blocktype blockdata;
 	uint32_t count;
+
 	uint32_t scratch;
 #if BLOCKSIZE==8
-	uint64_t extra1;
-	uint64_t extra2;
+	uint64_t extra1_countbw;
+	uint64_t extra2_countbw;
 #elif BLOCKSIZE==16
-	uint64_t extra1;
-	uint64_t extra2;
+	uint64_t extra1_countbw;
+	uint64_t extra2_countbw;
 	uint64_t extra3;
 #endif
 };
@@ -326,6 +341,34 @@ void UpdateBlockDataFromIntensity( struct block * k )
 	BBASSIGN( k->blockdata, ret );
 }
 
+
+static int H264FUNDeBruijnLog2( uint64_t v )
+{
+	// Note - if you are on a system with MSR or can compile to assembly, that is faster than this.
+	// Otherwise, for normal C, this seems like a spicy way to roll.
+
+	// Round v up!
+	v |= v >> 1;
+	v |= v >> 2;
+	v |= v >> 4;
+	v |= v >> 8;
+	v |= v >> 16;
+	v |= v >> 32;
+
+	static const int MultiplyDeBruijnBitPosition2[128] = 
+	{
+		0, // change to 1 if you want bitSize(0) = 1
+		48, -1, -1, 31, -1, 15, 51, -1, 63, 5, -1, -1, -1, 19, -1, 
+		23, 28, -1, -1, -1, 40, 36, 46, -1, 13, -1, -1, -1, 34, -1, 58,
+		-1, 60, 2, 43, 55, -1, -1, -1, 50, 62, 4, -1, 18, 27, -1, 39, 
+		45, -1, -1, 33, 57, -1, 1, 54, -1, 49, -1, 17, -1, -1, 32, -1,
+		53, -1, 16, -1, -1, 52, -1, -1, -1, 64, 6, 7, 8, -1, 9, -1, 
+		-1, -1, 20, 10, -1, -1, 24, -1, 29, -1, -1, 21, -1, 11, -1, -1,
+		41, -1, 25, 37, -1, 47, -1, 30, 14, -1, -1, -1, -1, 22, -1, -1,
+		35, 12, -1, -1, -1, 59, 42, -1, -1, 61, 3, 26, 38, 44, -1, 56
+	};
+	return MultiplyDeBruijnBitPosition2[(uint64_t)(v * 0x6c04f118e9966f6bUL) >> 57];
+}
 
 #endif
 
