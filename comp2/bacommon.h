@@ -46,7 +46,7 @@
 //#define COMPRESSION_TWO_HUFF
 //#define COMPRESSION_UNIFIED_BY_BLOCK_AND_TWO_HUFF // Mix of two huff and unified, by having both a unified, and block-only huff. >> Actually slightly larger because of overhead.
 //THESE NEXT TWO Are interesting:
-#define COMPRESSION_TWO_HUFF_TRY_2 // Two separate huffman trees, one for glyph, one for runlength.
+#define COMPRESSION_TWO_HUFF_TRY_2 // Two separate huffman trees, one for glyph, one for runlength.  DING DING DING<<<>>>
 //#define COMPRESSION_UNIFIED_BY_BLOCK // Best (and most fleshed out)
 
 // NOTE: ONLY AVAILABLE ON COMPRESSION_TWO_HUFF_TRY_2, Don't emit a second huffman table. Use Exponential-Golomb coding.

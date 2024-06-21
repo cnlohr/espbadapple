@@ -1,4 +1,7 @@
-all : testsynth midiexport fmcomp
+all : testsynth midiexport fmcomp bitlzsstest
+
+bitlzsstest : bitlzsstest.c
+	gcc -O2 -g -o $@ $^ -lm
 
 midiexport : midiexport.c
 	gcc -O2 -g -o $@ $^ -lm
@@ -13,7 +16,6 @@ test : testsynth fmraw.dat fmcomp
 
 fmcomp : fmcomp.c
 	gcc -O2 -g -o $@ $^ -lm
-
 
 testsynth : testsynth.c
 	gcc -O2 -g -o $@ $^ -lm
