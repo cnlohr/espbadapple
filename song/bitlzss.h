@@ -14,6 +14,8 @@
 // if lzrss is used, it will reference the output stream, making required RAM a bare minimum.
 // if lzrss_max_recur == 0, then regular lzss is used.
 //
+//
+// return is 
 static int CompressBitsLZSS( uint8_t * inbuffer, int inlen, uint8_t * outbuff, int outlen, int lsbfirst, int lzrss_max_recur );
 
 #endif
