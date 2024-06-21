@@ -275,8 +275,8 @@ int main( int argc, char ** argv )
 	//			e->OnTime,  e->OnTime - eLastTime, e->OffTime - e->OnTime + 1, e->Track, e->Note, e->Velocity, duration, deltatime, duration/120-1, deltatime/120, combda );
 
 			// For video, show how big it is if you gzip with all the data, it's bigger than heatshrink after remvoing the entropy
-			fwrite( &note_and_track, 1, 1, fMRaw );
 			fwrite( &combda, 1, 1, fMRaw );
+			fwrite( &note_and_track, 1, 1, fMRaw );
 			eLastTime = e->OnTime;
 		}
 	}
