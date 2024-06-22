@@ -5,6 +5,7 @@
 #include "../comp2/hufftreegen.h"
 
 
+// TODO: Can we also store substrings here?
 
 int main()
 {
