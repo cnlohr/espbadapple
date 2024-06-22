@@ -109,6 +109,7 @@ static int ComputeMatches( uint8_t * matches, uint8_t * matches_lens, int max_ma
 			if( length < 0 )
 				goto tdone;
 			ComputeMatches( matches, matches_lens, max_match_len, encbufferbits, encbufferbitsplace, encbufferbitslen, maxrecur - 1 );
+			break;
 		}
 	}
 
@@ -224,34 +225,40 @@ static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * en
 				if( matchlen > bestmatchlen )
 				{
 					bestmatchlen = matchlen - 1;
-					if( bestmatchlen >= LENWIDTH ) bestmatchlen = LENWIDTH-1;
+					if( bestmatchlen >= (1<<LENWIDTH) ) bestmatchlen = (1<<LENWIDTH)-1;
 					bestmatchoffset = olb - j - 1;
 				}
 			}
 
-			if( bestmatchlen > (WINDOWWIDTH*2+LENWIDTH) )
+printf( "%d / %d\n", bestmatchlen, bestmatchoffset );
+
+			if( bestmatchlen > (WINDOWWIDTH*2+LENWIDTH-1) )
 			{
 				// Emit the hop
 				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, FLAG_LITERAL, 0 ) ) goto earlyabort;
 				olb += 1;
-				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, bestmatchoffset, WINDOWWIDTH ) ) goto earlyabort;
+				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, bestmatchoffset, WINDOWWIDTH ) ) goto earlyabort;
 				olb += WINDOWWIDTH;				
-				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, bestmatchlen, LENWIDTH ) ) goto earlyabort;
+				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, bestmatchlen, LENWIDTH ) ) goto earlyabort;
 				olb += LENWIDTH;				
 				
 				literal_mark = olb;
 				i += bestmatchlen + 1;
+
+				printf( "%d EMITTED HISTORY %d %d\n", olb, bestmatchoffset, bestmatchlen );
+
 
 				// Emit a literal
 				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, FLAG_LITERAL, 1 ) ) goto earlyabort;
 				olb += 1;
 				literal_mark = olb;
 				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, 0, WINDOWWIDTH ) ) goto earlyabort;
-				olb += WINDOWWIDTH;				
+				olb += WINDOWWIDTH;
 			}
 			else
 			{
-				if( olb == (literal_mark + WINDOWWIDTH) )
+				printf( "%d - %d = %d == %d\n", olb, literal_mark, olb-literal_mark, WINDOWWIDTH );
+				if( olb - literal_mark == (1<<WINDOWWIDTH) )
 				{
 					// Re-up.
 					// Emit a literal
@@ -262,7 +269,8 @@ static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * en
 					olb += WINDOWWIDTH;				
 				}
 				encbuffer_bits[olb++] = decbuffer_bits[i];
-				WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, olb - (literal_mark + WINDOWWIDTH), WINDOWWIDTH );
+				WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, olb - literal_mark - WINDOWWIDTH, WINDOWWIDTH );
+				printf( "%d EMITTED FIXED %d %d (%d/%d)\n", olb, literal_mark, olb - literal_mark - WINDOWWIDTH, i, declen_bits );
 			}
 			
 

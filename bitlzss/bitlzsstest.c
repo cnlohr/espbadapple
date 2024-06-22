@@ -10,7 +10,7 @@
 
 int main()
 {
-	const char * stext = "hello world, how are you doing today this is a test of encoding a string of text to see how it goes.\n";
+	const char * stext = "hello world, hello world today this hello world is a test of encoding a string of text today this hello see how it goes.\n";
 	int slen = strlen( stext );
 
 	uint8_t encoded_buffer[1024];
