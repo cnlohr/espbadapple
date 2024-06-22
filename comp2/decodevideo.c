@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 int targw, targh;
 
@@ -21,6 +26,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	if( (frames % FPS_REDUCTION) != 0 ) goto skipframe;
 #error xxx
 #endif
+
+	uint8_t mono[targh][targw];
+	memset( mono, 0, sizeof( mono ) );
 
 	//printf( "* %d %d %d %p %p %d\n", width, height, linesize, fd, fd+width*height, frame );
 	for( y = 0; y < targh; y++ )
@@ -41,9 +49,16 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 				ct+=3;
 			}
 			*(fd++) = val / ct;
+			mono[y][x] = val / ct;
 		}
 	}
 	fwrite( data, targw, targh, f );
+
+	char st[1024];
+	sprintf( st, "pngs/%05d.png", frames );
+	printf( "%d %d \n", targw, targh );
+	int r = stbi_write_png( st, targw, targh, 1, mono, targw );
+
 	recframes++;
 skipframe:
 	frames++;	
@@ -52,6 +67,7 @@ skipframe:
 
 int main( int argc, char ** argv )
 {
+	mkdir( "pngs", 0777 );
 	if( argc != 5 )
 	{
 		fprintf( stderr, "Usage: [tool] [video] [out x] [out y] [outfile]\n" );

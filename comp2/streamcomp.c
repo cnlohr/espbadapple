@@ -1063,6 +1063,9 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		memset( running, 0, sizeof(running) );
 		memset( lastblock, 0, sizeof( lastblock ) );
 
+
+		FILE * fSymbolList = fopen( "symbol_list.txt", "w" );
+
 		// Same as above loop, but we are actually producing compressed output.
 		for( frame = 0; frame < num_video_frames; frame++ )
 		{
@@ -1084,12 +1087,20 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					int b;
 //						printf( "EMIT: %04x\n",  glyphid );
 
+					huffelement * tr = hufftree[0];//] = { 0 };
+					int hrplace = 0;
+
 					for( b = 0; b < hu[0][h].bitlen; b++ )
 					{
 						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
-						bitstreamo[bistreamlen++] = hu[0][h].bitstream[b];
+						int bit = hu[0][h].bitstream[b];
+
+						hrplace = bit?tr[hrplace].pair1 : tr[hrplace].pair0;
+
+						bitstreamo[bistreamlen++] = bit;
 					}
 
+					fprintf( fSymbolList, "%d, ", glyphid );
 
 					int forward;
 					for( forward = 1; frame + forward < num_video_frames; forward++ )
@@ -1118,6 +1129,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					}
 
 #else
+
 					for( h = 0; h < htlen[1]; h++ )
 						if( hu[1][h].value == (forward-1) ) break;
 					if( h == htlen[1] ) { fprintf( stderr, "Error: Missing symbol %d\n", forward ); exit( -6 ); }
@@ -1126,6 +1138,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
 						bitstreamo[bistreamlen++] = hu[1][h].bitstream[b];
 					}
+					fprintf( fSymbolList, "%d\n", (forward-1) );
+
 #endif
 					
 
