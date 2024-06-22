@@ -20,10 +20,16 @@ int main()
 	hufffreq * lencountss = 0;
 	int numlens = 0;
 
+	hufftype * runss = 0;
+	hufffreq * runcountss = 0;
+	int numrun = 0;
+
 	uint16_t * notearray = 0;
 	int notecount = 0;
 	uint16_t * lenarray = 0;
 	int lencount = 0;
+	uint16_t * runarray = 0;
+	int runcount = 0;
 
 
 	uint16_t usedmask = 0;
@@ -39,8 +45,9 @@ int main()
 		}
 
 		usedmask |= s;
-		int note = s>>3;
-		int len = s&7;;
+		int note = (s>>3)&0x7f;
+		int len = s&7;
+		int run = (s>>10);
 		numsym = HuffmanAppendHelper( &symbols, &symcounts, numsym, note );
 		notearray = realloc( notearray, (notecount + 1) * sizeof( notearray[0] ) );
 		notearray[notecount++] = note;
@@ -48,6 +55,10 @@ int main()
 		numlens = HuffmanAppendHelper( &lenss, &lencountss, numlens, len );
 		lenarray = realloc( lenarray, (lencount + 1) * sizeof( lenarray[0] ) );
 		lenarray[lencount++] = len;
+
+		numrun = HuffmanAppendHelper( &runss, &runcountss, numrun, run );
+		runarray = realloc( runarray, (runcount + 1) * sizeof( runarray[0] ) );
+		runarray[runcount++] = run;
 	}
 	
 	int hufflen;
@@ -61,6 +72,14 @@ int main()
 
 	int htlenl = 0;
 	huffup * hul = GenPairTable( hel, &htlenl );
+
+
+	int hufflenr;
+	huffelement * her = GenerateHuffmanTree( runss, runcountss, numrun, &hufflenr );
+
+	int htlenr = 0;
+	huffup * hur = GenPairTable( her, &htlenr );
+
 
 	printf( "NOTES:\n" );
 	for( i = 0; i < htlen; i++ )
