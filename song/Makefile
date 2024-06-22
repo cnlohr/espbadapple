@@ -21,4 +21,4 @@ testsynth : testsynth.c
 	gcc -O2 -g -o $@ $^ -lm
 
 clean :
-	rm -rf *.o ~* midiexport testsynth
+	rm -rf *.o ~* midiexport testsynth bitlzsstest

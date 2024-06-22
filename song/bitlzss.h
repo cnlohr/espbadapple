@@ -12,6 +12,8 @@
 #define WINDOWWIDTH 8
 #define LENWIDTH 6 // Right now can't be more than 7.
 
+#define FLAG_HISTORY 0
+#define FLAG_LITERAL 1
 #include <stdint.h>
 #include <alloca.h>
 
@@ -52,6 +54,18 @@ static int ReadNumber( uint8_t * data, int at, int datasize, int width )
 	return ret;
 }
 
+static int WriteNumber( uint8_t * data, int at, int datasize, int number_to_write, int width )
+{
+	if( at + width > datasize ) return -1;
+	int p;
+	for( p = 0; p < width; p++ )
+	{
+		data[at+p] = (number_to_write>>p)&1;
+	}
+	return 0;
+}
+
+
 //		ComputeMatchesOut( &matches[j], &matches_lens[j], encbuffer_bits, j, lzrss_max_recur );
 static int ComputeMatches( uint8_t * matches, uint8_t * matches_lens, int max_match_len, uint8_t * encbufferbits, int encbufferbitsplace, int encbufferbitslen, int maxrecur )
 {
@@ -64,7 +78,7 @@ static int ComputeMatches( uint8_t * matches, uint8_t * matches_lens, int max_ma
 			goto tdone;
 
 		int bit = encbufferbits[encbufferbitsplace];
-		if( bit == 1 )
+		if( bit == FLAG_LITERAL )
 		{
 			int window = ReadNumber( encbufferbits, encbufferbitsplace, encbufferbitslen, WINDOWWIDTH );
 			if( window < 0 )
@@ -129,12 +143,24 @@ static int DecompressBitsLZSS( const uint8_t * encbuffer, int inclen_bits, uint8
 	}
 }
 
+int CheckMatchLen( uint8_t * matchbits, uint8_t * decbits, int declen_bits )
+{
+	int k;
+	for( k = 0; k < declen_bits; k++ )
+	{
+		if( matchbits[k] != decbits[k] ) break;
+	}
+	return k;
+}
+
 
 static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * encbuff, int enclen, int lsbfirst, int lzrss_max_recur )
 {
 	int i;
-	uint8_t * decbuffer_bits = alloca( declen * 8 );
+	int declen_bits = declen * 8;
+	uint8_t * decbuffer_bits = alloca( declen_bits );
 
+	int encbuffer_bits_len = enclen * 8;
 	uint8_t * encbuffer_bits = alloca( enclen * 8 );
 
 	int mlen = (((enclen>declen)?enclen:declen)+2)*8;
@@ -143,7 +169,7 @@ static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * en
 
 	int matches_complete = 0;
 
-	for( i = 0; i < declen*8; i++ )
+	for( i = 0; i < declen_bits; i++ )
 	{
 		if( lsbfirst )
 			decbuffer_bits[i] = !!(decbuffer[i/8] & (1<<(i&7)));
@@ -151,26 +177,34 @@ static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * en
 			decbuffer_bits[i] = !!(decbuffer[i/8] & (1<<(7-(i&7))));
 	}
 
-	for( i = 0; i < mlen*8; i++ )
+	for( i = 0; i < encbuffer_bits_len; i++ )
 	{
-		encbuffer_bits[i] = 0;
 		matches_lens[i] = 0;
 		encbuffer_bits[i] = 0;
 	}
 
-	int ilb = declen*8;
 	int olb = 0;
 
-	int running_mark = 0;
+	int literal_mark = 0;
 
-	for( i = 0; i < ilb; i++ )
+
+	if( lzrss_max_recur )
 	{
-		int j;
+		int place_of_running_mark;
 
+		// Seed with a 0 size window.
+		if( WriteNumber( encbuffer_bits, 0, encbuffer_bits_len, FLAG_LITERAL, 1 ) ) goto earlyabort;
+		olb += 1;
+		literal_mark = olb;
+		if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, 0, WINDOWWIDTH ) ) goto earlyabort;
+		olb += WINDOWWIDTH;
 
-		// Update encbuffer_matches and encbuffer_olen
-		if( lzrss_max_recur )
+		for( i = 0; i < declen_bits; i++ )
 		{
+			int j;
+
+
+			// Update encbuffer_matches and encbuffer_olen
 			for( j = matches_complete; j < olb; j++ )
 			{
 				ComputeMatches( &matches[j], &matches_lens[j], MATCHES_WINDOW_MAX_BITS, encbuffer_bits, j, olb, lzrss_max_recur );
@@ -181,13 +215,62 @@ static int CompressBitsLZSS( const uint8_t * decbuffer, int declen, uint8_t * en
 				}
 			}
 
-			int current_bit = decbuffer_bits[i];
-XXX HOW TO DO HERE?
+			// From here, let's explore if there are any forward-matches we could use that would be "worth it" to use history.
+			int bestmatchlen = 0;
+			int bestmatchoffset = 0;
+			for( j = olb - (1<<WINDOWWIDTH); j < olb; j++ )
+			{
+				int matchlen = CheckMatchLen( &matches[j], decbuffer_bits + i, declen_bits - i );
+				if( matchlen > bestmatchlen )
+				{
+					bestmatchlen = matchlen - 1;
+					if( bestmatchlen >= LENWIDTH ) bestmatchlen = LENWIDTH-1;
+					bestmatchoffset = olb - j - 1;
+				}
+			}
+
+			if( bestmatchlen > (WINDOWWIDTH*2+LENWIDTH) )
+			{
+				// Emit the hop
+				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, FLAG_LITERAL, 0 ) ) goto earlyabort;
+				olb += 1;
+				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, bestmatchoffset, WINDOWWIDTH ) ) goto earlyabort;
+				olb += WINDOWWIDTH;				
+				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, bestmatchlen, LENWIDTH ) ) goto earlyabort;
+				olb += LENWIDTH;				
+				
+				literal_mark = olb;
+				i += bestmatchlen + 1;
+
+				// Emit a literal
+				if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, FLAG_LITERAL, 1 ) ) goto earlyabort;
+				olb += 1;
+				literal_mark = olb;
+				if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, 0, WINDOWWIDTH ) ) goto earlyabort;
+				olb += WINDOWWIDTH;				
+			}
+			else
+			{
+				if( olb == (literal_mark + WINDOWWIDTH) )
+				{
+					// Re-up.
+					// Emit a literal
+					if( WriteNumber( encbuffer_bits, olb, encbuffer_bits_len, FLAG_LITERAL, 1 ) ) goto earlyabort;
+					olb += 1;
+					literal_mark = olb;
+					if( WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, 0, WINDOWWIDTH ) ) goto earlyabort;
+					olb += WINDOWWIDTH;				
+				}
+				encbuffer_bits[olb++] = decbuffer_bits[i];
+				WriteNumber( encbuffer_bits, literal_mark, encbuffer_bits_len, olb - (literal_mark + WINDOWWIDTH), WINDOWWIDTH );
+			}
+			
 
 			// Search in the history from here for the best historical match.
 		}
-		else
-		{
+	}
+	else
+	{
 /*			for( j = encbuffer_matches_complete; j < ilb; j++ )
 			{
 				ComputeMatches( &matches[j], &matches_lens[j], encbuffer_bits + j, olb - j, lzrss_max_recur );
@@ -199,8 +282,10 @@ XXX HOW TO DO HERE?
 			}
 */
 			fprintf( stderr, "Error: not implemented.\n" );
-		}
 	}
+	return olb;
+earlyabort:
+	return -1;
 }
 
 #endif
