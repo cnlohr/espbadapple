@@ -14,6 +14,9 @@ sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-
  * Motion Vectors
  * Reference previous tiles.
  * Add color inversion option for glyphs
+ * https://engineering.fb.com/2016/08/31/core-infra/smaller-and-faster-data-compression-with-zstandard/
+ * https://github.com/webmproject/libvpx/blob/main/vpx_dsp/bitreader.c
+ * https://github.com/webmproject/libvpx/blob/main/vpx_dsp/bitwriter.c
 
 ## History
 
