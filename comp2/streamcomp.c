@@ -1171,8 +1171,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		int32_t next_tok = -1;
 
 
-		uint8_t palette[6] = { 0, 0, 0, 255, 255, 255 };
-		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 4, 0 );
+		uint8_t palette[12] = { 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0 };
+		gifout = ge_new_gif( argv[3], video_w*2, video_h*2, palette, 2, 0 );
 
 		{
 			FILE * f = fopen( "bitstream_out.dat", "wb" );
