@@ -17,7 +17,7 @@ cp ../comp2/badapple-sm8628149.mp4 "Touhou - Bad Apple.mp4"
 
 To start operation:
 ```
-python3 train_patches.py
+python3 train_patches.py | ts | tee runlog.txt
 ```
 
 This will output files in the `outputs/ts256_.../blocks folder`
@@ -37,8 +37,8 @@ It will output tilemap in, for instance:
 
 You can copy:
  * `tilemap.dat` to comp2/ as `tiles-${RES}.dat`
- * `sequence.dat` to comp2/ as `tiles-${RES}.dat`
+ * `sequence.dat` to comp2/ as `stream-${RES}.dat`
 
-Then `make video-64x48x8.gif`
+Then `make video-64x48x8.gif test.mp4`
 
 

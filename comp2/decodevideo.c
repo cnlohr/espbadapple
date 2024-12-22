@@ -56,7 +56,6 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 
 	char st[1024];
 	sprintf( st, "pngs/%05d.png", frames );
-	printf( "%d %d \n", targw, targh );
 	int r = stbi_write_png( st, targw, targh, 1, mono, targw );
 
 	recframes++;
