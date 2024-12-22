@@ -1,3 +1,4 @@
+import sys
 import torch
 import torch.nn as nn
 import torchvision.utils
@@ -233,7 +234,10 @@ class BlockTrainer:
 
     def train(self):
         self.recr.dump_grid(os.path.join(self.out_blocks_dir, "000_init_blocks.png"))
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img.png"))
+        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1141.png"), 1141)
+        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_0080.png"), 80)
+        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_2303.png"), 2303)
+        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1659.png"), 1659)
 
         for epoch in range(1000000):
 
@@ -278,10 +282,14 @@ class BlockTrainer:
             epoch_loss_c /= epoch_n
 
             self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%d_%0.06f_blocks.png" % (epoch, epoch_loss)))
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img.png" % (epoch, epoch_loss)))
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1141.png" % (epoch, epoch_loss)), 1141)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_2303.png" % (epoch, epoch_loss)), 2303)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1659.png" % (epoch, epoch_loss)), 1659)
 
             print("Epoch %d: loss %f (percep %f choice %f)" % (epoch, epoch_loss, epoch_loss_p, epoch_loss_c))
 
+            sys.stdout.flush()
 
 def main():
     trainer = BlockTrainer()
