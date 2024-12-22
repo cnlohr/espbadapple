@@ -322,19 +322,18 @@ void UpdateBlockDataFromIntensity( struct block * k )
 		int ix = i % BLOCKSIZE;
 		int iy = i / BLOCKSIZE;
 		float ft = k->intensity[i];
-#ifndef HALFTONE_EN
+#if HALFTONE_EN
+			int evenodd = (ix+iy)&1;
+	#if BLOCKSIZE==8
+			if( ft > .4+evenodd*.2 ) ret |= 1ULL<<i;
+	#else
+			if( ft > .4+evenodd*.2 ) ret[i/64] |= 1ULL<<(i&63);
+	#endif
+#else
 	#if BLOCKSIZE==8
 			if( ft > .6 ) ret |= 1ULL<<i;
 	#else
 			if( ft > .6 ) ret[bpl/64] |= 1ULL<<(i&63);
-	#endif
-
-#else
-			int evenodd = (ix+iy)&1;
-	#if BLOCKSIZE==8
-			if( ft > .3+evenodd*.4 ) ret |= 1ULL<<i;
-	#else
-			if( ft > .3+evenodd*.4 ) ret[i/64] |= 1ULL<<(i&63);
 	#endif
 #endif
 	}
