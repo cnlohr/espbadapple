@@ -11,7 +11,7 @@ pip3 install numpy==1.26.4
 
 To setup:
 ```
-cp ../comp2/tiles-64x48x8.dat kmeans_256_ni_mse.dat
+cp ../comp2/tiles-64x48x8.dat kmeans_ni_mse.dat
 cp ../comp2/badapple-sm8628149.mp4 "Touhou - Bad Apple.mp4"
 ```
 

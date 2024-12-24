@@ -16,11 +16,11 @@
 #define TARGET_GLYPH_COUNT 256
 
 // The following 3 are for tuning the K-Means front-end.
-#define GLYPH_COUNT_REDUCE_PER_FRAME 10
+#define GLYPH_COUNT_REDUCE_PER_FRAME 5
 // How many glpyhs to start at?
 #define KMEANS 2048
 // How long to train?
-#define KMEANSITER 220
+#define KMEANSITER 250
 
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.

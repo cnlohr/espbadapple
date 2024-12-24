@@ -14,17 +14,15 @@ class VideoBuilder:
 
     def load_from_grid(self, grid_path):
         grid = cv2.imread(grid_path, cv2.IMREAD_GRAYSCALE)
-
-        for i in range(16):
-            for j in range(16):
+        height, width = grid.shape
+        for i in range(int(height/10)):
+            for j in range(int(width/10)):
 
                 bx = 2 + 10*i
                 by = 2 + 10*j
 
                 b = grid[bx:bx+8, by:by+8].astype(float) / 255.0
-
                 self.blocks.append(b)
-
         self.usage_stats = np.zeros(len(self.blocks), dtype=int)
 
     def match_block(self, frame_block):

@@ -1,12 +1,10 @@
 all : decodevideo
 
-#  -fsanitize=address -static-libasan
-LDFLAGS:=-g -lX11 -lm
-RESX=64
-RESY=48
-BLOCKSIZE=8
-RES:=${RESX}x${RESY}x${BLOCKSIZE}
+include make.inc
 
+LDFLAGS:=-g -lX11 -lm
+
+#  -fsanitize=address -static-libasan
 CFLAGS:=-O2 -g -Wno-unused-result -mavx2 -DBLOCKSIZE=${BLOCKSIZE}
 
 hufftreegentest : hufftreegentest.c

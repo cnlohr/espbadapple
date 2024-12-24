@@ -205,7 +205,7 @@ class BlockTrainer:
         self.recr = ImageReconstruction()
 
         # self.recr.init_blocks_haar()
-        self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
+        self.recr.init_blocks_tiledata("kmeans_ni_mse.dat")
 
         self.recr.to(device)
 
