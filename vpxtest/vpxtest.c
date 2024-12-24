@@ -167,16 +167,13 @@ int main()
 		fclose( fRunFreqs );
 	}
 
-	for( i = 0; i < maxtileid_remapped; i++ )
-	{
-		printf( "%d %d %d\n", i, tilecounts[i], tileremap[i] );
-	}
+	//for( i = 0; i < maxtileid_remapped; i++ )
+	//	printf( "%d %d %d\n", i, tilecounts[i], tileremap[i] );
 
 	int bitsfortileid = intlog2( maxtileid_remapped );
 
 
 
-	//XXX This is wrong, Find another way (!!)
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
 	int chancetable[1<<bitsfortileid];
@@ -214,11 +211,13 @@ int main()
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
 				chancetable[nout++] = prob;
-				//printf( "%08x %d %d (%d) (%d)\n", maskcheck, count0, count1, nout, prob );
+				printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
 			}
 		}
 	}
 
+	int bytesum = 0;
+	int symsum = 0;
 	for( y = 0; y < BLKY; y++ )
 	{
 		for( x = 0; x < BLKX; x++ )
@@ -228,37 +227,29 @@ int main()
 			vpx_start_encode( &w, bufferVPX, sizeof(bufferVPX));
 			for( i = 0; i < changes; i++ )
 			{
-#if 0
 				// First we encode the block ID.
 				// Then we encode the run length.
 				int tile = tilechangesto[y][x][i];
 				int runlen = tilechangesrle[y][x][i];
 				int level;
+
+				int probplace = 0;
+				int probability = 0;
 				for( level = 0; level < bitsfortileid; level++ )
 				{
-					int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
-					int tilebase = tile 
-
 					int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-					int lincmask = comparemask<<1;
-					int maskcheck = 0;
-
-					int tilemask = bits - b;
-					int chance_of_0 = 0
+					int bit = !!(tile & comparemask);
+					probability = chancetable[probplace];
+					//printf( "%d %d PROBPLACE: %d (%d) [%d]\n", tile, level, probplace, probability, ((tile)>>(bitsfortileid-level-1)) );
+					vpx_write(&w, bit, probability);
+					probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 				}
-
-				int data = dummydata[i];
-				int bits = 8;
-				int bit;
-				for (bit = bits - 1; bit >= 0; bit--)
-				{
-					int outbit = (data >> bit) & 1;
-					vpx_write(&w, outbit, probability);
-				}
-#endif
+				symsum++;
 			}
 			vpx_stop_encode(&w);
+			bytesum += w.pos;
 		}
 	}
+	printf( "SUM: %d / SYMS: %d\n", bytesum, symsum );
 }
 
