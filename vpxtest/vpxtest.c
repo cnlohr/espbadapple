@@ -241,11 +241,14 @@ int main()
 					int bit = !!(tile & comparemask);
 					probability = chancetable[probplace];
 					//printf( "%d %d PROBPLACE: %d (%d) [%d]\n", tile, level, probplace, probability, ((tile)>>(bitsfortileid-level-1)) );
-					vpx_write(&w, bit, probability);
+					// XXX TODO Pick up here and re-enable this line.
+					//vpx_write(&w, bit, probability);
 					probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 				}
 				symsum++;
 			}
+
+			// XXX TODO: Emit bits for RLE
 			vpx_stop_encode(&w);
 			bytesum += w.pos;
 		}
