@@ -94,7 +94,8 @@
 //#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	2
 
 
-
+// For streamcomp, skip first frame after transition.
+#define SKIP_FIRST_AFTER_TRANSITION
 
 
 

@@ -50,6 +50,8 @@ int main( int argc, char ** argv )
 	fread( streamdata, streamcount, sizeof( streamdata[0] ), f );
 	fclose( f );
 
+	printf( "Total tiles in stream: %d\n", streamcount );
+
 	f = fopen( argv[2], "rb" );
 	fseek( f, 0, SEEK_END );
 	glyphct = ftell( f ) / sizeof( glyphfloat[0] );
@@ -936,7 +938,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					token_stream[1] = realloc( token_stream[1], (nrtokens[1]+1) * sizeof( token_stream[1] ) );
 					token_stream[1][nrtokens[1]++] = forward-1;
 
+#ifdef SKIP_FIRST_AFTER_TRANSITION
 					running[by][bx] = forward;
+#else
+					running[by][bx] = forward-1;
+#endif
 					lastblock[by][bx] = glyphid;
 				}
 				else
@@ -1122,7 +1128,10 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 			for( n = 0; n < glyphct; n++ )
 			{
-				int prob = (glyphcounts[n] * 257.0 / probcountmap[n]) - 0.5;
+				double gratio = glyphcounts[n] * 1.0 / probcountmap[n];
+
+				int prob = ( gratio * 257.0 ) - 1.5;
+
 				if( prob < 0 ) prob = 0; 
 				if( prob > 255 ) prob = 255;
 				vpx_probs_by_tile[n] = prob;
@@ -1149,6 +1158,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 #endif
 #endif
 
+		int tiletransitions = 0;
 
 		FILE * fSymbolList = fopen( "symbol_list.txt", "w" );
 
@@ -1163,6 +1173,8 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 				if( running[by][bx] == 0 )
 				{
+					tiletransitions++;
+
 					//token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
 					//token_stream[nrtokens++] = glyphid;
 
@@ -1241,7 +1253,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					fprintf( fSymbolList, "%d\n", (forward-1) );
 
 #endif
+#ifdef SKIP_FIRST_AFTER_TRANSITION
 					running[by][bx] = forward;
+#else
+					running[by][bx] = forward-1;
+#endif
+
 					lastblock[by][bx] = glyphid;
 				}
 				else
@@ -1255,6 +1272,9 @@ for( tmp = 0; tmp < htlen; tmp++ )
 #ifdef UNIFIED_VPX
 		vpx_stop_encode(&vpx_writer);
 		vpx_encoded_len += vpx_writer.pos;
+		FILE * fvpxo = fopen( "vpx_runs.dat", "wb" );
+		fwrite( bufferVPX, 1, vpx_writer.pos, fvpxo );
+		fclose (fvpxo);
 #else
 		for( by = 0; by < video_h/BLOCKSIZE; by++ )
 		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
@@ -1262,6 +1282,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			vpx_stop_encode(&vpx_writers[by][bx]);
 			vpx_encoded_len += vpx_writers[by][bx].pos;
 		}
+		fprintf( stderr, "WARNING: cannot use by-block VPX output\n" );
 #endif
 		// Total 
 #endif
@@ -1269,6 +1290,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 
 		//CNFGSwapBuffers();
+		printf( "Tile Transitions: %d\n", tiletransitions );
 		printf( "Bitstream Length Bits: %d (%d + %d)\n", bistreamlen, bistreamlentiles, bistreamlenruns );
 		printf( "Huff Length: %d %d\n", hufflen[0] * 24, hufflen[1] * 24 );
 		int vpxaddbits = 0;
@@ -1392,7 +1414,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 					next_rle = e->value+1;
 #endif
+
+#ifdef SKIP_FIRST_AFTER_TRANSITION
 					running[by][bx] = next_rle;
+#else
+					running[by][bx] = next_rle-1;
+#endif
 				}
 				else
 				{
@@ -1510,7 +1537,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						token_stream = realloc( token_stream, (nrtokens+1) * sizeof( token_stream[0] ) );
 						token_stream[nrtokens++] = FLAG_RLE | forward;
 					}
+#ifdef SKIP_FIRST_AFTER_TRANSITION
 					running[by][bx] = forward;
+#else
+					running[by][bx] = forward-1;
+#endif
 					block_transition_counts[lastblock[by][bx]*num_raw_block_frequencies + glyphid]++;
 					raw_block_counts[glyphid]++;
 					lastblock[by][bx] = glyphid;
