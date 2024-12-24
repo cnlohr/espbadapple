@@ -4,6 +4,11 @@
 #include "hufftreegen.h"
 #include "gifenc.c"
 
+
+#define VPXCODING_WRITER
+#define VPXCODING_READER
+#include "../vpxtest/vpxcoding.h"
+
 int streamcount;
 uint32_t * streamdata;
 
@@ -980,8 +985,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		huffup * hu[2] = { 0 };
 		huffelement * hufftree[2] = { 0 };
 		int htlen[2] = { 0 };
-
+#ifdef USE_VPX_LEN
+		for( toktype = 0; toktype < 1; toktype++ )
+#else
 		for( toktype = 0; toktype < 2; toktype++ )
+#endif
 		{
 			hufftree[toktype] = GenerateHuffmanTree( unique_tokens[toktype], token_counts[toktype], unique_tok_ct[toktype], &hufflen[toktype] );
 			printf( "Huff len: %d\n", hufflen[toktype] );
@@ -1057,11 +1065,82 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 		char * bitstreamo = 0;
 		int bistreamlen = 0;
+		int bistreamlentiles = 0;
+		int bistreamlenruns = 0;
 
 		block = 0;
 
 		memset( running, 0, sizeof(running) );
 		memset( lastblock, 0, sizeof( lastblock ) );
+
+
+
+#ifdef USE_VPX_LEN
+		int vpx_probs_by_tile[glyphct];
+		hufflen[1] = 0; // Null out RLE huffman table.
+		{
+			int probcountmap[glyphct];
+			int glyphcounts[glyphct];
+			int curtile[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
+			int curtileruns[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
+			int n;
+
+			for( n = 0; n < glyphct; n++ )
+			{
+				probcountmap[n] = 0;
+				glyphcounts[n] = 0;
+			}
+
+			for( by = 0; by < video_h/BLOCKSIZE; by++ )
+			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+			{
+				curtile[by][bx] = -1;
+				curtileruns[by][bx] = 0;
+			}
+
+			// Go frame-at-a-time, but keep track of the last block and running, on a per-block basis.
+			for( frame = 0; frame < num_video_frames; frame++ )
+			{
+				for( by = 0; by < video_h/BLOCKSIZE; by++ )
+				for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+				{
+					uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
+					if( curtile[by][bx] != glyphid )
+					{
+						if( curtileruns[by][bx] > 0 )
+						{
+							glyphcounts[curtile[by][bx]]++;
+							probcountmap[curtile[by][bx]]+=curtileruns[by][bx];
+						}
+						curtileruns[by][bx] = 0;
+						curtile[by][bx] = glyphid;
+					}
+					curtileruns[by][bx]++;
+				}
+			}
+
+			for( n = 0; n < glyphct; n++ )
+			{
+				int prob = (glyphcounts[n] * 257.0 / probcountmap[n]) - 0.5;
+				if( prob < 0 ) prob = 0; 
+				if( prob > 255 ) prob = 255;
+				vpx_probs_by_tile[n] = prob;
+			}
+		}
+
+		int vpx_encoded_len = 0;
+
+
+		vpx_writer vpx_writers[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
+		char * bufferVPX[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
+		for( by = 0; by < video_h/BLOCKSIZE; by++ )
+		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+		{
+			bufferVPX[by][bx] = malloc( 1024*1024 );
+			vpx_start_encode( &vpx_writers[by][bx], bufferVPX[by][bx], 1024*1024);
+		}
+#endif
 
 
 		FILE * fSymbolList = fopen( "symbol_list.txt", "w" );
@@ -1073,6 +1152,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
 			{
 				uint32_t glyphid = streamdata[(bx+by*(vbw)) + vbw*vbh * frame];
+
 
 				if( running[by][bx] == 0 )
 				{
@@ -1098,6 +1178,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						hrplace = bit?tr[hrplace].pair1 : tr[hrplace].pair0;
 
 						bitstreamo[bistreamlen++] = bit;
+						bistreamlentiles++;
 					}
 
 					fprintf( fSymbolList, "%d, ", glyphid );
@@ -1127,7 +1208,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
 						bitstreamo[bistreamlen++] = ((fwd_to_encode)>>(numbits-h-1)) & 1;
 					}
-
+#elif USE_VPX_LEN
+					int n;
+					for( n = 0; n < forward-1; n++ )
+						vpx_write( &vpx_writers[by][bx], 1, vpx_probs_by_tile[glyphid] );
+					vpx_write( &vpx_writers[by][bx], 0, vpx_probs_by_tile[glyphid] );
 #else
 
 					for( h = 0; h < htlen[1]; h++ )
@@ -1137,12 +1222,11 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					{
 						bitstreamo = realloc( bitstreamo, (bistreamlen+1) );
 						bitstreamo[bistreamlen++] = hu[1][h].bitstream[b];
+						bistreamlenruns++;
 					}
 					fprintf( fSymbolList, "%d\n", (forward-1) );
 
 #endif
-					
-
 					running[by][bx] = forward;
 					lastblock[by][bx] = glyphid;
 				}
@@ -1153,12 +1237,30 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			}
 		}
 
+#if USE_VPX_LEN
+		for( by = 0; by < video_h/BLOCKSIZE; by++ )
+		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
+		{
+			vpx_stop_encode(&vpx_writers[by][bx]);
+			vpx_encoded_len += vpx_writers[by][bx].pos;
+		}
+		// Total 
+#endif
+
+
+
 		//CNFGSwapBuffers();
-		printf( "Bitstream Length Bits: %d\n", bistreamlen );
+		printf( "Bitstream Length Bits: %d (%d + %d)\n", bistreamlen, bistreamlentiles, bistreamlenruns );
 		printf( "Huff Length: %d %d\n", hufflen[0] * 24, hufflen[1] * 24 );
+		int vpxaddbits = 0;
+#ifdef USE_VPX_LEN
+		printf( "VPX Probability Len (bits): %d\n", glyphct * 8);
+		printf( "VPX Length (bits) %d\n", vpx_encoded_len * 8 );
+		vpxaddbits = vpx_encoded_len * 8 + glyphct;
+#endif
 		printf( "Glyph Length: %d\n", glyphct * BLOCKSIZE * BLOCKSIZE );
-		printf( "Total: %d\n", bistreamlen + hufflen[0] * 24 + hufflen[1] * 24 +glyphct * BLOCKSIZE * BLOCKSIZE ); 
-		int total_bits = bistreamlen + hufflen[0] * 24 + hufflen[1] * 24 +glyphct * BLOCKSIZE * BLOCKSIZE;
+		printf( "Total: %d\n", bistreamlen + hufflen[0] * 24 + hufflen[1] * 24 +glyphct * BLOCKSIZE * BLOCKSIZE + vpxaddbits ); 
+		int total_bits = bistreamlen + hufflen[0] * 24 + hufflen[1] * 24 +glyphct * BLOCKSIZE * BLOCKSIZE + vpxaddbits;
 		printf( "Bytes: %d\n", (total_bits+7)/8 );
 		printf( "Bits Per Frame: %.1f\n", (float)total_bits/(float)num_video_frames );
 
@@ -1179,6 +1281,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			int jlen = (bistreamlen + 7) / 8;
 			int i;
 			uint8_t * payload = calloc( jlen, 1 ); 
+
 			for( i = 0; i < bistreamlen; i++ )
 			{
 				payload[i/8] |= bitstreamo[i]<<(i&7);
@@ -1187,6 +1290,16 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			fclose( f );
 		}
 
+
+
+#ifdef USE_VPX_LEN
+		vpx_reader reader[vbh][vbw];
+		for( by = 0; by < vbh; by++ )
+		for( bx = 0; bx < vbw; bx++ )
+		{
+			vpx_reader_init(&reader[by][bx], bufferVPX[by][bx], vpx_writers[by][bx].pos, 0, 0 );
+		}
+#endif
 
 		int32_t next_rle = -1;
 		while( bitstream_place < bistreamlen )
@@ -1232,6 +1345,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						}
 						next_rle = v - 1 + 1;
 					}
+#elif USE_VPX_LEN
+					int ones = 0;
+					while( vpx_read(&reader[by][bx], vpx_probs_by_tile[lastblock[by][bx]]) )
+						ones++;
+					next_rle = ones+1;
+
 #else
 					e = hufftree[1];
 					while( !e->is_term )

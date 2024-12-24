@@ -47,6 +47,12 @@ I implemented a k-means approach, and wowee! The tiles that came out of k-means 
 ### Other notes
  * I got 15% savings when I broke the "run length" and "glyph ID" fields apart.
  * When having split tables, I tried exponential-golomb coding, and it didn't help.  Savings was not worth it.
+ * Tride VPX with tiles, it was awful.
+ * Tried VPX with RLE.  It beat huffman. (USE_VPX_LEN)
+   * Huffman tree RLE (451878 bits)
+   * VPX originally per tile (441250 bits)
+ *
+
 
 ## Previous Work
  * Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ

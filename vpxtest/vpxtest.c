@@ -242,7 +242,7 @@ int main()
 					probability = chancetable[probplace];
 					//printf( "%d %d PROBPLACE: %d (%d) [%d]\n", tile, level, probplace, probability, ((tile)>>(bitsfortileid-level-1)) );
 					// XXX TODO Pick up here and re-enable this line.
-					//vpx_write(&w, bit, probability);
+					vpx_write(&w, bit, probability);
 					probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 				}
 				symsum++;

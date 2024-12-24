@@ -39,6 +39,10 @@
 
 #define HALFTONE_EN  1
 
+// When doing output use VPX instead of huffman for length.
+#define USE_VPX_LEN  1
+
+
 // THINGS TO NOTE:
 
 // try different stream compression schemes
