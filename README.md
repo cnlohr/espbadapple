@@ -51,7 +51,7 @@ I implemented a k-means approach, and wowee! The tiles that came out of k-means 
  * Tried VPX with RLE.  It beat huffman. (USE_VPX_LEN)
    * Huffman tree RLE (451878 bits)
    * VPX originally per tile (441250 bits)
- *
+   * VPX when unified (440610 bits)!!
 
 
 ## Previous Work

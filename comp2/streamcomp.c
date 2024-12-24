@@ -1132,6 +1132,12 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		int vpx_encoded_len = 0;
 
 
+#ifdef UNIFIED_VPX
+		vpx_writer vpx_writer;
+		char * bufferVPX;
+		bufferVPX = malloc( 1024*1024 );
+		vpx_start_encode( &vpx_writer, bufferVPX, 1024*1024);
+#else		
 		vpx_writer vpx_writers[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
 		char * bufferVPX[video_h/BLOCKSIZE][video_w/BLOCKSIZE];
 		for( by = 0; by < video_h/BLOCKSIZE; by++ )
@@ -1140,6 +1146,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 			bufferVPX[by][bx] = malloc( 1024*1024 );
 			vpx_start_encode( &vpx_writers[by][bx], bufferVPX[by][bx], 1024*1024);
 		}
+#endif
 #endif
 
 
@@ -1210,9 +1217,16 @@ for( tmp = 0; tmp < htlen; tmp++ )
 					}
 #elif USE_VPX_LEN
 					int n;
+#ifdef UNIFIED_VPX
+					for( n = 0; n < forward-1; n++ )
+						vpx_write( &vpx_writer, 1, vpx_probs_by_tile[glyphid] );
+					vpx_write( &vpx_writer, 0, vpx_probs_by_tile[glyphid] );
+#else
 					for( n = 0; n < forward-1; n++ )
 						vpx_write( &vpx_writers[by][bx], 1, vpx_probs_by_tile[glyphid] );
 					vpx_write( &vpx_writers[by][bx], 0, vpx_probs_by_tile[glyphid] );
+#endif
+
 #else
 
 					for( h = 0; h < htlen[1]; h++ )
@@ -1238,12 +1252,17 @@ for( tmp = 0; tmp < htlen; tmp++ )
 		}
 
 #if USE_VPX_LEN
+#ifdef UNIFIED_VPX
+		vpx_stop_encode(&vpx_writer);
+		vpx_encoded_len += vpx_writer.pos;
+#else
 		for( by = 0; by < video_h/BLOCKSIZE; by++ )
 		for( bx = 0; bx < video_w/BLOCKSIZE; bx++ )
 		{
 			vpx_stop_encode(&vpx_writers[by][bx]);
 			vpx_encoded_len += vpx_writers[by][bx].pos;
 		}
+#endif
 		// Total 
 #endif
 
@@ -1293,12 +1312,17 @@ for( tmp = 0; tmp < htlen; tmp++ )
 
 
 #ifdef USE_VPX_LEN
+#ifdef UNIFIED_VPX
+		vpx_reader reader;
+		vpx_reader_init(&reader, bufferVPX, vpx_writer.pos, 0, 0 );
+#else
 		vpx_reader reader[vbh][vbw];
 		for( by = 0; by < vbh; by++ )
 		for( bx = 0; bx < vbw; bx++ )
 		{
 			vpx_reader_init(&reader[by][bx], bufferVPX[by][bx], vpx_writers[by][bx].pos, 0, 0 );
 		}
+#endif
 #endif
 
 		int32_t next_rle = -1;
@@ -1346,8 +1370,13 @@ for( tmp = 0; tmp < htlen; tmp++ )
 						next_rle = v - 1 + 1;
 					}
 #elif USE_VPX_LEN
+
 					int ones = 0;
+#ifdef UNIFIED_VPX
+					while( vpx_read(&reader, vpx_probs_by_tile[lastblock[by][bx]]) )
+#else
 					while( vpx_read(&reader[by][bx], vpx_probs_by_tile[lastblock[by][bx]]) )
+#endif
 						ones++;
 					next_rle = ones+1;
 
