@@ -107,6 +107,13 @@ int main()
 	FILE * fTL = fopen( "huffTL_fmraw.dat", "wb" );
 	FILE * fD = fopen( "huffD_fmraw.dat", "wb" );
 
+	FILE * fData = fopen( "espbadapple_song.h", "wb" );
+
+	fprintf( fData, "#ifndef ESPBADAPPLE_SONG_H\n" );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_H\n\n" );
+	fprintf( fData, "#include <stdint.h>\n\n" );
+
+	fprintf( fData, "static uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen );
 	int maxpdA = 0;
 	int maxpdB = 0;
 	int htnlen = 0;
@@ -117,6 +124,7 @@ int main()
 		{
 			uint32_t sym = h->value;
 			fwrite( &sym, 1, 2, fTN );
+			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
 			htnlen += 2;
 		}
 		else
@@ -132,9 +140,12 @@ int main()
 			if( pd1 > maxpdB ) maxpdB = pd1;
 			uint32_t sym = 0x8000 | (pd0) | (pd1<<8);
 			fwrite( &sym, 1, 2, fTN );
+			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
 			htnlen += 2;
 		}
 	}
+	fprintf( fData, "};\n\n" );
+	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 
@@ -149,6 +160,7 @@ int main()
 			uint32_t sym = h->value;
 			fwrite( &sym, 1, 1, fTL );
 			htnlen2 += 1;
+			fprintf( fData, "0x%02x%s", sym, ((i%16)!=15)?", " : ",\n\t" );
 		}
 		else
 		{
@@ -164,9 +176,12 @@ int main()
 			uint32_t sym = 0x80 | (pd0) | (pd1<<4);
 			fwrite( &sym, 1, 1, fTL );
 			htnlen2 += 1;
+			fprintf( fData, "0x%02x%s", sym, ((i%16)!=15)?", " : ",\n\t" );
 		}
 	}
 
+	fprintf( fData, "};\n\n" );
+	fprintf( fData, "static uint8_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 
@@ -188,6 +203,7 @@ int main()
 					runbyteplace++;
 					if( runbyteplace == 8 )
 					{
+						fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
 						total_bytes++;
 						fwrite( &runbyte, 1, 1, fD );
 						runbyte = 0;
@@ -216,6 +232,7 @@ int main()
 					runbyteplace++;
 					if( runbyteplace == 8 )
 					{
+						fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
 						total_bytes++;
 						fwrite( &runbyte, 1, 1, fD );
 						runbyte = 0;
@@ -232,6 +249,16 @@ int main()
 		}
 	}
 
+	if( runbyteplace )
+	{
+		fwrite( &runbyte, 1, 1, fD );
+		total_bytes++;
+		fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
+	}
+
+	fprintf( fData, " };\n\n" );
+	fprintf( fData, "#endif" );
+	fclose( fData );
 	printf( "Used mask: %04x\n", usedmask );
 	printf( "Huff Tree (N): %d bytes\n", htnlen );
 	printf( "Huff Tree (D): %d bytes\n", htnlen2 );

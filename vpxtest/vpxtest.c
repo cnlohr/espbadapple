@@ -123,7 +123,7 @@ int main()
 					pdid = tilechangesto[y][x][dep-1];
 
 				int run = tilechangesrle[y][x][dep];
-				//printf( "%d %d %d -> %d,%d  %d,%d\n", x, y, dep, tid,run, maxtileid, maxrun );
+				//printf( "%d %d %d -> %d,%d  %d,%d\n", x, y, dep, tid,run, maxtileid_remapped, maxrun );
 				tilerunfreq[pdid][run]++;
 			}
 		}
@@ -133,47 +133,91 @@ int main()
 	{
 		FILE * fRunFreqs = fopen( "runfreqs.csv", "w" );
 		fprintf( fRunFreqs, "Run," );
-		for( x = 0; x < maxtileid; x++ )
+		for( x = 0; x < maxtileid_remapped; x++ )
 		{
-			fprintf( fRunFreqs, "%d%c", x, (x==maxtileid-1)?'\n':',' );
+			fprintf( fRunFreqs, "%d%c", x, (x==maxtileid_remapped-1)?'\n':',' );
 		}
 
 		fprintf( fRunFreqs, "Sum," );
-		for( x = 0; x < maxtileid; x++ )
+		for( x = 0; x < maxtileid_remapped; x++ )
 		{
 			int tsum = 0;
 			for( y = 0; y < maxrun; y++ )
 			{
 				tsum += tilerunfreq[x][y] * y;
 			}
-			fprintf( fRunFreqs, "%.3f%c", tsum/(double)tilecounts[x], (x==maxtileid-1)?'\n':',' );
+			fprintf( fRunFreqs, "%.3f%c", tsum/(double)tilecounts[x], (x==maxtileid_remapped-1)?'\n':',' );
 		}
 
 		fprintf( fRunFreqs, "Counts," );
-		for( x = 0; x < maxtileid; x++ )
+		for( x = 0; x < maxtileid_remapped; x++ )
 		{
-			fprintf( fRunFreqs, "%d%c", tilecounts[x], (x==maxtileid-1)?'\n':',' );
+			fprintf( fRunFreqs, "%d%c", tilecounts[x], (x==maxtileid_remapped-1)?'\n':',' );
 		}
 
 		for( y = 0; y < maxrun; y++ )
 		{
 			fprintf( fRunFreqs, "%d,", y );
-			for( x = 0; x < maxtileid; x++ )
+			for( x = 0; x < maxtileid_remapped; x++ )
 			{
-				//printf( "%d %d  %d %d\n", x, y, maxtileid, maxrun );
-				fprintf( fRunFreqs, "%d%c", tilerunfreq[x][y], (x==maxtileid-1)?'\n':',' );
+				//printf( "%d %d  %d %d\n", x, y, maxtileid_remapped, maxrun );
+				fprintf( fRunFreqs, "%d%c", tilerunfreq[x][y], (x==maxtileid_remapped-1)?'\n':',' );
 			}
 		}
 		fclose( fRunFreqs );
 	}
 
-	for( i = 0; i < maxtileid; i++ )
+	for( i = 0; i < maxtileid_remapped; i++ )
 	{
 		printf( "%d %d %d\n", i, tilecounts[i], tileremap[i] );
 	}
 
+	int bitsfortileid = intlog2( maxtileid_remapped );
+
+
+
+	//XXX This is wrong, Find another way (!!)
 	// Compute the chances-of-tile table.
+	// This is a triangular structure.
+	int chancetable[1<<bitsfortileid];
+	memset( chancetable, 0, 4<<bitsfortileid );
+
+	{
+		int nout = 0;
+		int n = 0;
+		int level = 0;
 	
+		for( level = 0; level < bitsfortileid; level++ )
+		{
+			int maxmask = 1<<bitsfortileid;
+			int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
+			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
+			int lincmask = comparemask<<1;
+			int maskcheck = 0;
+			printf( "%d %08x %08x %08x %08x\n", level, levelmask, comparemask, lincmask, maxmask );
+			for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
+			{
+				int count1 = 0;
+				int count0 = 0;
+				for( n = 0; n < maxtileid_remapped; n++ )
+				{
+					if( ( n & levelmask ) == maskcheck )
+					{
+						if( n & comparemask )
+							count1 += tilecounts[n];
+						else
+							count0 += tilecounts[n];
+					}
+				}
+				double chanceof0 = count0 / (double)(count0 + count1);
+				int prob = chanceof0 * 257 - 0.5;
+				if( prob < 0 ) prob = 0;
+				if( prob > 255 ) prob = 255;
+				chancetable[nout++] = prob;
+				//printf( "%08x %d %d (%d) (%d)\n", maskcheck, count0, count1, nout, prob );
+			}
+		}
+	}
 
 	for( y = 0; y < BLKY; y++ )
 	{
@@ -184,15 +228,21 @@ int main()
 			vpx_start_encode( &w, bufferVPX, sizeof(bufferVPX));
 			for( i = 0; i < changes; i++ )
 			{
+#if 0
 				// First we encode the block ID.
 				// Then we encode the run length.
 				int tile = tilechangesto[y][x][i];
 				int runlen = tilechangesrle[y][x][i];
-
-				int bits = intlog2( maxtileid_remapped );
-				int b;
-				for( b = 0; b < bits; b++ )
+				int level;
+				for( level = 0; level < bitsfortileid; level++ )
 				{
+					int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
+					int tilebase = tile 
+
+					int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
+					int lincmask = comparemask<<1;
+					int maskcheck = 0;
+
 					int tilemask = bits - b;
 					int chance_of_0 = 0
 				}
@@ -205,8 +255,10 @@ int main()
 					int outbit = (data >> bit) & 1;
 					vpx_write(&w, outbit, probability);
 				}
+#endif
 			}
 			vpx_stop_encode(&w);
-*/
+		}
+	}
 }
 

@@ -13,6 +13,9 @@ test : testsynth fmraw.dat fmcomp
 	./fmcomp
 	./testsynth  | aplay -D pulse -c 1 -t raw -r 48000 -f FLOAT_LE
 
+espbadapple_song.h : fmcomp fmraw.dat
+	./fmcomp
+
 fmcomp : fmcomp.c
 	gcc -O2 -g -o $@ $^ -lm
 
