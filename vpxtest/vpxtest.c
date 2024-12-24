@@ -45,7 +45,7 @@ void VPDrawGlyph( int xofs, int yofs, uint64_t glyph )
 	int x, y;
 	if( glyph >= glyphct )
 	{
-		fprintf( stderr, "Glyph %d/%d\n", glyph, glyphct );
+		fprintf( stderr, "Glyph %ld/%d\n", glyph, glyphct );
 		exit( -9 );
 	}
 	for( y = 0; y < BLOCKSIZE; y++ )
@@ -104,8 +104,6 @@ int main()
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
 
-			CNFGClearFrame();
-
 	int numchanges = 0;
 	{
 		int * tilecounts_temp = alloca( 4 * maxtileid );
@@ -122,24 +120,39 @@ int main()
 			{
 				int t = tiles[tid++];
 				int ct = init_tile[y][x];
-				if( t != ct && frame != 0
-#ifdef SKIP_FIRST_AFTER_TRANSITION
-					&& tilechangerun[y][x] > 1
-#endif
-				)
+				if( t != ct )
 				{
 					int pl = tilechangesqty[y][x];
 					tilechangesto[y][x][pl] = t;
 					tilecounts_temp[t]++;
+
+					/////////////////////////////////////////////////////////
+			//XXX Logic here is almost all certainly wrong.
+					int forward;
+					for( forward = 0; frame + forward < frames; forward++ )
+					{
+						if( tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] != t )
+							break;
+					}
+			
+					forward--;
+					tilechangesrle[y][x][pl] = forward;
+
+					int run = tilechangerun[y][x] - 1;
+#ifdef SKIP_FIRST_AFTER_TRANSITION
+#error xxx
+					tilechangerun[y][x] = forward;
+#else
+					tilechangerun[y][x] = forward-1;
+#endif
+					/////////////////////////////////////////////////////////
 					init_tile[y][x] = t;
-					int run = tilechangesrle[y][x][pl] = tilechangerun[y][x] - 1;
-					if( run > maxrun ) maxrun = run;
+					//if( run > maxrun ) maxrun = run;
 					tilechangesqty[y][x] = pl+1;
-					tilechangerun[y][x] = 0;
 					numchanges++;
 					//VPDrawGlyph( x*16, y*16, t );
 				}
-				tilechangerun[y][x]++;
+				tilechangerun[y][x]--;
 			}
 			//CNFGSwapBuffers();
 			//usleep(10000);
@@ -274,7 +287,7 @@ int main()
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
 				chancetable[nout++] = prob;
-				printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
+				//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
 			}
 		}
 	}

@@ -52,7 +52,8 @@ I implemented a k-means approach, and wowee! The tiles that came out of k-means 
    * Huffman tree RLE (451878 bits)
    * VPX originally per tile (441250 bits)
    * VPX when unified (440610 bits)!!
-
+ * Show original with SKIP_FIRST_AFTER_TRANSITION
+ * But could we have the holy grail?  Could we not skip transitions?
 
 ## Previous Work
  * Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ

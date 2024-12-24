@@ -95,7 +95,8 @@
 
 
 // For streamcomp, skip first frame after transition.
-#define SKIP_FIRST_AFTER_TRANSITION
+// This performs a massive space savings.
+//#define SKIP_FIRST_AFTER_TRANSITION
 
 
 
