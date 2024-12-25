@@ -22,6 +22,8 @@
 #define VPXCODING_WRITER
 #include "vpxcoding.h"
 
+ * For embedded use, you can define VPX_64BIT or VPX_32BIT.
+
  */
 
 #ifndef _VPX_SFH_H
@@ -69,7 +71,22 @@ static const uint8_t vpx_norm[256] = {
 // Even relatively modest values like 100 would work fine.
 #define LOTS_OF_BITS 0x40000000
 
+#if !defined( VPX_64BIT ) && !defined( VPX_32BIT )
+#if SIZE_MAX == 0xffffffffffffffffULL
+#define VPX_64BIT
+#else
+#define VPX_32BIT
+#endif
+#endif
+
+#ifdef VPX_64BIT
+typedef uint64_t BD_VALUE;
+#elif defined( VPX_32BIT )
+typedef uint32_t BD_VALUE;
+#else
 typedef size_t BD_VALUE;
+#endif
+
 typedef int8_t vpx_tree_index;
 typedef uint8_t vpx_prob;
 
@@ -160,7 +177,7 @@ VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
 		BD_VALUE nv;
 		BD_VALUE big_endian_values;
 		memcpy(&big_endian_values, buffer, sizeof(BD_VALUE));
-#if SIZE_MAX == 0xffffffffffffffffULL
+#ifdef VPX_64BIT
 		big_endian_values = htobe64(big_endian_values);
 #else
 		big_endian_values = htobe32(big_endian_values);

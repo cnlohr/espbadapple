@@ -238,6 +238,7 @@ class BlockTrainer:
         self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_0080.png"), 80)
         self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_2303.png"), 2303)
         self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1659.png"), 1659)
+        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1689.png"), 1689)
 
         for epoch in range(1000000):
 
@@ -286,6 +287,7 @@ class BlockTrainer:
             self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)
             self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_2303.png" % (epoch, epoch_loss)), 2303)
             self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1659.png" % (epoch, epoch_loss)), 1659)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1689.png" % (epoch, epoch_loss)), 1689)
 
             print("Epoch %d: loss %f (percep %f choice %f)" % (epoch, epoch_loss, epoch_loss_p, epoch_loss_c))
 

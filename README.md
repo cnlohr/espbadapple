@@ -60,6 +60,15 @@ Story arc:
  * Do it per tile, in time.
  * Don't run multiple unique streams.
 
+After Full VPX
+         Run:157208 bits / bytes: 19651
+         Run:140136 bits / bytes: 17517
+ * But we know more, what if we consider the previous value? - Need another 256-byte table.
+         Run:151848 bits / bytes: 18981
+         Run:135120 bits / bytes: 16890
+ * The missstep of VPX_CODING_ALLOW_BACKTRACK
+ * Always do A/B tests, so the absolut doesn't matter but doing A/B to compare them more broadly.
+
 ## Previous Work
  * Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
  * CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
