@@ -77,6 +77,10 @@ After Full VPX
  * FX-CG50 - 72x54@20FPS, RLE, FastLZ - https://github.com/oxixes/bad-apple-cg50
  * Thumbboy - https://www.youtube.com/watch?v=vbBQ11BZWoU - 52x39@30FPS, 45 bytes per frame + DPCM Audio
 
+### TODO
+ * Double check hero frames.
+ * Write algo to find missing glyph.
+
 ### Various techniques outlined on forum post
 
 https://tiplanet.org/forum/viewtopic.php?t=24951

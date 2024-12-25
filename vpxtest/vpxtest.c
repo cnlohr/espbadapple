@@ -429,8 +429,8 @@ int main( int argc, char ** argv )
 			if( prob > 255 ) prob = 255;
 			vpx_probs_by_tile_run_after_one[n] = prob;
 
-			printf( "%d [%d %d] %d %d\n", n, vpx_probs_by_tile_run[n],
-				vpx_probs_by_tile_run_after_one[n], glyphcounts[n], probcountmap[n]);
+			//printf( "%d [%d %d] %d %d\n", n, vpx_probs_by_tile_run[n],
+			//	vpx_probs_by_tile_run_after_one[n], glyphcounts[n], probcountmap[n]);
 		}
 	}
 
@@ -552,7 +552,7 @@ int main( int argc, char ** argv )
 	}
 
 	printf( "\n" );
-	printf( " Total video: %6d Bytes (%d bits) (%.1f bits/frame) (%d frames)\n", sum, sum*8, sum*8.0/frames, frames );
+	printf( " Total video: %6d Bytes (%d bits) (%.3f bits/frame) (%d frames)\n", sum, sum*8, sum*8.0/frames, frames );
 
 	// test validate
 	if( 1 )
@@ -580,8 +580,13 @@ int main( int argc, char ** argv )
 #endif
 		ge_GIF * gifout = ge_new_gif( argv[3], RESX*2, RESY*2, palette, 4, -1, 0 );
 
+		FILE * bituse = fopen ( "bituse.txt", "w" );
+		FILE * bitusekbits = fopen ( "bitusepersec.txt", "w" );
+		int bitssofarthissec = 0;
 		for( frame = 0; frame < frames; frame++ )
 		{
+			intptr_t startbuffer = (intptr_t)reader.buffer;
+			int startcount = reader.count;
 			for( y = 0; y < BLKY; y++ )
 			for( x = 0; x < BLKX; x++ )
 			{
@@ -641,7 +646,19 @@ int main( int argc, char ** argv )
 			ge_add_frame(gifout, 2);
 			CNFGSwapBuffers();
 			//usleep(10000);
+			int endcount = reader.count;
+			intptr_t endbuffer = (intptr_t)reader.buffer;
+			int bits_used_this_frame = (startcount - endcount) + (endbuffer - startbuffer) * 8;
+			bitssofarthissec += bits_used_this_frame;
+			fprintf( bituse, "%d\n", bits_used_this_frame );
+			if( ( frame % 30 ) == 29 )
+			{
+				fprintf( bitusekbits, "%d\n", bitssofarthissec );
+				bitssofarthissec = 0;
+			}
 		}
+		fclose( bituse );
+		fclose( bitusekbits );
 		ge_close_gif( gifout );
 	}
 
