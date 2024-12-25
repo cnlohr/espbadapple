@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #define VPXCODING_WRITER
+#define VPXCODING_READER
 #include "vpxcoding.h"
 
 #define CNRBTREE_IMPLEMENTATION
@@ -30,6 +31,8 @@ int tilechangect;
 
 int maxtileid_remapped = 0;
 uint8_t bufferVPX[1024*1024];
+uint8_t bufferVPXg[1024*1024];
+uint8_t bufferVPXr[1024*1024];
 
 int intlog2 (int x){return __builtin_ctz (x);}
 
@@ -110,7 +113,6 @@ int main()
 
 		int tilechangerun[BLKY][BLKX] = { 0 };
 		int x, y, frame;
-		int tid = 0;
 		for( frame = 0; frame < frames; frame++ )
 		{
 			for( y = 0; y < BLKY; y++ )
@@ -151,7 +153,6 @@ int main()
 				}
 			}
 		}
-		printf( "TID: %d\n", tid );
 
 		cnrbtree_u32u32 * countmap = cnrbtree_u32u32_create();
 
@@ -224,7 +225,7 @@ int main()
 	}
 
 	// Now, we have to compress tilechanges & tileruns
-	int vpx_probs_by_tile_run[maxtileid_remapped];
+	uint8_t vpx_probs_by_tile_run[maxtileid_remapped];
 	{
 		int probcountmap[maxtileid_remapped];
 		int glyphcounts[maxtileid_remapped];
@@ -249,7 +250,7 @@ int main()
 			int r = tileruns[n];
 
 			glyphcounts[t]++;
-			probcountmap[t]+=r;
+			probcountmap[t]+=r+1;
 		}
 
 		for( n = 0; n < maxtileid_remapped; n++ )
@@ -261,6 +262,7 @@ int main()
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			vpx_probs_by_tile_run[n] = prob;
+			//printf( "%d %d %d %d\n", n, prob,  glyphcounts[n], probcountmap[n]);
 		}
 	}
 
@@ -268,8 +270,8 @@ int main()
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
-	int chancetable_glyph[1<<bitsfortileid];
-	memset( chancetable_glyph, 0, 4<<bitsfortileid );
+	uint8_t chancetable_glyph[1<<bitsfortileid];
+	memset( chancetable_glyph, 0, sizeof(chancetable_glyph) );
 	{
 		int nout = 0;
 		int n = 0;
@@ -282,7 +284,6 @@ int main()
 			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
 			int lincmask = comparemask<<1;
 			int maskcheck = 0;
-			printf( "%d %08x %08x %08x %08x\n", level, levelmask, comparemask, lincmask, maxmask );
 			for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
 			{
 				int count1 = 0;
@@ -311,12 +312,17 @@ int main()
 	int bytesum = 0;
 	int symsum = 0;
 	int n;
-	vpx_writer w = { 0 };
-	vpx_start_encode( &w, bufferVPX, sizeof(bufferVPX));
+	vpx_writer w_glyphs = { 0 };
+	vpx_start_encode( &w_glyphs, bufferVPXg, sizeof(bufferVPXg));
+	vpx_writer w_run = { 0 };
+	vpx_start_encode( &w_run, bufferVPXr, sizeof(bufferVPXr));
+	vpx_writer w_combined = { 0 };
+	vpx_start_encode( &w_combined, bufferVPX, sizeof(bufferVPX));
 
 	for( n = 0; n < tilechangect; n++ )
 	{
 		int tile = tilechanges[n];
+		int run = tileruns[n];
 		// First we encode the block ID.
 		// Then we encode the run length.
 		int level;
@@ -329,17 +335,92 @@ int main()
 			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
 			int bit = !!(tile & comparemask);
 			probability = chancetable_glyph[probplace];
-			vpx_write(&w, bit, probability);
+			vpx_write(&w_glyphs, bit, probability);
+			vpx_write(&w_combined, bit, probability);
 			probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 		}
+
+		probability = vpx_probs_by_tile_run[tile];
+		int b;
+		for( b = 0; b < run; b++ )
+		{
+			vpx_write(&w_run, 1, probability);
+			vpx_write(&w_combined, 1, probability);
+		}
+		vpx_write(&w_run, 0, probability);
+		vpx_write(&w_combined, 0, probability);
+
 		symsum++;
 	}
+	vpx_stop_encode(&w_glyphs);
+	int glyphbytes = w_glyphs.pos;
 
-	// XXX TODO: Emit bits for RLE
-	vpx_stop_encode(&w);
-	int glyphbytes = w.pos;
+	vpx_stop_encode(&w_run);
+	int runbytes = w_run.pos;
 
-	printf( "SUM: %d bits / bytes: %d / syms: %d\n", glyphbytes*8, glyphbytes, symsum );
+	vpx_stop_encode(&w_combined);
+	int combinedstream = w_combined.pos;
 
+	printf( " Num Changes:%6d\n", symsum );
+	printf( "      Stream:%6d bits / bytes:%6d\n", glyphbytes*8, glyphbytes );
+	printf( "         Run:%6d bits / bytes:%6d\n", runbytes*8, runbytes );
+	printf( "\n" );
+	printf( "    Combined:%6d bits / bytes:%6d\n", combinedstream*8, combinedstream );
+	printf( " + Tile Prob:%6d bits / bytes:%6d\n", (int)sizeof(chancetable_glyph) * 8, (int)sizeof(chancetable_glyph) );
+	printf( " +  Run Prob:%6d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run) * 8, (int)sizeof(vpx_probs_by_tile_run) );
+
+	// test validate
+	if( 1 )
+	{
+		CNFGClearFrame();
+		int curglyph[BLKY][BLKX] = { 0 };
+		int currun[BLKY][BLKX] = { 0 };
+		int playptr = 0;
+		int frame;
+		int x, y;
+
+		vpx_reader reader;
+		vpx_reader_init(&reader, bufferVPX, w_combined.pos, 0, 0 );
+
+		for( frame = 0; frame < frames; frame++ )
+		{
+			for( y = 0; y < BLKY; y++ )
+			for( x = 0; x < BLKX; x++ )
+			{
+				if( currun[y][x] == 0 )
+				{
+					int tile = 0;
+
+					int bitsfortileid = intlog2( maxtileid_remapped );
+					int level;
+
+					int probplace = 0;
+					int probability = 0;
+					for( level = 0; level < bitsfortileid; level++ )
+					{
+						probability = chancetable_glyph[probplace];
+						int bit = vpx_read( &reader, probability );
+						tile |= bit<<(bitsfortileid-level-1);
+						probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
+					}
+					curglyph[y][x] = tile;
+
+					probability = vpx_probs_by_tile_run[tile];
+					int run = 0;
+					while( vpx_read(&reader, probability) )
+						run++;
+					currun[y][x] = run;
+					playptr++;
+				}
+				else
+				{
+					currun[y][x]--;
+				}
+				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, curglyph[y][x] );
+			}
+			CNFGSwapBuffers();
+			usleep(10000);
+		}
+	}
 }
 

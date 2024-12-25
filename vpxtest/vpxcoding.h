@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <string.h>
+#include <endian.h>
 
 #ifdef __cplusplus
 extern "C" {

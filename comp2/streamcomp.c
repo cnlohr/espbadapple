@@ -1135,6 +1135,7 @@ for( tmp = 0; tmp < htlen; tmp++ )
 				if( prob < 0 ) prob = 0; 
 				if( prob > 255 ) prob = 255;
 				vpx_probs_by_tile[n] = prob;
+				//printf( "%d: %d %d %d\n", n, prob, glyphcounts[n], probcountmap[n] );
 			}
 		}
 
