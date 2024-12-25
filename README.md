@@ -80,6 +80,8 @@ After Full VPX
 ### TODO
  * Double check hero frames.
  * Write algo to find missing glyph.
+ * Find way of recovering from poorly fitted data, and generating new cells.
+ * Visual hyperspectral output.
 
 ### Various techniques outlined on forum post
 
