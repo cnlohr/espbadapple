@@ -23,35 +23,35 @@ int numtiles = 0;
 #define BLKX (RESX/BLOCKSIZE)
 #define BLKY (RESY/BLOCKSIZE)
 
-#define MAXTILEDEPTH 4096
+#define MAXTILEDIFF 524288
+int tilechanges[MAXTILEDIFF]; // Change to this
+int tileruns[MAXTILEDIFF];    // After changing, run for this long.
+int tilechangect;
 
-int tilechangesqty[BLKY][BLKX] = { 0 };
-int tilechangesto[BLKY][BLKX][MAXTILEDEPTH] = { 0 };
-int tilechangesrle[BLKY][BLKX][MAXTILEDEPTH] = { 0 };  // [depth] = how long to hold [depth-1] of tilechangesto.
-int tilechangerun[BLKY][BLKX] = { 0 };
 int maxtileid_remapped = 0;
 uint8_t bufferVPX[1024*1024];
 
 int intlog2 (int x){return __builtin_ctz (x);}
 
-float * glyphs;
-int glyphct;
+float * glyphsold;
+int glyphctold;
+float * glyphsnew;
 
 
-void VPDrawGlyph( int xofs, int yofs, uint64_t glyph )
+void VPDrawGlyph( int xofs, int yofs, int glyph )
 {
 	uint32_t bobig[BLOCKSIZE*2*BLOCKSIZE*2];
 	int bit = 0;
 	int x, y;
-	if( glyph >= glyphct )
+	if( glyph >= maxtileid_remapped )
 	{
-		fprintf( stderr, "Glyph %ld/%d\n", glyph, glyphct );
+		fprintf( stderr, "Glyph %d/%d\n", glyph, maxtileid_remapped );
 		exit( -9 );
 	}
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		uint32_t v = (glyphs[x+y*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*glyph] > 0.5) ? 0xffffffff : 0xff000000;
+		uint32_t v = (glyphsnew[x+y*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*glyph] > 0.5) ? 0xffffffff : 0xff000000;
 		bobig[(2*x+0) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+1) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+0) + (2*y+1)*BLOCKSIZE*2] = v;
@@ -72,7 +72,7 @@ int main()
 		uint32_t tile;
 		if( !fread( &tile, 1, 4, f ) )
 		{
-			fprintf( stderr, "Error reading stream\n" );
+			if( !feof( f ) ) fprintf( stderr, "Error reading stream\n" );
 			break;
 		}
 		tiles = realloc( tiles, (numtiles+1)*4 );
@@ -85,18 +85,18 @@ int main()
 	FILE * fT = fopen( "../comp2/tiles-64x48x8.dat", "rb" );
 	while( !feof( fT ) )
 	{
-		glyphs = realloc( glyphs, (glyphct+1)*BLOCKSIZE*BLOCKSIZE*4 );
-		if( !fread( &glyphs[glyphct*BLOCKSIZE*BLOCKSIZE], 1, BLOCKSIZE*BLOCKSIZE*4, fT ) )
+		glyphsold = realloc( glyphsold, (glyphctold+1)*BLOCKSIZE*BLOCKSIZE*4 );
+		if( !fread( &glyphsold[glyphctold*BLOCKSIZE*BLOCKSIZE], 1, BLOCKSIZE*BLOCKSIZE*4, fT ) )
 		{
-			fprintf( stderr, "Error reading glyph\n" );
+			if( !feof( fT ) ) fprintf( stderr, "Error reading glyph\n" );
 			break;
 		}
-		glyphct++;
+		glyphctold++;
 	}
 	fclose( fT );
 
 	printf( "Num tiles: %d\n", numtiles);
-	printf( "Num glyphs: %d\n", glyphct);
+	printf( "Num glyphs: %d\n", glyphctold);
 	int * tilecounts = calloc( 4, maxtileid );   // [newid]
 	int * tileremap = calloc( 4, maxtileid );    // [newid] = originalid
 	int * tileremapfwd = calloc( 4, maxtileid ); // [originalid] = newid
@@ -104,58 +104,52 @@ int main()
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
 
-	int numchanges = 0;
 	{
 		int * tilecounts_temp = alloca( 4 * maxtileid );
 		memset( tilecounts_temp, 0, 4 * maxtileid );
 
-		int init_tile[BLKY][BLKX] = { -1 };
+		int tilechangerun[BLKY][BLKX] = { 0 };
 		int x, y, frame;
 		int tid = 0;
 		for( frame = 0; frame < frames; frame++ )
 		{
-
 			for( y = 0; y < BLKY; y++ )
 			for( x = 0; x < BLKX; x++ )
 			{
-				int t = tiles[tid++];
-				int ct = init_tile[y][x];
-				if( t != ct )
+				int tcr = tilechangerun[y][x];
+				if( tcr == 0 )
 				{
-					int pl = tilechangesqty[y][x];
-					tilechangesto[y][x][pl] = t;
-					tilecounts_temp[t]++;
-
-					/////////////////////////////////////////////////////////
-			//XXX Logic here is almost all certainly wrong.
+					int t = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + 0)];
 					int forward;
-					for( forward = 0; frame + forward < frames; forward++ )
+					for( forward = 1; frame + forward < frames; forward++ )
 					{
 						if( tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] != t )
 							break;
 					}
-			
+#ifndef SKIP_FIRST_AFTER_TRANSITION
 					forward--;
-					tilechangesrle[y][x][pl] = forward;
-
-					int run = tilechangerun[y][x] - 1;
-#ifdef SKIP_FIRST_AFTER_TRANSITION
-#error xxx
-					tilechangerun[y][x] = forward;
-#else
-					tilechangerun[y][x] = forward-1;
 #endif
-					/////////////////////////////////////////////////////////
-					init_tile[y][x] = t;
-					//if( run > maxrun ) maxrun = run;
-					tilechangesqty[y][x] = pl+1;
-					numchanges++;
-					//VPDrawGlyph( x*16, y*16, t );
+					// Our product:
+					//int tilechanges[MAXTILEDIFF];
+					//int tileruns[MAXTILEDIFF];
+					// based on
+					//int tilechanges;
+					
+					tilechanges[tilechangect] = t;
+					tileruns[tilechangect] = forward;
+					tilechangect++;
+
+					// For knowing when to pull a new cell.
+					tilechangerun[y][x] = forward;
+
+					// For frequency monitoring.
+					tilecounts_temp[t]++;
 				}
-				tilechangerun[y][x]--;
+				else
+				{
+					tilechangerun[y][x]--;
+				}
 			}
-			//CNFGSwapBuffers();
-			//usleep(10000);
 		}
 		printf( "TID: %d\n", tid );
 
@@ -175,86 +169,107 @@ int main()
 			n--;
 		}
 		maxtileid_remapped = maxtileid - n;
+
+		for( i = 0; i < tilechangect; i++ )
+		{
+			tilechanges[i] = tileremapfwd[tilechanges[i]];
+		}
+
+		glyphsnew = malloc( (maxtileid_remapped)*BLOCKSIZE*BLOCKSIZE*4 );
+		for( i = 0; i < maxtileid_remapped; i++ )
+		{
+			int oldid = tileremap[i];
+			memcpy( &glyphsnew[BLOCKSIZE*BLOCKSIZE*i],
+				&glyphsold[BLOCKSIZE*BLOCKSIZE*oldid], BLOCKSIZE*BLOCKSIZE*4 );
+		}
 	}
 
-	printf( "Changes: %d\n", numchanges );
+	printf( "Changes: %d\n", tilechangect );
 
-	// Tile run frequency.
-	int tilerunfreq[maxtileid][maxrun];
-	memset( tilerunfreq, 0, sizeof( tilerunfreq ) );
+	// We can decode entirely based on tilechanges, tileruns, for tilechanges.
+	//int tilechanges[MAXTILEDIFF]; // Change to this
+	//int tileruns[MAXTILEDIFF];    // After changing, run for this long.
+	// based on int tilechangect;
 
-	// Update the tilechangesto map with new tile IDs
-	int x, y, dep;
-	for( y = 0; y < BLKY; y++ )
+
+	// test validate
+	if( 0 )
 	{
-		for( x = 0; x < BLKX; x++ )
+		CNFGClearFrame();
+		int curglyph[BLKY][BLKX] = { 0 };
+		int currun[BLKY][BLKX] = { 0 };
+		int playptr = 0;
+		int frame;
+		int x, y;
+		for( frame = 0; frame < frames; frame++ )
 		{
-			int td = tilechangesqty[y][x];
-			for( dep = 0; dep < td; dep++ )
+			for( y = 0; y < BLKY; y++ )
+			for( x = 0; x < BLKX; x++ )
 			{
-				int tid = tilechangesto[y][x][dep] = tileremapfwd[tilechangesto[y][x][dep]];
-
-				int pdid = 0;
-				if( dep > 0 )
-					pdid = tilechangesto[y][x][dep-1];
-
-				int run = tilechangesrle[y][x][dep];
-				//printf( "%d %d %d -> %d,%d  %d,%d\n", x, y, dep, tid,run, maxtileid_remapped, maxrun );
-				tilerunfreq[pdid][run]++;
+				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, curglyph[y][x] );
+				if( currun[y][x] == 0 )
+				{
+					curglyph[y][x] = tilechanges[playptr];
+					currun[y][x] = tileruns[playptr];
+					playptr++;
+				}
+				else
+				{
+					currun[y][x]--;
+				}
 			}
+			CNFGSwapBuffers();
+			usleep(10000);
 		}
 	}
 
-	
+	// Now, we have to compress tilechanges & tileruns
+	int vpx_probs_by_tile_run[maxtileid_remapped];
 	{
-		FILE * fRunFreqs = fopen( "runfreqs.csv", "w" );
-		fprintf( fRunFreqs, "Run," );
-		for( x = 0; x < maxtileid_remapped; x++ )
+		int probcountmap[maxtileid_remapped];
+		int glyphcounts[maxtileid_remapped];
+		int curtile[BLKY][BLKX];
+		int n, bx, by;
+
+		for( n = 0; n < maxtileid_remapped; n++ )
 		{
-			fprintf( fRunFreqs, "%d%c", x, (x==maxtileid_remapped-1)?'\n':',' );
+			probcountmap[n] = 0;
+			glyphcounts[n] = 0;
 		}
 
-		fprintf( fRunFreqs, "Sum," );
-		for( x = 0; x < maxtileid_remapped; x++ )
+		for( by = 0; by < BLKY; by++ )
+		for( bx = 0; bx < BLKX; bx++ )
 		{
-			int tsum = 0;
-			for( y = 0; y < maxrun; y++ )
-			{
-				tsum += tilerunfreq[x][y] * y;
-			}
-			fprintf( fRunFreqs, "%.3f%c", tsum/(double)tilecounts[x], (x==maxtileid_remapped-1)?'\n':',' );
+			curtile[by][bx] = -1;
 		}
 
-		fprintf( fRunFreqs, "Counts," );
-		for( x = 0; x < maxtileid_remapped; x++ )
+		for( n = 0; n < tilechangect; n++ )
 		{
-			fprintf( fRunFreqs, "%d%c", tilecounts[x], (x==maxtileid_remapped-1)?'\n':',' );
+			int t = tilechanges[n];
+			int r = tileruns[n];
+
+			glyphcounts[t]++;
+			probcountmap[t]+=r;
 		}
 
-		for( y = 0; y < maxrun; y++ )
+		for( n = 0; n < maxtileid_remapped; n++ )
 		{
-			fprintf( fRunFreqs, "%d,", y );
-			for( x = 0; x < maxtileid_remapped; x++ )
-			{
-				//printf( "%d %d  %d %d\n", x, y, maxtileid_remapped, maxrun );
-				fprintf( fRunFreqs, "%d%c", tilerunfreq[x][y], (x==maxtileid_remapped-1)?'\n':',' );
-			}
+			double gratio = glyphcounts[n] * 1.0 / probcountmap[n];
+
+			int prob = ( gratio * 257.0 ) - 1.5;
+
+			if( prob < 0 ) prob = 0; 
+			if( prob > 255 ) prob = 255;
+			vpx_probs_by_tile_run[n] = prob;
 		}
-		fclose( fRunFreqs );
 	}
-
-	//for( i = 0; i < maxtileid_remapped; i++ )
-	//	printf( "%d %d %d\n", i, tilecounts[i], tileremap[i] );
 
 	int bitsfortileid = intlog2( maxtileid_remapped );
 
-
-
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
-	int chancetable[1<<bitsfortileid];
-	memset( chancetable, 0, 4<<bitsfortileid );
-
+	int chancetable_glyph[1<<bitsfortileid];
+	memset( chancetable_glyph, 0, 4<<bitsfortileid );
 	{
 		int nout = 0;
 		int n = 0;
@@ -286,7 +301,7 @@ int main()
 				int prob = chanceof0 * 257 - 0.5;
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
-				chancetable[nout++] = prob;
+				chancetable_glyph[nout++] = prob;
 				//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
 			}
 		}
@@ -295,43 +310,36 @@ int main()
 	int checkchanges = 0;
 	int bytesum = 0;
 	int symsum = 0;
-	for( y = 0; y < BLKY; y++ )
+	int n;
+	vpx_writer w = { 0 };
+	vpx_start_encode( &w, bufferVPX, sizeof(bufferVPX));
+
+	for( n = 0; n < tilechangect; n++ )
 	{
-		for( x = 0; x < BLKX; x++ )
+		int tile = tilechanges[n];
+		// First we encode the block ID.
+		// Then we encode the run length.
+		int level;
+		checkchanges++;
+
+		int probplace = 0;
+		int probability = 0;
+		for( level = 0; level < bitsfortileid; level++ )
 		{
-			int changes = tilechangesqty[y][x];
-			vpx_writer w = { 0 };
-			vpx_start_encode( &w, bufferVPX, sizeof(bufferVPX));
-			for( i = 0; i < changes; i++ )
-			{
-				// First we encode the block ID.
-				// Then we encode the run length.
-				int tile = tilechangesto[y][x][i];
-				int runlen = tilechangesrle[y][x][i];
-				int level;
-				checkchanges++;
-
-				int probplace = 0;
-				int probability = 0;
-				for( level = 0; level < bitsfortileid; level++ )
-				{
-					int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-					int bit = !!(tile & comparemask);
-					probability = chancetable[probplace];
-					//printf( "%d %d PROBPLACE: %d (%d) [%d]\n", tile, level, probplace, probability, ((tile)>>(bitsfortileid-level-1)) );
-					// XXX TODO Pick up here and re-enable this line.
-					vpx_write(&w, bit, probability);
-					probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
-				}
-				symsum++;
-			}
-
-			// XXX TODO: Emit bits for RLE
-			vpx_stop_encode(&w);
-			bytesum += w.pos;
+			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
+			int bit = !!(tile & comparemask);
+			probability = chancetable_glyph[probplace];
+			vpx_write(&w, bit, probability);
+			probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 		}
+		symsum++;
 	}
-	printf( "%d/%d\n", checkchanges, numchanges );
-	printf( "SUM: %d bits / SYMS: %d\n", bytesum*8, symsum );
+
+	// XXX TODO: Emit bits for RLE
+	vpx_stop_encode(&w);
+	int glyphbytes = w.pos;
+
+	printf( "SUM: %d bits / bytes: %d / syms: %d\n", glyphbytes*8, glyphbytes, symsum );
+
 }
 

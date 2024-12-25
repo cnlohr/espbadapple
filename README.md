@@ -55,6 +55,11 @@ I implemented a k-means approach, and wowee! The tiles that came out of k-means 
  * Show original with SKIP_FIRST_AFTER_TRANSITION
  * But could we have the holy grail?  Could we not skip transitions?
 
+Story arc:
+ * RLE/Tiles/etc in raster mode.
+ * Do it per tile, in time.
+ * Don't run multiple unique streams.
+
 ## Previous Work
  * Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
  * CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
