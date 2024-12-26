@@ -450,20 +450,32 @@ int main( int argc, char ** argv )
 	#define MAXRUNTOSTORE 8
 	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
 
+#if defined( VPX_GREY4 ) || defined( VPX_GREY16 )
+	if( 0 )
+#else
 	if( 1 )
+#endif
 	{
 		// Just a quick test to see if we can compress the tilemaps.
 		int i;
+		FILE * fRawTiles = fopen( "rawtiles.dat", "wb" );
 		int bnw[BLOCKSIZE*BLOCKSIZE*maxtileid_remapped];
 		for( i = 0; i < maxtileid_remapped; i++ )
 		{
 			float * fg = &glyphsnew[i*BLOCKSIZE*BLOCKSIZE];
-			int k;
-			for( k = 0; k < BLOCKSIZE*BLOCKSIZE; k++ )
+			int y, x;
+			for( y = 0; y < BLOCKSIZE; y++ )
 			{
-				bnw[k+i*BLOCKSIZE*BLOCKSIZE] = fg[k] > 0.5;
+				int byte = 0;
+				for( x = 0; x < BLOCKSIZE; x++ )
+				{
+					int c = bnw[(x+y*BLOCKSIZE)+i*BLOCKSIZE*BLOCKSIZE] = fg[x+y*BLOCKSIZE] > 0.5;
+					byte = (byte<<1) | c;
+				}
+				fwrite( &byte, 1, 1, fRawTiles );
 			}
 		}
+		fclose( fRawTiles );
 
 		int runsets0to0[MAXRUNTOSTORE] = { 0 };
 		int runsets0to1[MAXRUNTOSTORE] = { 0 };
@@ -651,8 +663,8 @@ int main( int argc, char ** argv )
 	if( vpx_glyph_tiles_buffer_len )
 	{
 		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) );
-		printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
-		printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(prob_from_0_or_1) * 8, (int)sizeof(prob_from_0_or_1) );
+		//printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
+		//printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(prob_from_0_or_1) * 8, (int)sizeof(prob_from_0_or_1) );
 		sum += (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1));
 	}
 	else
@@ -686,6 +698,48 @@ int main( int argc, char ** argv )
 	// test validate
 	if( 1 )
 	{
+		if( vpx_glyph_tiles_buffer_len )
+		{
+
+			//uint8_t vpx_glyph_tiles_buffer[1024*32];
+			//int vpx_glyph_tiles_buffer_len = 0;
+			//#define MAXRUNTOSTORE 8
+			//uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
+			vpx_reader reader_tiles;
+			vpx_reader_init(&reader_tiles, vpx_glyph_tiles_buffer, vpx_glyph_tiles_buffer_len, 0, 0 );
+
+			// Decompress glyph data.
+			int runsofar = 0;
+			int is0or1 = 0;
+			int n = 0;
+
+			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+			{
+				uint8_t * prob = prob_from_0_or_1[is0or1];
+				int tprob = prob[runsofar];
+
+				if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
+					tprob = 128;
+
+				int color = vpx_read( &reader_tiles, tprob );
+
+				glyphsnew[n++] = color ? 1 : 0;
+
+				if( color != is0or1 )
+				{
+					is0or1 = color;
+					runsofar = 0;
+				}
+				else if( runsofar < MAXRUNTOSTORE-1 )
+				{
+					runsofar++;
+				}
+			}
+
+		}
+
+
+
 		CNFGClearFrame();
 		int curglyph[BLKY][BLKX] = { 0 };
 		int currun[BLKY][BLKX] = { 0 };

@@ -51,13 +51,13 @@
 
 // For streamcomp, skip first frame after transition.
 // This performs a massive space savings.
-#define SKIP_FIRST_AFTER_TRANSITION
+//#define SKIP_FIRST_AFTER_TRANSITION
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
 //#define VPX_GREY4 1
-//#define VPX_GREY16 1
+//#define VPX_GREY16 1 
 
 
 // THINGS TO NOTE:
