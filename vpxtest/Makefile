@@ -6,8 +6,8 @@ CFLAGS:=-O2 -g -DRESX=$(RESX) -DRESY=$(RESY) -DBLOCKSIZE=$(BLOCKSIZE) -Wno-unuse
 
 LDFLAGS:=-lm -lX11
 
-vpxtest : vpxtest.c
-	gcc -o $@ $^ $(LDFLAGS) $(CFLAGS) -lm
+vpxtest : vpxtest.c ../comp2/bacommon.h
+	gcc -o $@ $< $(LDFLAGS) $(CFLAGS) -lm
 
 test.gif : vpxtest
 	./vpxtest ../comp2/stream-64x48x8.dat ../comp2/tiles-64x48x8.dat test.gif

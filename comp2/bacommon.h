@@ -56,7 +56,7 @@
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
-#define VPX_GREY4 1
+//#define VPX_GREY4 1
 //#define VPX_GREY16 1
 
 

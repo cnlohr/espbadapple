@@ -404,21 +404,32 @@ int main( int argc, char ** argv )
 
 			if( t >= 0 )
 			{
-				glyphcounts[t]++;
-				probcountmap[t]+=r+1-RSOPT;
-	
+#ifdef RUNCODES_TWOLEVEL
+				// Glyphcounts is used only for the first.
 				if( r > RSOPT )
 				{
 					glyphcounts_after_one[t]++;
 					probcountmap_after_one[t]+=r-RSOPT;
 				}
+
+				// XXX TODO: How do we optimally check only the first bit,
+				// without lumping it into everything else.
+				glyphcounts[t]++;
+				probcountmap[t]+=r+1-RSOPT;
+#else
+				// This combines probability at any given time.
+				glyphcounts[t]++;
+				probcountmap[t]+=r+1-RSOPT;
+#endif
 			}
 		}
 
 		for( n = 0; n < maxtileid_remapped; n++ )
 		{
-			double gratio = glyphcounts[n] * 1.0 / probcountmap[n];
-			int prob = ( gratio * 257.0 ) - 1.5;
+			double gratio;
+			int prob;
+			gratio = glyphcounts[n] * 1.0 / probcountmap[n];
+			prob = ( gratio * 257.0 ) - 1.5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			vpx_probs_by_tile_run[n] = prob;
@@ -432,6 +443,113 @@ int main( int argc, char ** argv )
 			//printf( "%d [%d %d] %d %d\n", n, vpx_probs_by_tile_run[n],
 			//	vpx_probs_by_tile_run_after_one[n], glyphcounts[n], probcountmap[n]);
 		}
+	}
+
+	uint8_t vpx_glyph_tiles_buffer[1024*32];
+	int vpx_glyph_tiles_buffer_len = 0;
+	#define MAXRUNTOSTORE 8
+	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
+
+	if( 1 )
+	{
+		// Just a quick test to see if we can compress the tilemaps.
+		int i;
+		int bnw[BLOCKSIZE*BLOCKSIZE*maxtileid_remapped];
+		for( i = 0; i < maxtileid_remapped; i++ )
+		{
+			float * fg = &glyphsnew[i*BLOCKSIZE*BLOCKSIZE];
+			int k;
+			for( k = 0; k < BLOCKSIZE*BLOCKSIZE; k++ )
+			{
+				bnw[k+i*BLOCKSIZE*BLOCKSIZE] = fg[k] > 0.5;
+			}
+		}
+
+		int runsets0to0[MAXRUNTOSTORE] = { 0 };
+		int runsets0to1[MAXRUNTOSTORE] = { 0 };
+		int runsets1to0[MAXRUNTOSTORE] = { 0 };
+		int runsets1to1[MAXRUNTOSTORE] = { 0 };
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+		{
+			int color = bnw[i];
+			int j;
+			int b = 0;
+			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; j++ )
+			{
+				int p = bnw[j];
+				if( color == 0 )
+				{
+					if( p == 0 )
+						runsets0to0[b]++;
+					else
+					{
+						runsets0to1[b]++;
+						break;
+					}
+				}
+				else
+				{
+					if( p == 0 )
+					{
+						runsets1to0[b]++;
+						break;
+					}
+					else
+					{
+						runsets1to1[b]++;
+					}
+				}
+				b++;
+				if( b == MAXRUNTOSTORE ) break;
+			}
+		}
+		for( int j = 0; j < MAXRUNTOSTORE; j++ )
+		{
+			double chanceof0 = runsets0to0[j] / (double)(runsets0to0[j]+runsets0to1[j]);
+			int prob = chanceof0 * 257 - 0.5;
+			if( prob < 0 ) prob = 0;
+			if( prob > 255 ) prob = 255;
+			int prob0 = prob_from_0_or_1[0][j] = prob;
+
+			chanceof0 = runsets1to0[j] / (double)(runsets1to0[j]+runsets1to1[j]);
+			prob = chanceof0 * 257 - 0.5;
+			if( prob < 0 ) prob = 0;
+			if( prob > 255 ) prob = 255;
+			int prob1 = prob_from_0_or_1[1][j] = prob;
+			//printf( "%d (%d/%d) (%d/%d) %4d%4d\n", j, runsets0to0[j], runsets0to1[j], runsets1to0[j], runsets1to1[j] , prob0, prob1 );
+		}
+
+		vpx_writer w_glyphdata = { 0 };
+		vpx_start_encode( &w_glyphdata, vpx_glyph_tiles_buffer, sizeof(vpx_glyph_tiles_buffer));
+
+		int runsofar = 0;
+		int is0or1 = bnw[0];
+
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+		{
+			uint8_t * prob = prob_from_0_or_1[is0or1];
+			int tprob = prob[runsofar];
+
+			if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
+				tprob = 128;
+
+			int color = bnw[i];
+			//printf( "%d: %d\n", color, tprob );
+			vpx_write(&w_glyphdata, color, tprob );
+
+			if( color != is0or1 )
+			{
+				is0or1 = color;
+				runsofar = 0;
+			}
+			else if( runsofar < MAXRUNTOSTORE-1 )
+			{
+				runsofar++;
+			}
+		}
+		vpx_stop_encode(&w_glyphdata);
+		vpx_glyph_tiles_buffer_len = w_glyphdata.pos;
+//		exit( 0 );
 	}
 
 	int checkchanges = 0;
@@ -529,8 +647,19 @@ int main( int argc, char ** argv )
 #elif defined( VPX_GREY16 )
 	glyphsize *= 4;
 #endif
-	printf( " +    Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
-	sum += glyphsize;
+
+	if( vpx_glyph_tiles_buffer_len )
+	{
+		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) );
+		printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
+		printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(prob_from_0_or_1) * 8, (int)sizeof(prob_from_0_or_1) );
+		sum += (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1));
+	}
+	else
+	{
+		printf( " +    Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
+		sum += glyphsize;
+	}
 
 	int sHuffD = FileLength( "../song/huffD_fmraw.dat" );
 	int sHuffTL = FileLength( "../song/huffTL_fmraw.dat" );
