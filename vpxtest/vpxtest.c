@@ -11,6 +11,9 @@
 #include "../comp2/bacommon.h"
 #include "../comp2/gifenc.c"
 
+#define HUFFER_IMPLEMENTATION
+#include "../comp2/hufftreegen.h"
+
 #include <assert.h>
 
 
@@ -159,6 +162,9 @@ int main( int argc, char ** argv )
 	int backtrackcount = 0;
 #endif
 	{
+		FILE * fRawTileStream = fopen( "TEST_streamids.dat", "wb" );
+		FILE * fRawTileRunLen = fopen( "TEST_runlens.dat", "wb" );
+
 		int * tilecounts_temp = alloca( 4 * maxtileid );
 		memset( tilecounts_temp, 0, 4 * maxtileid );
 
@@ -207,6 +213,9 @@ int main( int argc, char ** argv )
 					tileruns[tilechangect] = forward;
 					tilechangect++;
 
+					fwrite( &t, 1, 1, fRawTileStream );
+					fwrite( &t, 1, 2, fRawTileRunLen );
+
 					// For knowing when to pull a new cell.
 					tilechangerun[y][x] = forward;
 					lasttile[y][x] = t;
@@ -217,6 +226,8 @@ int main( int argc, char ** argv )
 				}
 			}
 		}
+		fclose( fRawTileStream );
+		fclose( fRawTileRunLen );
 
 		cnrbtree_u32u32 * countmap = cnrbtree_u32u32_create();
 
@@ -313,6 +324,7 @@ int main( int argc, char ** argv )
 	}
 
 #ifdef VPX_CODING_ALLOW_BACKTRACK
+	// Allow referencing the previous tile.
 	int probbacktrack = 0;
 	{
 		double chanceof0 = backtrackcount / (double)(tilechangect);
@@ -458,7 +470,7 @@ int main( int argc, char ** argv )
 	{
 		// Just a quick test to see if we can compress the tilemaps.
 		int i;
-		FILE * fRawTiles = fopen( "rawtiles.dat", "wb" );
+		FILE * fRawTiles = fopen( "TEST_rawtiles.dat", "wb" );
 		int bnw[BLOCKSIZE*BLOCKSIZE*maxtileid_remapped];
 		for( i = 0; i < maxtileid_remapped; i++ )
 		{
@@ -564,6 +576,95 @@ int main( int argc, char ** argv )
 //		exit( 0 );
 	}
 
+
+#ifdef VPX_USE_HUFFMAN_TILES
+	uint8_t huffman_tile_stream[1024*512];
+	int huffman_tile_stream_length_bits;
+	int huffman_tile_stream_length_bytes;
+	int hufftreelen;
+	uint32_t huffman_tree[1024];
+	{
+		//int tilechangesReal[MAXTILEDIFF]; // Change to this
+		//int tilechangect;
+
+		//huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int numpairs, int * hufflen );
+
+		uint32_t tileids[maxtileid_remapped];
+		uint32_t frequencies[maxtileid_remapped];
+
+		int i;
+		for( i = 0; i < maxtileid_remapped; i++ )
+		{
+			tileids[i] = i;
+			frequencies[i] = 0;
+		}
+
+		for( i = 0; i < tilechangect; i++ )
+		{
+			frequencies[tilechangesReal[i]]++;
+		}
+
+		huffelement * tree = GenerateHuffmanTree( tileids, frequencies, maxtileid_remapped, &hufftreelen );
+
+		for( i = 0; i < hufftreelen; i++ )
+		{
+			huffelement * e = tree + i;
+			if( e->is_term )
+				huffman_tree[i] = 0x800000 | e->value;
+			else
+				huffman_tree[i] = e->pair0 | (e->pair1<<12);
+		}
+
+		int htlen;
+		huffup * hu = GenPairTable( tree, &htlen );
+		int len_bits = 0;
+
+		int idsofhu[maxtileid_remapped];
+		for( i = 0; i < htlen; i++ )
+		{
+			idsofhu[hu[i].value] = i;
+		}
+
+		for( i = 0; i < htlen; i++ )
+		{
+			int idx = idsofhu[i];
+			//printf( "%d: %d/%d/ %d %d\n",i, hu[idx].freq, frequencies[i], hu[idx].value, hu[idx].bitlen );
+		}		
+
+		int bytepl = 0;
+		uint8_t bytev = 0;
+		for( i = 0; i < tilechangect; i++ )
+		{
+			int tile = tilechangesReal[i];
+			int huid = idsofhu[tile];
+			int bl = hu[huid].bitlen;
+			//printf( "%d -> %d -> %d -> %d\n", i, tile, huid, bl ); 
+			int j;
+			for( j = 0; j < bl; j++ )
+			{
+				bytepl++;
+				bytev = (bytev<<1) | hu[huid].bitstream[j];
+	
+				if( bytepl == 8 )
+				{
+					huffman_tile_stream[huffman_tile_stream_length_bytes++] = bytev;
+					bytepl = 0;
+				}
+			}
+			len_bits += bl;
+		}
+
+		if( bytepl )
+		{
+			huffman_tile_stream[huffman_tile_stream_length_bytes++] = bytev;
+		}
+
+		huffman_tile_stream_length_bits = len_bits;
+		huffman_tile_stream_length_bytes = (len_bits+7)/8;
+	}
+#endif
+
+
 	int checkchanges = 0;
 	int bytesum = 0;
 	int symsum = 0;
@@ -606,7 +707,9 @@ int main( int argc, char ** argv )
 				int bit = !!(tile & comparemask);
 				probability = chancetable_glyph[probplace];
 				vpx_write(&w_glyphs, bit, probability);
+#ifndef VPX_USE_HUFFMAN_TILES
 				vpx_write(&w_combined, bit, probability);
+#endif
 				probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 			}
 		}
@@ -644,6 +747,13 @@ int main( int argc, char ** argv )
 	int sum = 0;
 	printf( "    Combined:%7d bits / bytes:%6d\n", combinedstream*8, combinedstream );
 	sum += combinedstream;
+
+#ifdef VPX_USE_HUFFMAN_TILES
+	printf( "    HuffmanD:%7d bits / bytes:%6d\n", huffman_tile_stream_length_bytes*8, huffman_tile_stream_length_bytes );
+	printf( "    HuffmanT:%7d bits / bytes:%6d\n", hufftreelen*3*8, hufftreelen*3 );
+	sum += huffman_tile_stream_length_bytes + hufftreelen*3;
+#endif
+
 	printf( " + Tile Prob:%7d bits / bytes:%6d\n", (int)sizeof(chancetable_glyph) * 8, (int)sizeof(chancetable_glyph) );
 	sum += (int)sizeof(chancetable_glyph);
 	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run) * 8, (int)sizeof(vpx_probs_by_tile_run) );
@@ -782,7 +892,26 @@ int main( int argc, char ** argv )
 
 					int probability = 0;
 
-					static int n;
+#ifdef VPX_USE_HUFFMAN_TILES
+					static int huffmanbit = 0;
+					int b = 0;
+					uint32_t treepos = 0;
+					do
+					{
+						uint32_t te = huffman_tree[treepos];
+						if( te & 0x800000 )
+						{
+							tile = te & 0x1ff;
+							printf( "%d ", tile );
+							break;
+						}
+						int b = (huffman_tile_stream[huffmanbit/8]>>(huffmanbit&7))&1;
+						huffmanbit++;
+						//printf( "%d/%08x/%d // %d %08x\n", b, te, treepos, huffmanbit, huffman_tile_stream[huffmanbit/8] );
+						treepos = (te >> ((1-b)*12)) & 0xfff;
+					} while( huffmanbit < huffman_tile_stream_length_bits);
+
+#else
 #ifdef VPX_CODING_ALLOW_BACKTRACK
 					int nbacktrack = vpx_read( &reader, probbacktrack );
 
@@ -802,6 +931,7 @@ int main( int argc, char ** argv )
 							probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
 						}
 					}
+#endif
 
 					curglyph[y][x] = tile;
 
