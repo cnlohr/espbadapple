@@ -16,10 +16,10 @@ decodevideo : ffmdecode.o decodevideo.o
 videoout-${RES}.dat : badapple-sm8628149.mp4 decodevideo
 	./decodevideo $< ${RESX} ${RESY} $@
 
-videocomp : videocomp.c
-	gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
+videocomp : videocomp.c bacommon.h
+	gcc $(CFLAGS) -o $@ $< $(LDFLAGS)
 
-stream-${RES}.dat tiles-${RES}.dat : videoout-${RES}.dat videocomp 
+stream-${RES}.dat tiles-${RES}.dat : videoout-${RES}.dat videocomp
 	./videocomp $< ${RESX} ${RESY} tiles-${RES}.dat stream-${RES}.dat
 
 streamcomp : streamcomp.c
