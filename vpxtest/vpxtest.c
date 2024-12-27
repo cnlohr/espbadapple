@@ -571,6 +571,7 @@ int main( int argc, char ** argv )
 				runsofar++;
 			}
 		}
+
 		vpx_stop_encode(&w_glyphdata);
 		vpx_glyph_tiles_buffer_len = w_glyphdata.pos;
 //		exit( 0 );
@@ -579,9 +580,9 @@ int main( int argc, char ** argv )
 
 #ifdef VPX_USE_HUFFMAN_TILES
 	uint8_t huffman_tile_stream[1024*512];
-	int huffman_tile_stream_length_bits;
-	int huffman_tile_stream_length_bytes;
-	int hufftreelen;
+	int huffman_tile_stream_length_bits = 0;
+	int huffman_tile_stream_length_bytes = 0;
+	int hufftreelen = 0;
 	uint32_t huffman_tree[1024];
 	{
 		//int tilechangesReal[MAXTILEDIFF]; // Change to this
@@ -625,17 +626,24 @@ int main( int argc, char ** argv )
 			idsofhu[hu[i].value] = i;
 		}
 
-		for( i = 0; i < htlen; i++ )
+		if( 0 )
 		{
-			int idx = idsofhu[i];
-			printf( "%d: %d/%d/ %d %d > ",i, hu[idx].freq, frequencies[i], hu[idx].value, hu[idx].bitlen );
-			int k;
-			for( k = 0; k < hu[idx].bitlen; k++ )
+			for( i = 0; i < htlen; i++ )
 			{
-				printf( "%d", hu[idx].bitstream[k] );
+				int idx = idsofhu[i];
+				printf( "%d: %d/%d/ %d %d > ",i, hu[idx].freq, frequencies[i], hu[idx].value, hu[idx].bitlen );
+				int k;
+				for( k = 0; k < hu[idx].bitlen; k++ )
+				{
+					printf( "%d", hu[idx].bitstream[k] );
+				}
+				printf( "\n" );
 			}
-			printf( "\n" );
-		}		
+			for( i = 0; i < hufftreelen; i++ )
+			{
+				printf( "%d %d->%d:  %d  (%d/%d)\n", i, tree[i].value, tree[i].freq, tree[i].is_term, tree[i].pair0, tree[i].pair1 );
+			}
+		}
 
 		int bytepl = 0;
 		uint8_t bytev = 0;
@@ -908,14 +916,12 @@ int main( int argc, char ** argv )
 						if( te & 0x800000 )
 						{
 							tile = te & 0x1ff;
-							printf( ";%d ", tile );
 							break;
 						}
 						int b = (huffman_tile_stream[huffmanbit/8]>>(7-(huffmanbit&7)))&1;
-						printf("%d(%06x)", b, te );
 						huffmanbit++;
 						//printf( "%d/%08x/%d // %d %08x\n", b, te, treepos, huffmanbit, huffman_tile_stream[huffmanbit/8] );
-						treepos = (te >> ((1-b)*12)) & 0xfff;
+						treepos = (te >> ((b)*12)) & 0xfff;
 					} while( huffmanbit < huffman_tile_stream_length_bits);
 
 #else

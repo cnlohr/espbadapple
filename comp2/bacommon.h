@@ -50,16 +50,17 @@
 #define RUNCODES_TWOLEVEL 1
 
 // For streamcomp, skip first frame after transition.
-// This performs a massive space savings.
+// This performs a massive space savings.  WARNING: Without this on, I can't imagine how we would encode this video.
 //#define SKIP_FIRST_AFTER_TRANSITION
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
-#define VPX_GREY4 1
+//#define VPX_GREY4 1
 //#define VPX_GREY16 1 
 
-#define VPX_USE_HUFFMAN_TILES 1
+// Force huffman in VPX for tiles instead for size comparison.
+//#define VPX_USE_HUFFMAN_TILES 1
 
 
 // THINGS TO NOTE:
