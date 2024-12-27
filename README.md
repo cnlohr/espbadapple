@@ -83,6 +83,8 @@ After Full VPX
  * Find way of recovering from poorly fitted data, and generating new cells.
  * Visual hyperspectral output.
 
+ * For hufftree, make it so that it STRICTLY goes if 0, earlier, if 1, later.
+
 ### Various techniques outlined on forum post
 
 https://tiplanet.org/forum/viewtopic.php?t=24951
