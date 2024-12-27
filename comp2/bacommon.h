@@ -13,7 +13,7 @@
 #define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 192
+#define TARGET_GLYPH_COUNT 96
 
 // The following 3 are for tuning the K-Means front-end.
 #define GLYPH_COUNT_REDUCE_PER_FRAME 8
@@ -56,10 +56,10 @@
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
-//#define VPX_GREY4 1
+#define VPX_GREY4 1
 //#define VPX_GREY16 1 
 
-//#define VPX_USE_HUFFMAN_TILES 1
+#define VPX_USE_HUFFMAN_TILES 1
 
 
 // THINGS TO NOTE:
