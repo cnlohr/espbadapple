@@ -11,26 +11,23 @@ import time
 import numpy as np
 import cv2
 from scipy.ndimage.filters import gaussian_filter
+from blocksettings import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class ImageReconstruction(nn.Module):
     def __init__(self):
         super().__init__()
         self.n_blocks = 256
 
-        self.block_size = (8, 8)
-        self.img_size = (48, 64)
-
-        self.tiles_per_img = self.img_size[0] * self.img_size[1] / self.block_size[0] / self.block_size[1]
+        self.tiles_per_img = img_size[0] * img_size[1] / block_size[0] / block_size[1]
 
         # unfold/fold for image reconstruction
-        self.unfold = torch.nn.Unfold(kernel_size=self.block_size,
-                                      stride=self.block_size)
-        self.fold = torch.nn.Fold(output_size=self.img_size,
-                                  kernel_size=self.block_size,
-                                  stride=self.block_size)
+        self.unfold = torch.nn.Unfold(kernel_size=block_size,
+                                      stride=block_size)
+        self.fold = torch.nn.Fold(output_size=img_size,
+                                  kernel_size=block_size,
+                                  stride=block_size)
 
         # Blocks for reconstruction
         self.blocks = None
@@ -120,9 +117,9 @@ class ImageReconstruction(nn.Module):
         blocks_raw = []
         for i in range(16):
             for j in range(16):
-                bx = 2 + 10 * i
-                by = 2 + 10 * j
-                b = grid[bx:bx + 8, by:by + 8].astype(float) / 255.0
+                bx = 2 + (block_size+2) * i
+                by = 2 + (block_size+2) * j
+                b = grid[bx:bx + block_size, by:by + block_size].astype(float) / 255.0
                 blocks_raw.append(b)
 
         self.blocks = nn.Parameter(torch.Tensor(blocks_raw), requires_grad=True)
@@ -132,7 +129,7 @@ class ImageReconstruction(nn.Module):
         Initialize blocks using binary tile data from/for the C side.
         """
         tiles = np.fromfile(tiles_path, dtype=np.float32)
-        tiles = tiles.reshape(-1, self.block_size[0], self.block_size[1])
+        tiles = tiles.reshape(-1, block_size[0], block_size[1])
         tiles = tiles[:self.n_blocks, ...]
 
         self.blocks = nn.Parameter(torch.Tensor(tiles), requires_grad=True)
@@ -153,14 +150,14 @@ class ImageReconstruction(nn.Module):
         # Bigger = less linear mixing in the output patches; smaller = gradients spread across more candidates.
         beta = 35
 
-        block_len = math.prod(self.block_size)
+        block_len = math.prod(block_size)
 
         uf_tgt = self.unfold(target_img)
 
         if self.invert_blocks:
             # Expand our block set to include inverted versions of our tiles
             n_blocks = self.n_blocks * 2
-            block_cd = torch.zeros((n_blocks, *self.block_size), dtype=torch.float32, device=self.blocks.get_device())
+            block_cd = torch.zeros((n_blocks, *block_size), dtype=torch.float32, device=self.blocks.get_device())
             block_cd[:self.n_blocks, ...] = self.blocks
             block_cd[self.n_blocks:, ...] = 1 - self.blocks
         else:
@@ -254,8 +251,8 @@ class BlockTrainer:
                 reconstructed_img, choice_penalty = self.recr(target_img)
 
                 # upsample reconstructed and target images to match vgg trained image width
-                tgt_us = nn.functional.interpolate(target_img, size=(192, 256), mode='bilinear', align_corners=False)
-                rcd_us = nn.functional.interpolate(reconstructed_img, size=(192, 256), mode='bilinear', align_corners=False)
+                tgt_us = nn.functional.interpolate(target_img, size=(img_size[0]*2, img_size[1]*2), mode='bilinear', align_corners=False)
+                rcd_us = nn.functional.interpolate(reconstructed_img, size=(img_size[0]*2, img_size[1]*2), mode='bilinear', align_corners=False)
 
                 loss_p = self.perceptual_loss(rcd_us, tgt_us)
                 loss_c = choice_penalty

@@ -400,6 +400,7 @@ void ComputeKMeans()
 	{
 		CNFGClearFrame();
 		short w,h;
+		if( !CNFGHandleInput() ) break;
 		CNFGGetDimensions( &w, &h );
 		memset( mkd_val, 0, KMEANS * BLOCKSIZE * BLOCKSIZE * sizeof(float) );
 		memset( mkd_cnt, 0, KMEANS * sizeof(float) );

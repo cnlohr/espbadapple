@@ -1,11 +1,11 @@
 all : decodevideo
 
-include make.inc
+include ../common/make.inc
 
 LDFLAGS:=-g -lX11 -lm
 
 #  -fsanitize=address -static-libasan
-CFLAGS:=-O2 -g -Wno-unused-result -mavx2 -DBLOCKSIZE=${BLOCKSIZE}
+CFLAGS:=-O2 -g -Wno-unused-result -mavx2 -DBLOCKSIZE=${BLOCKSIZE} -I../common
 
 hufftreegentest : hufftreegentest.c
 	gcc $(CFLAGS) -o $@ $^
@@ -16,14 +16,14 @@ decodevideo : ffmdecode.o decodevideo.o
 videoout-${RES}.dat : badapple-sm8628149.mp4 decodevideo
 	./decodevideo $< ${RESX} ${RESY} $@
 
-videocomp : videocomp.c bacommon.h
+videocomp : videocomp.c ../common/bacommon.h
 	gcc $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 stream-${RES}.dat tiles-${RES}.dat : videoout-${RES}.dat videocomp
 	./videocomp $< ${RESX} ${RESY} tiles-${RES}.dat stream-${RES}.dat
 
-streamcomp : streamcomp.c
-	gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
+streamcomp : streamcomp.c ../common/bacommon.h
+	gcc $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 video-${RES}.gif : streamcomp stream-${RES}.dat tiles-${RES}.dat
 	./streamcomp stream-${RES}.dat tiles-${RES}.dat video-${RES}.gif ${RESX} ${RESY}

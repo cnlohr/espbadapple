@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
-
+from blocksettings import *
 
 class VideoBuilder:
     def __init__(self):
@@ -15,13 +15,13 @@ class VideoBuilder:
     def load_from_grid(self, grid_path):
         grid = cv2.imread(grid_path, cv2.IMREAD_GRAYSCALE)
         height, width = grid.shape
-        for i in range(int(height/10)):
-            for j in range(int(width/10)):
+        for i in range(int(height/(block_size[0]+2))):
+            for j in range(int(width/(block_size[1]+2))):
 
-                bx = 2 + 10*i
-                by = 2 + 10*j
+                bx = 2 + (block_size[0]+2)*i
+                by = 2 + (block_size[1]+2)*j
 
-                b = grid[bx:bx+8, by:by+8].astype(float) / 255.0
+                b = grid[bx:bx+block_size[0], by:by+block_size[1]].astype(float) / 255.0
                 self.blocks.append(b)
         self.usage_stats = np.zeros(len(self.blocks), dtype=int)
 
@@ -42,11 +42,12 @@ class VideoBuilder:
     def match_frame(self, frame):
         block_idxs = []
 
-        for i in range(frame.shape[0] // 8):
-            for j in range(frame.shape[1] // 8):
-                frame_block = frame[i*8:(i+1)*8, j*8:(j+1)*8]
+        dw = frame.shape[1] // block_size[0]
+        dh = frame.shape[0] // block_size[1]
+        for j in range(dh):
+            for i in range(dw):
+                frame_block = frame[j*block_size[0]:(j+1)*block_size[0], i*block_size[1]:(i+1)*block_size[1]]
                 match_idx = self.match_block(frame_block)
-
                 self.usage_stats[match_idx] += 1
 
                 block_idxs.append(match_idx)
@@ -54,13 +55,14 @@ class VideoBuilder:
         return block_idxs
 
     def build_frame(self, block_idxs):
-        frame = np.zeros((48, 64), dtype=np.float32)
-
-        for i in range(frame.shape[0] // 8):
-            for j in range(frame.shape[1] // 8):
-                n = block_idxs[i*8 + j]
+        frame = np.zeros((img_size[0], img_size[1]), dtype=np.float32)
+        dw = frame.shape[1] // block_size[0]
+        dh = frame.shape[0] // block_size[1]
+        for j in range(dh):
+            for i in range(dw):
+                n = block_idxs[j*dw + i]
                 b = self.blocks[n]
-                frame[i*8:(i+1)*8, j*8:(j+1)*8] = b
+                frame[j*block_size[0]:(j+1)*block_size[0], i*block_size[1]:(i+1)*block_size[1]] = b
 
         return frame
 
@@ -78,7 +80,7 @@ class VideoBuilder:
             print(i)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frame = cv2.resize(frame, (64, 48), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(frame, (img_size[1], img_size[0]), interpolation=cv2.INTER_AREA)
             frame = frame.astype(np.float32) / 255.0
 
             block_ids = self.match_frame(frame)

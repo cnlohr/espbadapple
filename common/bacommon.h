@@ -13,7 +13,7 @@
 #define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 96
+#define TARGET_GLYPH_COUNT 256
 
 // The following 3 are for tuning the K-Means front-end.
 #define GLYPH_COUNT_REDUCE_PER_FRAME 8
@@ -37,8 +37,6 @@
 #define BLOCKSIZE 8
 #endif
 
-#define HALFTONE_EN  1
-
 // When doing output use VPX instead of huffman for length.
 #define USE_VPX_LEN  1
 #define UNIFIED_VPX 1
@@ -52,6 +50,7 @@
 // For streamcomp, skip first frame after transition.
 // This performs a massive space savings.  WARNING: Without this on, I can't imagine how we would encode this video.
 //#define SKIP_FIRST_AFTER_TRANSITION
+#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor.
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
@@ -83,7 +82,9 @@
 //#define BLUR_BASE 1.0
 
 // To target learning halftones or target gradients.  Depends on HALFTONE_EN.
-#define ENCHALFTONE
+//#define ENCHALFTONE
+//#define HALFTONE_EN  1
+
 
 // If you want to try reducing FPS.
 //#define FPS_REDUCTION 2
@@ -354,7 +355,7 @@ void UpdateBlockDataFromIntensity( struct block * k )
 	#if BLOCKSIZE==8
 			if( ft > .6 ) ret |= 1ULL<<i;
 	#else
-			if( ft > .6 ) ret[bpl/64] |= 1ULL<<(i&63);
+			if( ft > .6 ) ret[i/64] |= 1ULL<<(i&63);
 	#endif
 #endif
 	}

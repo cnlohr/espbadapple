@@ -8,11 +8,11 @@
 #define CNRBTREE_IMPLEMENTATION
 #include "cnrbtree.h"
 
-#include "../comp2/bacommon.h"
-#include "../comp2/gifenc.c"
+#include "bacommon.h"
+#include "gifenc.c"
 
 #define HUFFER_IMPLEMENTATION
-#include "../comp2/hufftreegen.h"
+#include "hufftreegen.h"
 
 #include <assert.h>
 
@@ -157,7 +157,9 @@ int main( int argc, char ** argv )
 
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
-
+#ifdef SMART_TRANSITION_SKIP
+	int ratcheted = 0;
+#endif
 #ifdef VPX_CODING_ALLOW_BACKTRACK
 	int backtrackcount = 0;
 #endif
@@ -181,14 +183,20 @@ int main( int argc, char ** argv )
 				{
 					int t = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + 0)];
 					int forward;
+					int next = t;
 					for( forward = 1; frame + forward < frames; forward++ )
-					{
-						if( tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] != t )
+						if( (next = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] ) != t )
 							break;
+#ifdef SMART_TRANSITION_SKIP
+					if( frame + forward + 1 < frames && tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward + 1)] != next )
+					{
+						forward++;
+						ratcheted++;
 					}
-#ifndef SKIP_FIRST_AFTER_TRANSITION
-					forward--;
 #endif
+
+					forward--;
+
 					// Our product:
 					//int tilechanges[MAXTILEDIFF];
 					//int tileruns[MAXTILEDIFF];
@@ -252,6 +260,7 @@ int main( int argc, char ** argv )
 			tileremap[n] = i->data;
 			tilecounts[n] = i->key;
 			tileremapfwd[i->data] = n;
+			printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
 			n--;
 		}
 
@@ -753,8 +762,11 @@ int main( int argc, char ** argv )
 	vpx_stop_encode(&w_combined);
 	int combinedstream = w_combined.pos;
 
-	printf( "   Max Tiles:%7d\n", maxtileid_remapped );
+	printf( "       Tiles:%7d\n", maxtileid_remapped + 1 );
 	printf( " Num Changes:%7d\n", symsum );
+#ifdef SMART_TRANSITION_SKIP
+	printf( "   Ratcheted:%7d\n", ratcheted );
+#endif
 	printf( "      Stream:%7d bits / bytes:%6d\n", glyphbytes*8, glyphbytes );
 	printf( "         Run:%7d bits / bytes:%6d\n", runbytes*8, runbytes );
 	printf( "\n" );
