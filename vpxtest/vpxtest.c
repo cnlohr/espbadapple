@@ -57,11 +57,87 @@ int glyphctold;
 float * glyphsnew;
 uint64_t * glyphBnW;
 
-void VPDrawGlyph( int xofs, int yofs, int glyph )
+#ifdef VPX_GORP_KERNEL_MOVE
+
+float LERP( float a, float b, float t )
+{
+	return a * (1-t) + b * t;
+}
+
+float GPX( float fx, float fy, int curglyphs[BLKY][BLKX] )
+{
+	int gx = fx / BLOCKSIZE;
+	int gy = fy / BLOCKSIZE;
+	int x = (int)(fx + BLOCKSIZE) % BLOCKSIZE;
+	int y = (int)(fy + BLOCKSIZE) % BLOCKSIZE;
+	if( gy >= BLKY ) { gy = BLKY-1; y = BLOCKSIZE-1; } if( gy < 0 ) { gy = 0; y = 0; }
+	if( gx >= BLKX ) { gx = BLKX-1; x = BLOCKSIZE-1; } if( gx < 0 ) { gx = 0; x = 0; }
+	int glyph = curglyphs[gy][gx];
+	//x &= ~1;
+	//y &= ~1;
+	return glyphsnew[(x)+(y)*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*(glyph)];
+}
+
+float GETPIX( int x, int y, int gx, int gy, int curglyphs[BLKY][BLKX], int prevglyphs[BLKY][BLKX] )
+{
+	int fx = x + gx * BLOCKSIZE;
+	int fy = y + gy * BLOCKSIZE;
+
+	float f = 0;
+	if( 1 ) 
+	{
+		int hx = fx;
+		int hy = fy;
+
+		int tx, ty;
+
+		#ifdef VPX_TAA
+		f += GPX( hx + 0, hy - 1, curglyphs ) / 8.0;
+		f += GPX( hx + 0, hy + 0, curglyphs ) / 8.0;
+		f += GPX( hx + 0, hy + 1, curglyphs ) / 8.0;
+		f += GPX( hx - 1, hy + 0, curglyphs ) / 8.0;
+		f += GPX( hx + 1, hy + 0, curglyphs ) / 8.0;
+		f += GPX( hx - 1, hy - 1, prevglyphs ) / 8.0;
+		f += GPX( hx    , hy    , prevglyphs ) / 8.0;
+		f += GPX( hx + 1, hy + 1, prevglyphs ) / 8.0;
+		#else
+
+		for( ty = 0; ty < 2; ty+=VPX_GORP_KERNEL_MOVE )
+		for( tx = 0; tx < 2; tx+=VPX_GORP_KERNEL_MOVE )
+			f += GPX( hx + tx, hy + ty, curglyphs ) / 4.0;
+		#endif
+	}
+	else
+	{
+		const int ifkern = 4;
+		const int kernel = 8;
+
+		int hx = (fx / ifkern) * ifkern;
+		int hy = (fy / ifkern) * ifkern;
+
+		float f00 = GPX( hx       , hy,        curglyphs );
+		float f10 = GPX( hx+ifkern, hy,        curglyphs );
+		float f01 = GPX( hx       , hy+ifkern, curglyphs );
+		float f11 = GPX( hx+ifkern, hy+ifkern, curglyphs );
+
+		float f0 = LERP( f00, f10, (float)(fx%kernel)/kernel );
+		float f1 = LERP( f01, f11, (float)(fx%kernel)/kernel );
+		f = LERP( f0, f1, (float)(fy%kernel)/kernel );
+	}
+
+	return f;
+}
+
+#else
+#define GETPIX(x,y,gx,gy,curglyphs,prevglyphs) glyphsnew[(x)+(y)*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*(glyph)]
+#endif
+
+void VPDrawGlyph( int xofs, int yofs, int gx, int gy, int curglyphs[BLKY][BLKX], int prevglyphs[BLKY][BLKX] )
 {
 	uint32_t bobig[BLOCKSIZE*2*BLOCKSIZE*2];
 	int bit = 0;
 	int x, y;
+	int glyph = curglyphs[gy][gx];
 	if( glyph >= maxtileid_remapped )
 	{
 		fprintf( stderr, "Glyph %d/%d\n", glyph, maxtileid_remapped );
@@ -70,7 +146,22 @@ void VPDrawGlyph( int xofs, int yofs, int glyph )
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		uint32_t v = (glyphsnew[x+y*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*glyph] > 0.5) ? 0xffffffff : 0xff000000;
+		float f = GETPIX( x, y, gx, gy, curglyphs, prevglyphs);
+		const int hardline = 0;
+		uint32_t v;
+		if( hardline )
+		{
+			v = ( f >= 0.5) ? 0xffffffff : 0xff000000;
+		}
+		else
+		{
+			v = 0xff000000;
+			int a = f * 256;
+			if( a > 255 ) a = 255;
+			if( a < 0 ) a = 0;
+			v |= a | (a<<8) | (a<<16);
+		}
+
 		bobig[(2*x+0) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+1) + (2*y+0)*BLOCKSIZE*2] = v;
 		bobig[(2*x+0) + (2*y+1)*BLOCKSIZE*2] = v;
@@ -79,13 +170,14 @@ void VPDrawGlyph( int xofs, int yofs, int glyph )
 	CNFGBlitImage( bobig, xofs, yofs, BLOCKSIZE*2, BLOCKSIZE*2 );
 }
 
-void VPBlockDrawGif( ge_GIF * gifout, int xofs, int yofs, int vw, int glyph )
+void VPBlockDrawGif( ge_GIF * gifout, int xofs, int yofs, int vw, int gx, int gy, int curglyphs[BLKY][BLKX], int prevglyphs[BLKY][BLKX] )
 {
 	int x, y;
+	int glyph = curglyphs[gy][gx];
 	for( y = 0; y < BLOCKSIZE; y++ )
 	for( x = 0; x < BLOCKSIZE; x++ )
 	{
-		float d = glyphsnew[x+y*BLOCKSIZE+(BLOCKSIZE*BLOCKSIZE)*glyph];
+		float d = GETPIX( x, y, gx, gy, curglyphs, prevglyphs );
 #ifdef VPX_GREY16
 		int b = d * 15.9;
 #elif defined( VPX_GREY4 )
@@ -157,7 +249,7 @@ int main( int argc, char ** argv )
 
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
-#ifdef SMART_TRANSITION_SKIP
+#if defined( SMART_TRANSITION_SKIP ) || defined( SKIP_ONLY_DOUBLE_UPDATES )
 	int ratcheted = 0;
 #endif
 #ifdef VPX_CODING_ALLOW_BACKTRACK
@@ -187,7 +279,10 @@ int main( int argc, char ** argv )
 					for( forward = 1; frame + forward < frames; forward++ )
 						if( (next = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] ) != t )
 							break;
-#ifdef SMART_TRANSITION_SKIP
+
+#if defined( SKIP_ONLY_DOUBLE_UPDATES )
+					if( forward == 1 ) forward++;
+#elif defined( SMART_TRANSITION_SKIP )
 					if( frame + forward + 1 < frames && tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward + 1)] != next )
 					{
 						forward++;
@@ -280,7 +375,6 @@ int main( int argc, char ** argv )
 		}
 
 		glyphsnew = malloc( (maxtileid_remapped)*BLOCKSIZE*BLOCKSIZE*4 );
-		glyphBnW = malloc( (maxtileid_remapped)*8 );
 		for( i = 0; i < maxtileid_remapped; i++ )
 		{
 			int oldid = tileremap[i];
@@ -289,7 +383,6 @@ int main( int argc, char ** argv )
 			struct block b; 
 			memcpy( b.intensity, &glyphsnew[BLOCKSIZE*BLOCKSIZE*i], BLOCKSIZE*BLOCKSIZE*4 );
 			UpdateBlockDataFromIntensity( &b );
-			glyphBnW[i] = b.blockdata;
 		}
 	}
 
@@ -306,6 +399,7 @@ int main( int argc, char ** argv )
 	{
 		CNFGClearFrame();
 		int curglyph[BLKY][BLKX] = { 0 };
+		int prevglyph[BLKY][BLKX] = { 0 };
 		int currun[BLKY][BLKX] = { 0 };
 		int playptr = 0;
 		int frame;
@@ -315,7 +409,7 @@ int main( int argc, char ** argv )
 			for( y = 0; y < BLKY; y++ )
 			for( x = 0; x < BLKX; x++ )
 			{
-				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, curglyph[y][x] );
+				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, x, y, curglyph, prevglyph );
 				if( currun[y][x] == 0 )
 				{
 					curglyph[y][x] = tilechangesReal[playptr];
@@ -329,6 +423,7 @@ int main( int argc, char ** argv )
 			}
 			CNFGSwapBuffers();
 			usleep(10000);
+			memcpy( prevglyph, curglyph, sizeof( curglyph ) );
 		}
 	}
 
@@ -471,7 +566,7 @@ int main( int argc, char ** argv )
 	#define MAXRUNTOSTORE 8
 	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
 
-#if defined( VPX_GREY4 ) || defined( VPX_GREY16 )
+#if defined( VPX_GREY4 ) || defined( VPX_GREY16 ) || defined( SIMGREY4 )
 	if( 0 )
 #else
 	if( 1 )
@@ -762,7 +857,7 @@ int main( int argc, char ** argv )
 	vpx_stop_encode(&w_combined);
 	int combinedstream = w_combined.pos;
 
-	printf( "       Tiles:%7d\n", maxtileid_remapped + 1 );
+	printf( "      Glyphs:%7d\n", maxtileid_remapped + 1 );
 	printf( " Num Changes:%7d\n", symsum );
 #ifdef SMART_TRANSITION_SKIP
 	printf( "   Ratcheted:%7d\n", ratcheted );
@@ -878,6 +973,7 @@ int main( int argc, char ** argv )
 
 		CNFGClearFrame();
 		int curglyph[BLKY][BLKX] = { 0 };
+		int prevglyph[BLKY][BLKX] = { 0 };
 		int currun[BLKY][BLKX] = { 0 };
 		int playptr = 0;
 		int frame;
@@ -977,13 +1073,18 @@ int main( int argc, char ** argv )
 				{
 					currun[y][x]--;
 				}
-				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, curglyph[y][x] );
-				VPBlockDrawGif( gifout, x * BLOCKSIZE*2, y * BLOCKSIZE*2, RESX*2, curglyph[y][x] );
-				//BlockUpdateGif( gifout, x * BLOCKSIZE*2, y * BLOCKSIZE*2, RESX*2, glyphBnW[curglyph[y][x]], curglyph[y][x] );
 			}
+
+			for( y = 0; y < BLKY; y++ )
+			for( x = 0; x < BLKX; x++ )
+			{
+				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, x, y, curglyph, prevglyph );
+				VPBlockDrawGif( gifout, x * BLOCKSIZE*2, y * BLOCKSIZE*2, RESX*2, x, y, curglyph, prevglyph );
+			}
+
 			ge_add_frame(gifout, 2);
 			CNFGSwapBuffers();
-			//usleep(10000);
+			//usleep(100000);
 			int endcount = reader.count;
 			intptr_t endbuffer = (intptr_t)reader.buffer;
 			int bits_used_this_frame = (startcount - endcount) + (endbuffer - startbuffer) * 8;
@@ -994,6 +1095,7 @@ int main( int argc, char ** argv )
 				fprintf( bitusekbits, "%d\n", bitssofarthissec );
 				bitssofarthissec = 0;
 			}
+			memcpy( prevglyph, curglyph, sizeof( curglyph ) );
 		}
 		fclose( bituse );
 		fclose( bitusekbits );

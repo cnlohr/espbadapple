@@ -49,8 +49,9 @@
 
 // For streamcomp, skip first frame after transition.
 // This performs a massive space savings.  WARNING: Without this on, I can't imagine how we would encode this video.
-//#define SKIP_FIRST_AFTER_TRANSITION
-#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor.
+//#define SKIP_FIRST_AFTER_TRANSITION  // Doesn't work with vpx.
+#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor. // Better savings, Better Quality
+//#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
@@ -60,6 +61,10 @@
 
 // Force huffman in VPX for tiles instead for size comparison.
 //#define VPX_USE_HUFFMAN_TILES 1
+
+// apply a filter to the image.
+#define VPX_GORP_KERNEL_MOVE 1
+//#define VPX_TAA 1
 
 
 // THINGS TO NOTE:
