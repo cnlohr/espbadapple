@@ -22,7 +22,7 @@ class VideoFrames(Dataset):
                 break
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frame = cv2.resize(frame, (img_size[0], img_size[1]), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(frame, (img_size[1], img_size[0]), interpolation=cv2.INTER_AREA)
             frame = frame.astype(np.float32)[None, ...] / 255.0
             frame = torch.from_numpy(frame).to(self.device)
             self.frames.append(frame)
