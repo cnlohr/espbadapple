@@ -279,12 +279,12 @@ class BlockTrainer:
             epoch_loss_p /= epoch_n
             epoch_loss_c /= epoch_n
 
-            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%d_%0.06f_blocks.png" % (epoch, epoch_loss)))
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1141.png" % (epoch, epoch_loss)), 1141)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_2303.png" % (epoch, epoch_loss)), 2303)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1659.png" % (epoch, epoch_loss)), 1659)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%d_%0.06f_img_1689.png" % (epoch, epoch_loss)), 1689)
+            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%04d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1141.png" % (epoch, epoch_loss)), 1141)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_2303.png" % (epoch, epoch_loss)), 2303)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1659.png" % (epoch, epoch_loss)), 1659)
+            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1689.png" % (epoch, epoch_loss)), 1689)
 
             print("Epoch %d: loss %f (percep %f choice %f)" % (epoch, epoch_loss, epoch_loss_p, epoch_loss_c))
 
