@@ -1,10 +1,14 @@
+include ../common/make.inc
 
-SOURCETILES:=../comp2/tiles-64x48x8.dat
-STREAM:=../comp2/tiles-64x48x8.dat
+SOURCETILES:=../comp2/tiles-${RESX}x${RESY}x${BLOCKSIZE}.dat
+STREAM:=../comp2/stream-${RESX}x${RESY}x${BLOCKSIZE}.dat
 
 setup :
 	cp $(SOURCETILES) kmeans_ni_mse.dat
 	cp ../comp2/badapple-sm8628149.mp4 "Touhou - Bad Apple.mp4"
+	echo "img_size = (${RESY}, ${RESX})" > blocksettings.py
+	echo "block_size = (${BLOCKSIZE}, ${BLOCKSIZE})" >> blocksettings.py
+	echo "nblocks = ${TARGET_GLYPH_COUNT}" >> blocksettings.py
 
 runcomp :
 	python3 train_patches.py

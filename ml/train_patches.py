@@ -18,7 +18,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class ImageReconstruction(nn.Module):
     def __init__(self):
         super().__init__()
-        self.n_blocks = 256
+        self.n_blocks = nblocks
 
         self.tiles_per_img = img_size[0] * img_size[1] / block_size[0] / block_size[1]
 
