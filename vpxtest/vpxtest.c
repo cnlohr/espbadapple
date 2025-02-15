@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #define VPXCODING_WRITER
 #define VPXCODING_READER
@@ -181,6 +182,12 @@ void VPBlockDrawGif( ge_GIF * gifout, int xofs, int yofs, int vw, int gx, int gy
 #ifdef VPX_GREY16
 		int b = d * 15.9;
 #elif defined( VPX_GREY4 )
+
+#if VPX_GORP_KERNEL_MOVE
+		#define CONTRAST 10.0
+//		printf( "%f %f\n", d, 1.0/(1.0+expf(-(d-0.5)*CONTRAST)) );
+		d = 1.0/(1.0+expf(-(d-0.5)*CONTRAST));
+#endif
 		int b = d * 3.999;
 #else
 		int b = d * 1.9;
@@ -203,13 +210,13 @@ int FileLength( const char * filename )
 
 int main( int argc, char ** argv )
 {
+	int i;
 	if( argc != 4 )
 	{
 		fprintf( stderr, "Error: usage: ./vpxtest [stream.dat] [tiles.dat] [gif]\n" );
 		exit( -5 );
 	}
 	CNFGSetup( "comp test", 1800, 1060 );
-	int i;
 	int maxtilect = 0; // pre-remapped (Actually count)
 
 	FILE * f = fopen( argv[1], "rb" );
@@ -642,48 +649,61 @@ int main( int argc, char ** argv )
 
 	}
 
+
+	// Just a quick test to see if we can compress the tilemaps.
+	FILE * fRawTiles = fopen( "TEST_rawtiles.dat", "wb" );
+#if defined( VPX_GREY4 )
+	#define BITSETS_TILECOMP 2
+#elif defined( VPX_GREY16 )
+	#define BITSETS_TILECOMP 4
+#else
+	#define BITSETS_TILECOMP 1
+#endif
+	int bnw[BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP];
+	for( i = 0; i < maxtilect_remapped; i++ )
+	{
+		float * fg = &glyphsnew[i*BLOCKSIZE*BLOCKSIZE];
+		int y, x;
+		for( y = 0; y < BLOCKSIZE; y++ )
+		{
+			uint32_t osym = 0;
+			for( x = 0; x < BLOCKSIZE; x++ )
+			{
+				int c = (int)(fg[x+y*BLOCKSIZE] * 255) >> (8-BITSETS_TILECOMP);
+				osym = (osym<<BITSETS_TILECOMP) | c;
+
+				int k;
+				for( k = 0; k < BITSETS_TILECOMP; k++ )
+				{
+					bnw[((x+y*BLOCKSIZE)+i*BLOCKSIZE*BLOCKSIZE)*BITSETS_TILECOMP + k] = (c>>k)&1;
+				}
+			}
+			fwrite( &osym, BITSETS_TILECOMP*BLOCKSIZE/8, 1, fRawTiles );
+		}
+	}
+	fclose( fRawTiles );
+
 	uint8_t vpx_glyph_tiles_buffer[1024*32];
 	int vpx_glyph_tiles_buffer_len = 0;
-	#define MAXRUNTOSTORE 8
+	#define MAXRUNTOSTORE 16
 	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
 
-#if defined( VPX_GREY4 ) || defined( VPX_GREY16 ) || defined( SIMGREY4 )
-	if( 0 )
-#else
-	if( 1 )
-#endif
+#if defined( SIMGREY4 )
 	{
-		// Just a quick test to see if we can compress the tilemaps.
-		int i;
-		FILE * fRawTiles = fopen( "TEST_rawtiles.dat", "wb" );
-		int bnw[BLOCKSIZE*BLOCKSIZE*maxtilect_remapped];
-		for( i = 0; i < maxtilect_remapped; i++ )
-		{
-			float * fg = &glyphsnew[i*BLOCKSIZE*BLOCKSIZE];
-			int y, x;
-			for( y = 0; y < BLOCKSIZE; y++ )
-			{
-				int byte = 0;
-				for( x = 0; x < BLOCKSIZE; x++ )
-				{
-					int c = bnw[(x+y*BLOCKSIZE)+i*BLOCKSIZE*BLOCKSIZE] = fg[x+y*BLOCKSIZE] > 0.5;
-					byte = (byte<<1) | c;
-				}
-				fwrite( &byte, 1, 1, fRawTiles );
-			}
-		}
-		fclose( fRawTiles );
-
+		
+	}
+#else
+	{
 		int runsets0to0[MAXRUNTOSTORE] = { 0 };
 		int runsets0to1[MAXRUNTOSTORE] = { 0 };
 		int runsets1to0[MAXRUNTOSTORE] = { 0 };
 		int runsets1to1[MAXRUNTOSTORE] = { 0 };
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
 		{
 			int color = bnw[i];
 			int j;
 			int b = 0;
-			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; j++ )
+			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; j++ )
 			{
 				int p = bnw[j];
 				if( color == 0 )
@@ -734,7 +754,7 @@ int main( int argc, char ** argv )
 		int runsofar = 0;
 		int is0or1 = bnw[0];
 
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
 		{
 			uint8_t * prob = prob_from_0_or_1[is0or1];
 			int tprob = prob[runsofar];
@@ -761,6 +781,7 @@ int main( int argc, char ** argv )
 		vpx_glyph_tiles_buffer_len = w_glyphdata.pos;
 //		exit( 0 );
 	}
+#endif
 
 
 #ifdef VPX_USE_HUFFMAN_TILES
@@ -1047,8 +1068,10 @@ int main( int argc, char ** argv )
 			int runsofar = 0;
 			int is0or1 = 0;
 			int n = 0;
+			int k = 0;
+			int crun = 0;
 
-			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
+			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
 			{
 				uint8_t * prob = prob_from_0_or_1[is0or1];
 				int tprob = prob[runsofar];
@@ -1058,7 +1081,14 @@ int main( int argc, char ** argv )
 
 				int color = vpx_read( &reader_tiles, tprob );
 
-				glyphsnew[n++] = color ? 1 : 0;
+				crun |= (color ? 1 : 0) << k;
+				k++;
+				if( k == BITSETS_TILECOMP )
+				{
+					glyphsnew[n++] = ((float)crun) / ((1<<BITSETS_TILECOMP)-1);
+					k = 0;
+					crun = 0;
+				}
 
 				if( color != is0or1 )
 				{

@@ -59,10 +59,11 @@
 // This performs a massive space savings. 
 // Enable all 3 for maximum savings.
 //#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor. // Better savings, Better Quality But still drops some frames and looks chonkier.
-//#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
-//#define SKIP_FIRST_AFTER_TRANSITION 1  // This removes the ability to represent a one cell.  Must be used in conjunction with SKIP_ONLY_DOUBLE_UPDATES - not as important if RUNCODES_CONTINUOUS is used.
+#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
+#define SKIP_FIRST_AFTER_TRANSITION 1  // This removes the ability to represent a one cell.  Must be used in conjunction with SKIP_ONLY_DOUBLE_UPDATES - not as important if RUNCODES_CONTINUOUS is used.
 // FYI for VPX, if you want, you can enable all 3.
 // NOTE NOTE: If the stream comes pre dentropied, then you should NOT USE THESE (ok maybe SKIP_FIRST_AFTER_TRANSITION)
+// NOTE NOTE NOTE: A number of people prefer (SKIP_ONLY_DOUBLE_UPDATES+SKIP_FIRST_AFTER_TRANSITION) instead of SMART_TRANSITION_SKIP
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
@@ -76,10 +77,6 @@
 // apply a filter to the image.
 //#define VPX_GORP_KERNEL_MOVE 1
 //#define VPX_TAA 1
-
-
-
-
 
 
 //////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
