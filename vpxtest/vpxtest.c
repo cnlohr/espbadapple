@@ -35,7 +35,7 @@ int tilechangesReal[MAXTILEDIFF]; // Change to this
 int tileruns[MAXTILEDIFF];    // After changing, run for this long.
 int tilechangect;
 
-int maxtileid_remapped = 0;
+int maxtilect_remapped = 0;
 uint8_t bufferVPX[1024*1024];
 uint8_t bufferVPXg[1024*1024];
 uint8_t bufferVPXr[1024*1024];
@@ -138,9 +138,9 @@ void VPDrawGlyph( int xofs, int yofs, int gx, int gy, int curglyphs[BLKY][BLKX],
 	int bit = 0;
 	int x, y;
 	int glyph = curglyphs[gy][gx];
-	if( glyph >= maxtileid_remapped )
+	if( glyph >= maxtilect_remapped )
 	{
-		fprintf( stderr, "Glyph %d/%d\n", glyph, maxtileid_remapped );
+		fprintf( stderr, "Glyph %d/%d\n", glyph, maxtilect_remapped );
 		exit( -9 );
 	}
 	for( y = 0; y < BLOCKSIZE; y++ )
@@ -210,7 +210,7 @@ int main( int argc, char ** argv )
 	}
 	CNFGSetup( "comp test", 1800, 1060 );
 	int i;
-	int maxtileid = 0; // pre-remapped
+	int maxtilect = 0; // pre-remapped (Actually count)
 
 	FILE * f = fopen( argv[1], "rb" );
 	while( !feof( f ) )
@@ -224,7 +224,7 @@ int main( int argc, char ** argv )
 		tiles = realloc( tiles, (numtiles+1)*4 );
 		tiles[numtiles] = tile;
 		numtiles++;
-		if( tile > maxtileid ) maxtileid = tile;
+		if( tile > maxtilect ) maxtilect = tile+1;
 	}
 	fclose( f );
 
@@ -243,9 +243,9 @@ int main( int argc, char ** argv )
 
 	printf( "Num tiles: %d\n", numtiles);
 	printf( "Num glyphs: %d\n", glyphctold);
-	int * tilecounts = calloc( 4, maxtileid );   // [newid]
-	int * tileremap = calloc( 4, maxtileid );    // [newid] = originalid
-	int * tileremapfwd = calloc( 4, maxtileid ); // [originalid] = newid
+	int * tilecounts = calloc( 4, maxtilect );   // [newid]
+	int * tileremap = calloc( 4, maxtilect );    // [newid] = originalid
+	int * tileremapfwd = calloc( 4, maxtilect ); // [originalid] = newid
 
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
@@ -259,8 +259,8 @@ int main( int argc, char ** argv )
 		FILE * fRawTileStream = fopen( "TEST_streamids.dat", "wb" );
 		FILE * fRawTileRunLen = fopen( "TEST_runlens.dat", "wb" );
 
-		int * tilecounts_temp = alloca( 4 * maxtileid );
-		memset( tilecounts_temp, 0, 4 * maxtileid );
+		int * tilecounts_temp = alloca( 4 * maxtilect );
+		memset( tilecounts_temp, 0, 4 * maxtilect );
 
 		int tilechangerun[BLKY][BLKX] = { 0 };
 		int lasttile[BLKY][BLKX] = { 0 };
@@ -280,16 +280,24 @@ int main( int argc, char ** argv )
 						if( (next = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward)] ) != t )
 							break;
 
-#if defined( SKIP_ONLY_DOUBLE_UPDATES )
-					if( forward == 1 ) forward++;
-#elif defined( SMART_TRANSITION_SKIP )
+#if defined( SMART_TRANSITION_SKIP )
 					if( frame + forward + 1 < frames && tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + forward + 1)] != next )
 					{
 						forward++;
 						ratcheted++;
 					}
 #endif
+#if defined( SKIP_ONLY_DOUBLE_UPDATES )
+					if( forward == 1 ) forward++;
+#endif
 
+#ifdef SKIP_FIRST_AFTER_TRANSITION
+					if(forward < 2 )
+					{
+						fprintf( stderr, "Error bad configuration\n" );
+						exit( -5 );
+					}
+#endif
 					forward--;
 
 					// Our product:
@@ -328,19 +336,34 @@ int main( int argc, char ** argv )
 					tilechangerun[y][x]--;
 				}
 			}
+
+#ifdef MONITOR_FRAME
+			if( frame == MONITOR_FRAME )
+			{
+				for( y = 0; y < BLKY; y++ )
+				{
+					for( x = 0; x < BLKX; x++ )
+					{
+						printf( "%4d", lasttile[y][x] );
+					}
+					printf( "\n" );
+				}
+			}
+#endif
 		}
 		fclose( fRawTileStream );
 		fclose( fRawTileRunLen );
 
 		cnrbtree_u32u32 * countmap = cnrbtree_u32u32_create();
 
-		maxtileid_remapped = 0;
-		for( i = 0; i < maxtileid; i++ )
+		maxtilect_remapped = 0;
+		for( i = 0; i < maxtilect; i++ )
 		{
 			if( tilecounts_temp[i] > 0 )
 			{
-				maxtileid_remapped++;
+				maxtilect_remapped++;
 				RBA( countmap, tilecounts_temp[i] ) = i;
+				//printf( "REMAP %d\n", i );
 			}
 			else
 			{
@@ -348,14 +371,14 @@ int main( int argc, char ** argv )
 			}
 		}
 
-		int n = maxtileid_remapped-1;
+		int n = maxtilect_remapped-1;
 
 		RBFOREACH( u32u32, countmap, i )
 		{
 			tileremap[n] = i->data;
 			tilecounts[n] = i->key;
 			tileremapfwd[i->data] = n;
-			printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
+			//printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
 			n--;
 		}
 
@@ -367,15 +390,15 @@ int main( int argc, char ** argv )
 			int tinR = tilechangesReal[i];
 			tilechangesReal[i] = tileremapfwd[tinR];
 
-			if( tile >= maxtileid_remapped )
+			if( tile >= maxtilect_remapped )
 			{
-				fprintf( stderr, "Encoding Glyph %d/%d\n", tile, maxtileid_remapped );
+				fprintf( stderr, "Encoding Glyph %d/%d\n", tile, maxtilect_remapped );
 				exit( -9 );
 			}
 		}
 
-		glyphsnew = malloc( (maxtileid_remapped)*BLOCKSIZE*BLOCKSIZE*4 );
-		for( i = 0; i < maxtileid_remapped; i++ )
+		glyphsnew = malloc( (maxtilect_remapped)*BLOCKSIZE*BLOCKSIZE*4 );
+		for( i = 0; i < maxtilect_remapped; i++ )
 		{
 			int oldid = tileremap[i];
 			memcpy( &glyphsnew[BLOCKSIZE*BLOCKSIZE*i],
@@ -395,7 +418,11 @@ int main( int argc, char ** argv )
 
 
 	// test validate
+#ifdef MONITOR_FRAME
+	if( 1 )
+#else
 	if( 0 )
+#endif
 	{
 		CNFGClearFrame();
 		int curglyph[BLKY][BLKX] = { 0 };
@@ -421,8 +448,22 @@ int main( int argc, char ** argv )
 					currun[y][x]--;
 				}
 			}
+
+#ifdef MONITOR_FRAME
+			if( frame == MONITOR_FRAME )
+			{
+				for( y = 0; y < BLKY; y++ )
+				{
+					for( x = 0; x < BLKX; x++ )
+					{
+						printf( "%4d", curglyph[y][x] );
+					}
+					printf( "\n" );
+				}
+			}
+#endif
+
 			CNFGSwapBuffers();
-			usleep(10000);
 			memcpy( prevglyph, curglyph, sizeof( curglyph ) );
 		}
 	}
@@ -440,7 +481,7 @@ int main( int argc, char ** argv )
 	printf( "Prob Backtrack: %d\n", probbacktrack );
 #endif
 
-	int bitsfortileid = intlog2roundup( maxtileid_remapped );
+	int bitsfortileid = intlog2roundup( maxtilect_remapped );
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
@@ -462,7 +503,7 @@ int main( int argc, char ** argv )
 			{
 				int count1 = 0;
 				int count0 = 0;
-				for( n = 0; n < maxtileid_remapped; n++ )
+				for( n = 0; n < maxtilect_remapped; n++ )
 				{
 					if( ( n & levelmask ) == maskcheck )
 					{
@@ -489,17 +530,20 @@ int main( int argc, char ** argv )
 #endif
 
 	// Now, we have to compress tilechanges & tileruns
-	uint8_t vpx_probs_by_tile_run[maxtileid_remapped];
-	uint8_t vpx_probs_by_tile_run_after_one[maxtileid_remapped];
+	uint8_t vpx_probs_by_tile_run[maxtilect_remapped];
+	uint8_t vpx_probs_by_tile_run_after_one[maxtilect_remapped];
+#ifdef RUNCODES_CONTINUOUS
+	uint8_t vpx_probs_by_tile_run_continuous[RUNCODES_CONTINUOUS];
+#endif
 	{
-		int probcountmap[maxtileid_remapped];
-		int glyphcounts[maxtileid_remapped];
-		int probcountmap_after_one[maxtileid_remapped];
-		int glyphcounts_after_one[maxtileid_remapped];
+		int probcountmap[maxtilect_remapped];
+		int glyphcounts[maxtilect_remapped];
+		int probcountmap_after_one[maxtilect_remapped];
+		int glyphcounts_after_one[maxtilect_remapped];
 		int curtile[BLKY][BLKX];
 		int n, bx, by;
 
-		for( n = 0; n < maxtileid_remapped; n++ )
+		for( n = 0; n < maxtilect_remapped; n++ )
 		{
 			probcountmap[n] = 0;
 			glyphcounts[n] = 0;
@@ -513,6 +557,11 @@ int main( int argc, char ** argv )
 			curtile[by][bx] = -1;
 		}
 
+#ifdef RUNCODES_CONTINUOUS
+		uint32_t runcounts_tile_run_up_until_num[RUNCODES_CONTINUOUS] = { 0 };
+		uint32_t runcounts_tile_run_up_until_denom[RUNCODES_CONTINUOUS] = { 0 };
+#endif
+
 		for( n = 0; n < tilechangect; n++ )
 		{
 			int t = tilechanges[n];
@@ -520,6 +569,7 @@ int main( int argc, char ** argv )
 
 			if( t >= 0 )
 			{
+				int rc = 0;
 #ifdef RUNCODES_TWOLEVEL
 				// Glyphcounts is used only for the first.
 				if( r > RSOPT )
@@ -532,15 +582,29 @@ int main( int argc, char ** argv )
 				// without lumping it into everything else.
 				glyphcounts[t]++;
 				probcountmap[t]+=r+1-RSOPT;
+				rc = r+1-RSOPT;
 #else
 				// This combines probability at any given time.
 				glyphcounts[t]++;
 				probcountmap[t]+=r+1-RSOPT;
+				rc = r+1-RSOPT;
+#endif
+#ifdef RUNCODES_CONTINUOUS
+				int k;
+				for( k = 0; k < rc-1 && k < RUNCODES_CONTINUOUS; k++ )
+				{
+					runcounts_tile_run_up_until_denom[k]++;
+				}
+				if( k < RUNCODES_CONTINUOUS )
+				{
+					runcounts_tile_run_up_until_num[k]++;
+					runcounts_tile_run_up_until_denom[k]++;
+				}
 #endif
 			}
 		}
 
-		for( n = 0; n < maxtileid_remapped; n++ )
+		for( n = 0; n < maxtilect_remapped; n++ )
 		{
 			double gratio;
 			int prob;
@@ -550,15 +614,32 @@ int main( int argc, char ** argv )
 			if( prob > 255 ) prob = 255;
 			vpx_probs_by_tile_run[n] = prob;
 
+#ifdef RUNCODES_TWOLEVEL
 			gratio = glyphcounts_after_one[n] * 1.0 / probcountmap_after_one[n];
 			prob = ( gratio * 257.0 ) - 1.5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			vpx_probs_by_tile_run_after_one[n] = prob;
-
+#endif
 			//printf( "%d [%d %d] %d %d\n", n, vpx_probs_by_tile_run[n],
 			//	vpx_probs_by_tile_run_after_one[n], glyphcounts[n], probcountmap[n]);
 		}
+
+
+#ifdef RUNCODES_CONTINUOUS
+		for( n = 0; n < RUNCODES_CONTINUOUS; n++ )
+		{
+			double gratio;
+			int prob;
+			//printf( "%d  %d/%d\n", n, runcounts_tile_run_up_until_num[n],runcounts_tile_run_up_until_denom[n] );
+			gratio = runcounts_tile_run_up_until_num[n] * 1.0 / runcounts_tile_run_up_until_denom[n];
+			prob = ( gratio * 257.0 ) - 1.5;
+			if( prob < 0 ) prob = 0; 
+			if( prob > 255 ) prob = 255;
+			vpx_probs_by_tile_run_continuous[n] = prob;
+		}
+#endif
+
 	}
 
 	uint8_t vpx_glyph_tiles_buffer[1024*32];
@@ -575,8 +656,8 @@ int main( int argc, char ** argv )
 		// Just a quick test to see if we can compress the tilemaps.
 		int i;
 		FILE * fRawTiles = fopen( "TEST_rawtiles.dat", "wb" );
-		int bnw[BLOCKSIZE*BLOCKSIZE*maxtileid_remapped];
-		for( i = 0; i < maxtileid_remapped; i++ )
+		int bnw[BLOCKSIZE*BLOCKSIZE*maxtilect_remapped];
+		for( i = 0; i < maxtilect_remapped; i++ )
 		{
 			float * fg = &glyphsnew[i*BLOCKSIZE*BLOCKSIZE];
 			int y, x;
@@ -597,12 +678,12 @@ int main( int argc, char ** argv )
 		int runsets0to1[MAXRUNTOSTORE] = { 0 };
 		int runsets1to0[MAXRUNTOSTORE] = { 0 };
 		int runsets1to1[MAXRUNTOSTORE] = { 0 };
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
 		{
 			int color = bnw[i];
 			int j;
 			int b = 0;
-			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; j++ )
+			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; j++ )
 			{
 				int p = bnw[j];
 				if( color == 0 )
@@ -653,7 +734,7 @@ int main( int argc, char ** argv )
 		int runsofar = 0;
 		int is0or1 = bnw[0];
 
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
 		{
 			uint8_t * prob = prob_from_0_or_1[is0or1];
 			int tprob = prob[runsofar];
@@ -694,11 +775,11 @@ int main( int argc, char ** argv )
 
 		//huffelement * GenerateHuffmanTree( hufftype * data, hufffreq * frequencies, int numpairs, int * hufflen );
 
-		uint32_t tileids[maxtileid_remapped];
-		uint32_t frequencies[maxtileid_remapped];
+		uint32_t tileids[maxtilect_remapped];
+		uint32_t frequencies[maxtilect_remapped];
 
 		int i;
-		for( i = 0; i < maxtileid_remapped; i++ )
+		for( i = 0; i < maxtilect_remapped; i++ )
 		{
 			tileids[i] = i;
 			frequencies[i] = 0;
@@ -709,7 +790,7 @@ int main( int argc, char ** argv )
 			frequencies[tilechangesReal[i]]++;
 		}
 
-		huffelement * tree = GenerateHuffmanTree( tileids, frequencies, maxtileid_remapped, &hufftreelen );
+		huffelement * tree = GenerateHuffmanTree( tileids, frequencies, maxtilect_remapped, &hufftreelen );
 
 		for( i = 0; i < hufftreelen; i++ )
 		{
@@ -724,7 +805,7 @@ int main( int argc, char ** argv )
 		huffup * hu = GenPairTable( tree, &htlen );
 		int len_bits = 0;
 
-		int idsofhu[maxtileid_remapped];
+		int idsofhu[maxtilect_remapped];
 		for( i = 0; i < htlen; i++ )
 		{
 			idsofhu[hu[i].value] = i;
@@ -833,6 +914,23 @@ int main( int argc, char ** argv )
 		}
 
 		int run = tileruns[n] - RSOPT;
+
+
+#ifdef RUNCODES_CONTINUOUS
+		int b;
+		//printf( "%d ", run );
+		for( b = 0; b < run; b++ )
+		{
+			probability = vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
+			//printf( "%d ", probability );
+			vpx_write(&w_run, 1, probability);
+			vpx_write(&w_combined, 1, probability);
+		}
+		probability = vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
+		//printf( "%d\n", probability );
+		vpx_write(&w_run, 0, probability);
+		vpx_write(&w_combined, 0, probability);
+#else
 		probability = vpx_probs_by_tile_run[tileReal];
 		int b;
 		for( b = 0; b < run; b++ )
@@ -845,6 +943,7 @@ int main( int argc, char ** argv )
 		}
 		vpx_write(&w_run, 0, probability);
 		vpx_write(&w_combined, 0, probability);
+#endif
 
 		symsum++;
 	}
@@ -857,7 +956,7 @@ int main( int argc, char ** argv )
 	vpx_stop_encode(&w_combined);
 	int combinedstream = w_combined.pos;
 
-	printf( "      Glyphs:%7d\n", maxtileid_remapped + 1 );
+	printf( "      Glyphs:%7d\n", maxtilect_remapped + 1 );
 	printf( " Num Changes:%7d\n", symsum );
 #ifdef SMART_TRANSITION_SKIP
 	printf( "   Ratcheted:%7d\n", ratcheted );
@@ -877,14 +976,19 @@ int main( int argc, char ** argv )
 
 	printf( " + Tile Prob:%7d bits / bytes:%6d\n", (int)sizeof(chancetable_glyph) * 8, (int)sizeof(chancetable_glyph) );
 	sum += (int)sizeof(chancetable_glyph);
+
+#ifdef RUNCODES_CONTINUOUS
+	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)RUNCODES_CONTINUOUS * 8, (int)RUNCODES_CONTINUOUS );
+	sum += (int)RUNCODES_CONTINUOUS;
+#else
 	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run) * 8, (int)sizeof(vpx_probs_by_tile_run) );
 	sum += (int)sizeof(vpx_probs_by_tile_run);
 #ifdef RUNCODES_TWOLEVEL
 	printf( " + Run Prob2:%7d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run_after_one) * 8, (int)sizeof(vpx_probs_by_tile_run_after_one) );
 	sum += (int)sizeof(vpx_probs_by_tile_run_after_one);
 #endif
-
-	int glyphsize = BLOCKSIZE * BLOCKSIZE / 8 * maxtileid_remapped;
+#endif
+	int glyphsize = BLOCKSIZE * BLOCKSIZE / 8 * maxtilect_remapped;
 #ifdef VPX_GREY4
 	glyphsize *= 2;
 #elif defined( VPX_GREY16 )
@@ -944,7 +1048,7 @@ int main( int argc, char ** argv )
 			int is0or1 = 0;
 			int n = 0;
 
-			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtileid_remapped; i++ )
+			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i++ )
 			{
 				uint8_t * prob = prob_from_0_or_1[is0or1];
 				int tprob = prob[runsofar];
@@ -994,7 +1098,6 @@ int main( int argc, char ** argv )
 		uint8_t palette[48] = { 0, 0, 0, 255, 255, 255 };
 #endif
 		ge_GIF * gifout = ge_new_gif( argv[3], RESX*2, RESY*2, palette, 4, -1, 0 );
-
 		FILE * bituse = fopen ( "bituse.txt", "w" );
 		FILE * bitusekbits = fopen ( "bitusepersec.txt", "w" );
 		int bitssofarthissec = 0;
@@ -1009,7 +1112,7 @@ int main( int argc, char ** argv )
 				{
 					int tile = 0;
 
-					int bitsfortileid = intlog2roundup( maxtileid_remapped );
+					int bitsfortileid = intlog2roundup( maxtilect_remapped );
 					int level;
 
 					int probability = 0;
@@ -1056,6 +1159,18 @@ int main( int argc, char ** argv )
 
 					curglyph[y][x] = tile;
 
+
+#ifdef RUNCODES_CONTINUOUS
+					int run = 0;
+					do
+					{
+						probability = vpx_probs_by_tile_run_continuous[(run < RUNCODES_CONTINUOUS - 1)?run:(RUNCODES_CONTINUOUS - 1)];
+						if( vpx_read(&reader, probability) == 0 ) break;
+						run++;
+					}
+					while( true );
+#else
+
 					probability = vpx_probs_by_tile_run[tile];
 					int run = 0;
 					while( vpx_read(&reader, probability) )
@@ -1065,6 +1180,8 @@ int main( int argc, char ** argv )
 #endif
 						run++;
 					}
+#endif
+
 					currun[y][x] = run + RSOPT;
 					playptr++;
 
@@ -1081,6 +1198,21 @@ int main( int argc, char ** argv )
 				VPDrawGlyph( x*BLOCKSIZE*2, y*BLOCKSIZE*2, x, y, curglyph, prevglyph );
 				VPBlockDrawGif( gifout, x * BLOCKSIZE*2, y * BLOCKSIZE*2, RESX*2, x, y, curglyph, prevglyph );
 			}
+
+#ifdef MONITOR_FRAME
+			if( frame == MONITOR_FRAME )
+			{
+				for( y = 0; y < BLKY; y++ )
+				{
+					for( x = 0; x < BLKX; x++ )
+					{
+						printf( "%4d", curglyph[y][x] );
+					}
+					printf( "\n" );
+				}
+				exit( 0 );
+			}
+#endif
 
 			ge_add_frame(gifout, 2);
 			CNFGSwapBuffers();

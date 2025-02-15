@@ -13,7 +13,7 @@
 #define MSE
 
 // Target glyphs, and how quickly to try approaching it.
-#define TARGET_GLYPH_COUNT 256
+//#define TARGET_GLYPH_COUNT 256 // defined in Makefile
 
 // The following 3 are for tuning the K-Means front-end.
 #define GLYPH_COUNT_REDUCE_PER_FRAME 8
@@ -21,6 +21,11 @@
 #define KMEANS 2048
 // How long to train?
 #define KMEANSITER 250
+
+// Debugging (VPX only)
+//#define MONITOR_FRAME 1065
+
+
 
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
@@ -42,30 +47,42 @@
 #define UNIFIED_VPX 1
 
 
-// vpxtestonly:
-//  Use two-level run codes.
-// DEFAULT ON
-#define RUNCODES_TWOLEVEL 1
+// vpxtestonly:  How do we encode the run lengths?
+//  Use two-level run codes.  Provides about 0.5% better compression.
+//#define RUNCODES_TWOLEVEL 1  // 84264 -> 84242
+//Instead use the codes themself, along each step, predict likliehood of being a 1 or a 0.
+// This is mutually exclusive with RUNCODES_TWOLEVEL
+//#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795 
 
-// For streamcomp, skip first frame after transition.
-// This performs a massive space savings.  WARNING: Without this on, I can't imagine how we would encode this video.
-//#define SKIP_FIRST_AFTER_TRANSITION  // Doesn't work with vpx.
-#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor. // Better savings, Better Quality
+// For streamcomp + VPX Test, skip first frame after transition. (Some features only in vpxtest)
+// How do we decide if we want to skip frames?
+// This performs a massive space savings. 
+// Enable all 3 for maximum savings.
+//#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor. // Better savings, Better Quality But still drops some frames and looks chonkier.
 //#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
+//#define SKIP_FIRST_AFTER_TRANSITION 1  // This removes the ability to represent a one cell.  Must be used in conjunction with SKIP_ONLY_DOUBLE_UPDATES - not as important if RUNCODES_CONTINUOUS is used.
+// FYI for VPX, if you want, you can enable all 3.
+// NOTE NOTE: If the stream comes pre dentropied, then you should NOT USE THESE (ok maybe SKIP_FIRST_AFTER_TRANSITION)
 
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
-//#define VPX_GREY4 1
+#define VPX_GREY4 1
 //#define VPX_GREY16 1 
 
 // Force huffman in VPX for tiles instead for size comparison.
 //#define VPX_USE_HUFFMAN_TILES 1
 
 // apply a filter to the image.
-#define VPX_GORP_KERNEL_MOVE 1
+//#define VPX_GORP_KERNEL_MOVE 1
 //#define VPX_TAA 1
 
+
+
+
+
+
+//////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
 
 // THINGS TO NOTE:
 
@@ -117,8 +134,6 @@
 
 // Suppress tile updates in output image, unless they change nontrivially. (sets the score)
 //#define REDUCE_MOTION_IN_OUTPUT_FOR_SIMILAR_IMAGES 	2
-
-
 
 #ifdef ENCODE_HISTORY
 #define ENCODE_HISTORY_FLAG 0x8000
