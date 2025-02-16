@@ -52,7 +52,7 @@
 //#define RUNCODES_TWOLEVEL 1  // 84264 -> 84242
 //Instead use the codes themself, along each step, predict likliehood of being a 1 or a 0.
 // This is mutually exclusive with RUNCODES_TWOLEVEL
-#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795 
+//#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795 
 
 #if defined( RUNCODES_TWOLEVEL ) && defined( RUNCODES_CONTINUOUS )
 #error mutually exclusive settings
@@ -73,7 +73,7 @@
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
-#define VPX_DO_DUAL_GLYPH_DIRECTION 4
+//#define VPX_DO_DUAL_GLYPH_DIRECTION 4
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 

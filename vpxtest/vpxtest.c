@@ -1575,6 +1575,7 @@ int main( int argc, char ** argv )
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
+#endif
 
 #ifdef MAXRUNTOSTORE
 	fprintf( fDataOut, "static uint8_t ba_vpx_glyph_probability_run_0_or_1[2][MAXRUNTOSTORE] = {" );
@@ -1594,7 +1595,7 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "const uint8_t vpx_probs_by_tile_run_continuous[%d] = {", RUNCODES_CONTINUOUS );
 	for( j = 0; j < RUNCODES_CONTINUOUS; j++ )
 	{
-		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", vpx_probs_by_tile_run_continuous[j] );
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", ba_vpx_probs_by_tile_run_continuous[j] );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
