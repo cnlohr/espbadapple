@@ -52,15 +52,19 @@
 //#define RUNCODES_TWOLEVEL 1  // 84264 -> 84242
 //Instead use the codes themself, along each step, predict likliehood of being a 1 or a 0.
 // This is mutually exclusive with RUNCODES_TWOLEVEL
-//#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795 
+#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795 
+
+#if defined( RUNCODES_TWOLEVEL ) && defined( RUNCODES_CONTINUOUS )
+#error mutually exclusive settings
+#endif
 
 // For streamcomp + VPX Test, skip first frame after transition. (Some features only in vpxtest)
 // How do we decide if we want to skip frames?
 // This performs a massive space savings. 
 // Enable all 3 for maximum savings.
 //#define SMART_TRANSITION_SKIP 1 // Only available in vpx compressor. // Better savings, Better Quality But still drops some frames and looks chonkier.
-#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
-#define SKIP_FIRST_AFTER_TRANSITION 1  // This removes the ability to represent a one cell.  Must be used in conjunction with SKIP_ONLY_DOUBLE_UPDATES - not as important if RUNCODES_CONTINUOUS is used.
+//#define SKIP_ONLY_DOUBLE_UPDATES 1 // Middling savings, not good quality.
+//#define SKIP_FIRST_AFTER_TRANSITION 1  // This removes the ability to represent a one cell.  Must be used in conjunction with SKIP_ONLY_DOUBLE_UPDATES - not as important if RUNCODES_CONTINUOUS is used.
 // FYI for VPX, if you want, you can enable all 3.
 // NOTE NOTE: If the stream comes pre dentropied, then you should NOT USE THESE (ok maybe SKIP_FIRST_AFTER_TRANSITION)
 // NOTE NOTE NOTE: A number of people prefer (SKIP_ONLY_DOUBLE_UPDATES+SKIP_FIRST_AFTER_TRANSITION) instead of SMART_TRANSITION_SKIP

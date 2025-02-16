@@ -165,7 +165,7 @@ class BlockTrainer:
         self.out_data_dir = os.path.join(self.out_dir, "data")
 
         # Weighting factor for the tile-change regularization
-        self.change_lambda = 0.01
+        self.change_lambda = 0.8
 
         os.makedirs(self.out_data_dir, exist_ok=False)
         os.makedirs(self.out_blocks_dir, exist_ok=False)
@@ -231,11 +231,11 @@ class BlockTrainer:
             self.recr.eval()
 
             # write binary video data
-            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
-            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
 
             # write visualization for humans
-            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
             self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1141.png" % (epoch, epoch_loss)), 1141)
             self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)

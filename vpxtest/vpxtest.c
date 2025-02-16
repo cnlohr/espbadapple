@@ -53,6 +53,41 @@ unsigned int intlog2roundup(unsigned int x) {
 	return intlog2(x);
 }
 
+void WriteFileStreamHeader( FILE * f, vpx_writer * w, const char * name )
+{
+	fprintf( f, "const uint8_t %s[%d] = {", name, w->pos );
+	int i;
+	for( i = 0; i < w->pos; i++ )
+	{
+		fprintf( f, "%s0x%02x, ", (i&15)?"":"\n\t", w->buffer[i] );
+	}
+	fprintf( f, "};\n\n" );
+}
+
+void WriteOutFile( FILE * f, const char * name, const char * fname )
+{
+	FILE * fi = fopen( fname, "rb" );
+	fseek( fi, 0, SEEK_END );
+	int len = (int)ftell(fi);
+	fseek( fi, 0, SEEK_SET );
+	uint8_t * data=  malloc( len );
+	if( fread( data, len, 1, fi ) != 1 )
+	{
+		fprintf( stderr, "error: can't read data from %s\n", fname );
+		exit( -5 );
+	}
+	fclose( fi );
+	fprintf( f, "const uint8_t %s[%d] = {", name, len );
+	int i;
+	for( i = 0; i < len; i++ )
+	{
+		fprintf( f, "%s0x%02x, ", (i&15)?"":"\n\t", data[i] );
+	}
+	fprintf( f, "\n};\n\n" );
+	free( data );
+}// fDataOut, "sound_huffTL", "../song/huffTL_fmraw.dat" );
+
+
 float * glyphsold;
 int glyphctold;
 float * glyphsnew;
@@ -210,7 +245,7 @@ int FileLength( const char * filename )
 
 int main( int argc, char ** argv )
 {
-	int i;
+	int i, j;
 	if( argc != 4 )
 	{
 		fprintf( stderr, "Error: usage: ./vpxtest [stream.dat] [tiles.dat] [gif]\n" );
@@ -492,7 +527,7 @@ int main( int argc, char ** argv )
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
-	uint8_t chancetable_glyph[1<<bitsfortileid];
+	uint8_t chancetable_glyph[(1<<bitsfortileid)-1];
 	memset( chancetable_glyph, 0, sizeof(chancetable_glyph) );
 	{
 		int nout = 0;
@@ -687,7 +722,7 @@ int main( int argc, char ** argv )
 	int vpx_glyph_tiles_buffer_len = 0;
 	#define MAXRUNTOSTORE 16
 	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
-
+	vpx_writer w_glyphdata = { 0 };
 #if defined( SIMGREY4 )
 	{
 		
@@ -748,7 +783,6 @@ int main( int argc, char ** argv )
 			//printf( "%d (%d/%d) (%d/%d) %4d%4d\n", j, runsets0to0[j], runsets0to1[j], runsets1to0[j], runsets1to1[j] , prob0, prob1 );
 		}
 
-		vpx_writer w_glyphdata = { 0 };
 		vpx_start_encode( &w_glyphdata, vpx_glyph_tiles_buffer, sizeof(vpx_glyph_tiles_buffer));
 
 		int runsofar = 0;
@@ -779,7 +813,6 @@ int main( int argc, char ** argv )
 
 		vpx_stop_encode(&w_glyphdata);
 		vpx_glyph_tiles_buffer_len = w_glyphdata.pos;
-//		exit( 0 );
 	}
 #endif
 
@@ -1164,7 +1197,6 @@ int main( int argc, char ** argv )
 						//printf( "%d/%08x/%d // %d %08x\n", b, te, treepos, huffmanbit, huffman_tile_stream[huffmanbit/8] );
 						treepos = (te >> ((b)*12)) & 0xfff;
 					} while( huffmanbit < huffman_tile_stream_length_bits);
-
 #else
 #ifdef VPX_CODING_ALLOW_BACKTRACK
 					int nbacktrack = vpx_read( &reader, probbacktrack );
@@ -1264,5 +1296,85 @@ int main( int argc, char ** argv )
 		ge_close_gif( gifout );
 	}
 
+	FILE * fDataOut = fopen( "badapple_data.h", "w" );
+	fprintf( fDataOut, "#ifndef BADAPPLE_DATA_H\n" );
+	fprintf( fDataOut, "#define BADAPPLE_DATA_H\n\n" );
+
+	fprintf( fDataOut, "// Sound\n\n" );
+
+	WriteOutFile( fDataOut, "sound_huffTL", "../song/huffTL_fmraw.dat" );
+	WriteOutFile( fDataOut, "sound_huffTN", "../song/huffTN_fmraw.dat" );
+	WriteOutFile( fDataOut, "sound_huffD", "../song/huffD_fmraw.dat" );
+
+	if( sHuffD > 0 )
+	{
+		printf( " + Sound (D):%7d bits / bytes:%6d\n", sHuffD * 8, sHuffD );
+		sum += sHuffD;
+	}
+	if( sHuffTL > 0 )
+	{
+		printf( " + Sound (L):%7d bits / bytes:%6d\n", sHuffTL * 8, sHuffTL );
+		sum += sHuffTL;
+	}
+	if( sHuffTN > 0 )
+	{
+		printf( " + Sound (N):%7d bits / bytes:%6d\n", sHuffTN * 8, sHuffTN );
+		sum += sHuffTN;
+	}
+
+
+	fprintf( fDataOut, "// Video\n\n" );
+
+	// Output stream 
+	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph[%d] = {", (int)sizeof(chancetable_glyph) );
+	for( j = 0; j < sizeof(chancetable_glyph); j++ )
+	{
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", chancetable_glyph[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+
+#ifndef RUNCODES_CONTINUOUS
+	fprintf( fDataOut, "const uint8_t vpx_probs_by_tile_run[%d] = {", maxtilect_remapped );
+	for( j = 0; j < maxtilect_remapped; j++ )
+	{
+		fprintf( fDataOut, "%s%3d,",  ((j & 0xf) == 0x0) ? "\n\t" : " ", vpx_probs_by_tile_run[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+#endif
+#ifdef RUNCODES_TWOLEVEL
+	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_after_one[%d] = {", maxtilect_remapped );
+	for( j = 0; j < maxtilect_remapped; j++ )
+	{
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", vpx_probs_by_tile_run_after_one[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+#endif
+
+	fprintf( fDataOut, "static uint8_t ba_glyphdata_probs[2][%d] = {", MAXRUNTOSTORE );
+	for( j = 0; j < 2; j++ )
+	{
+		fprintf( fDataOut, "\n\t{ " );
+		for( i = 0; i < MAXRUNTOSTORE; i++ )
+		{
+			fprintf( fDataOut, "%s%3d,", ((i & 0x1f) == 0x1f) ? "\n\t" : " ", prob_from_0_or_1[j][i] );
+		}
+		fprintf( fDataOut, "}%s", (j < 1) ? "," : "" );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+
+#ifdef RUNCODES_CONTINUOUS
+	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_continuous[%d] = {", RUNCODES_CONTINUOUS );
+	for( j = 0; j < RUNCODES_CONTINUOUS; j++ )
+	{
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", vpx_probs_by_tile_run_continuous[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+#endif
+
+	WriteFileStreamHeader( fDataOut, &w_combined, "ba_video_payload" );
+	WriteFileStreamHeader( fDataOut, &w_glyphdata, "ba_glyphdata" );
+
+	fprintf( fDataOut, "#endif\n" );
+	fclose( fDataOut );
 }
 
