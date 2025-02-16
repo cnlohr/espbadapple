@@ -85,8 +85,8 @@ class ImageReconstruction(nn.Module):
         """
         frame_idxs_b = torch.clip(frame_idxs+1, min=None, max=self.sequence.shape[0]-1)
 
-        logprob_a = F.log_softmax(self.sequence[frame_idxs, ...])
-        logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...])
+        logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
+        logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...], dim=-1)
 
         kl_div_elementwise = F.kl_div(logprob_a, logprob_b, reduction='none', log_target=True)
         kl_div = kl_div_elementwise.sum(-1)  # Sum over categorical dim to yield per-frame/per-tile KL divergence
@@ -106,8 +106,8 @@ class ImageReconstruction(nn.Module):
         if self.training:
             # Use the gumbel-softmax trick to sample our tiles
             block_weights = F.gumbel_softmax(logits=self.sequence[frame_idxs, ...],
-                                             tau=0.5,  # TODO tune me
-                                             hard=True)
+                                             tau=0.00001,  # TODO tune me
+                                             hard=False)
         else:
             # Use argmax
             block_weights = F.one_hot(self.sequence[frame_idxs, ...].argmax(dim=-1),
@@ -137,6 +137,14 @@ class ImageReconstruction(nn.Module):
         indices_np = indices.detach().cpu().numpy().astype(np.int32)
         indices_np.tofile(out_path)
 
+    def dump_probs_img(self, out_path):
+        with torch.no_grad():
+            seq = F.softmax(self.sequence, dim=-1).detach().cpu().numpy()
+            seq = seq.reshape(seq.shape[0], -1)
+            seq = (seq * 255).astype(np.uint8)
+            vis = cv2.applyColorMap(seq, cv2.COLORMAP_TURBO)
+            cv2.imwrite(out_path, vis)
+
 
 class BlockTrainer:
     def __init__(self):
@@ -154,7 +162,12 @@ class BlockTrainer:
                                       batch_size=32,
                                       shuffle=True)
 
-        self.optim = torch.optim.Adam(self.recr.parameters(), lr=0.002)
+        self.optim = torch.optim.Adam(
+            [
+                {"params": self.recr.blocks, "lr": 0.002},
+                {"params": self.recr.sequence, "lr": 0.02}
+            ]
+        )
 
         self.perceptual_loss = LPIPS().to(device)
 
@@ -162,14 +175,23 @@ class BlockTrainer:
         self.out_dir = os.path.join("outputs", "ts256_ni_" + tstr)
         self.out_blocks_dir = os.path.join(self.out_dir, "blocks")
         self.out_img_dir = os.path.join(self.out_dir, "imgs")
+        self.out_probs_dir = os.path.join(self.out_dir, "probs")
+
+        # frames to visualize
+        self.viz_frames = [80, 1141, 1659, 1689, 2303]
         self.out_data_dir = os.path.join(self.out_dir, "data")
 
         # Weighting factor for the tile-change regularization
-        self.change_lambda = 0.8
+        self.change_lambda = 0.25
 
         os.makedirs(self.out_data_dir, exist_ok=False)
         os.makedirs(self.out_blocks_dir, exist_ok=False)
         os.makedirs(self.out_img_dir, exist_ok=False)
+        os.makedirs(self.out_probs_dir, exist_ok=False)
+        self.viz_dirs = []
+        for imgi in self.viz_frames:
+            self.viz_dirs.append(os.path.join(self.out_img_dir, "%06d" % imgi))
+            os.makedirs(self.viz_dirs[-1], exist_ok=False)
 
     def dump_reconstructed_frame(self, out_path, frame_n=1141):
         with torch.no_grad():
@@ -178,13 +200,11 @@ class BlockTrainer:
             torchvision.utils.save_image(recr_frame, out_path)
 
     def train(self):
+        self.recr.eval()
         self.recr.dump_grid(os.path.join(self.out_blocks_dir, "000_init_blocks.png"))
-
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1141.png"), 1141)
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_0080.png"), 80)
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_2303.png"), 2303)
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1659.png"), 1659)
-        self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "000_init_img_1689.png"), 1689)
+        for vi, vd in zip(self.viz_frames, self.viz_dirs):
+            self.dump_reconstructed_frame(os.path.join(vd, "000_init_img_%04d.png" % vi), vi)
+        self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "000_init_probs.png" ))
 
         for epoch in range(1000000):
             self.recr.train()
@@ -237,11 +257,10 @@ class BlockTrainer:
             # write visualization for humans
             self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1141.png" % (epoch, epoch_loss)), 1141)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_0080.png" % (epoch, epoch_loss)), 80)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_2303.png" % (epoch, epoch_loss)), 2303)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1659.png" % (epoch, epoch_loss)), 1659)
-            self.dump_reconstructed_frame(os.path.join(self.out_img_dir, "%04d_%0.06f_img_1689.png" % (epoch, epoch_loss)), 1689)
+            for vi, vd in zip(self.viz_frames, self.viz_dirs):
+                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_1141.png" % (epoch, epoch_loss)), vi)
+
+            self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
 
             print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
 
