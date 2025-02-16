@@ -4,6 +4,8 @@ include ../common/make.inc
 
 CFLAGS:=-O2 -g -DRESX=$(RESX) -DRESY=$(RESY) -DBLOCKSIZE=$(BLOCKSIZE) -Wno-unused-result -I../common
 
+#CFLAGS+=-fsanitize=address -static-libasan -g
+
 LDFLAGS:=-lm -lX11
 
 vpxtest : vpxtest.c ../common/bacommon.h

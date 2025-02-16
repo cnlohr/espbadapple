@@ -72,6 +72,9 @@
 // Test to allow backtracking on VPX coding.  DEFAULT OFF
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
+// A more sophisticated algorithm for figuring out probabilities of glyph transitions.
+#define VPX_DO_DUAL_GLYPH_DIRECTION 4
+
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
 

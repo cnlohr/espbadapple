@@ -32,6 +32,7 @@ int numtiles = 0;
 
 #define MAXTILEDIFF 524288
 int tilechanges[MAXTILEDIFF]; // Change to this
+int tilechangesfrom[MAXTILEDIFF]; // Change to this
 int tilechangesReal[MAXTILEDIFF]; // Change to this
 int tileruns[MAXTILEDIFF];    // After changing, run for this long.
 int tilechangect;
@@ -266,7 +267,10 @@ int main( int argc, char ** argv )
 		tiles = realloc( tiles, (numtiles+1)*4 );
 		tiles[numtiles] = tile;
 		numtiles++;
-		if( tile > maxtilect ) maxtilect = tile+1;
+		if( tile >= maxtilect )
+		{
+			maxtilect = tile+1;
+		}
 	}
 	fclose( f );
 
@@ -289,6 +293,9 @@ int main( int argc, char ** argv )
 	int * tileremap = calloc( 4, maxtilect );    // [newid] = originalid
 	int * tileremapfwd = calloc( 4, maxtilect ); // [originalid] = newid
 
+	int * fromtofrequency = calloc( 4, maxtilect*maxtilect );
+	int * fromtofrequencyremap;
+
 	int maxrun = 0;
 	int frames = numtiles / BLKX / BLKY;
 #if defined( SMART_TRANSITION_SKIP ) || defined( SKIP_ONLY_DOUBLE_UPDATES )
@@ -304,8 +311,8 @@ int main( int argc, char ** argv )
 		int * tilecounts_temp = alloca( 4 * maxtilect );
 		memset( tilecounts_temp, 0, 4 * maxtilect );
 
-		int tilechangerun[BLKY][BLKX] = { 0 };
-		int lasttile[BLKY][BLKX] = { 0 };
+		static int tilechangerun[BLKY][BLKX] = { 0 };
+		static int lasttile[BLKY][BLKX] = { 0 };
 		int x, y, frame;
 		for( frame = 0; frame < frames; frame++ )
 		{
@@ -316,6 +323,7 @@ int main( int argc, char ** argv )
 				if( tcr == 0 )
 				{
 					int t = tiles[(x+y*(BLKX)) + BLKX*BLKY * (frame + 0)];
+
 					int forward;
 					int next = t;
 					for( forward = 1; frame + forward < frames; forward++ )
@@ -364,6 +372,9 @@ int main( int argc, char ** argv )
 					}
 					tilechangesReal[tilechangect] = t;
 					tileruns[tilechangect] = forward;
+
+					int lt = lasttile[y][x];
+					tilechangesfrom[tilechangect] = lt;
 					tilechangect++;
 
 					fwrite( &t, 1, 1, fRawTileStream );
@@ -372,6 +383,9 @@ int main( int argc, char ** argv )
 					// For knowing when to pull a new cell.
 					tilechangerun[y][x] = forward;
 					lasttile[y][x] = t;
+
+					// New experiment: Synthesize a full matrix.
+					fromtofrequency[lt*maxtilect+t]++;
 				}
 				else
 				{
@@ -415,13 +429,49 @@ int main( int argc, char ** argv )
 
 		int n = maxtilect_remapped-1;
 
+#if 1
+		// Re-Sorting.  NOTE: This doesn't actually save space, just makes it easier to reason about.
 		RBFOREACH( u32u32, countmap, i )
 		{
 			tileremap[n] = i->data;
 			tilecounts[n] = i->key;
 			tileremapfwd[i->data] = n;
+			// Display frequencies
 			//printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
+			//printf( "%d,%d\n", n, i->key );
 			n--;
+		}
+#else
+		maxtilect_remapped = maxtilect;
+		for( i = 0; i < maxtilect; i++ )
+		{
+			tileremap[i] = i;
+			tileremapfwd[i] = i;
+			tilecounts[i] = tilecounts_temp[i];
+		}
+#endif
+
+		for( i = 0; i < MAXTILEDIFF; i++ )
+		{
+			tilechangesfrom[i] = tileremapfwd[tilechangesfrom[i]];
+		}
+
+		{
+			fromtofrequencyremap = calloc( 4, maxtilect_remapped*maxtilect_remapped );
+			FILE * fDirectionalTransitions = fopen( "directional_transitions.csv", "w" );
+			for( i = 0; i < maxtilect_remapped; i++ ) // To
+			{
+				for( j = 0; j < maxtilect_remapped; j++ ) // From
+				{
+					int rmj = tileremap[j];
+					int rmi = tileremap[i];
+					int n = fromtofrequency[rmj*maxtilect+rmi];
+					fprintf( fDirectionalTransitions, "%4d,", n );
+					fromtofrequencyremap[j*maxtilect_remapped+i] = n;
+				}
+				fprintf( fDirectionalTransitions, "\n" );
+			}
+			fclose( fDirectionalTransitions );
 		}
 
 		for( i = 0; i < tilechangect; i++ )
@@ -437,6 +487,7 @@ int main( int argc, char ** argv )
 				fprintf( stderr, "Encoding Glyph %d/%d\n", tile, maxtilect_remapped );
 				exit( -9 );
 			}
+			//printf( "%d\n", i );
 		}
 
 		glyphsnew = malloc( (maxtilect_remapped)*BLOCKSIZE*BLOCKSIZE*4 );
@@ -527,8 +578,127 @@ int main( int argc, char ** argv )
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
-	uint8_t chancetable_glyph[(1<<bitsfortileid)-1];
-	memset( chancetable_glyph, 0, sizeof(chancetable_glyph) );
+
+	// TODO: move below.
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+	uint8_t ba_chancetable_glyph_dual[VPX_DO_DUAL_GLYPH_DIRECTION][(1<<bitsfortileid)-1];
+	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );
+	uint8_t selectchancebin[maxtilect_remapped];
+	{
+		// i = to
+		// j = from
+		// fromtofrequencyremap[j*maxtilect_remapped+i] = n;
+		// Figure out how to sort each of the "froms" into "tos"
+
+		int frequencyset[VPX_DO_DUAL_GLYPH_DIRECTION][maxtilect_remapped];
+		memset( frequencyset, 0, sizeof(frequencyset) );
+
+		// Use the two most common cells as the architypes of the frequencies.
+		int from;
+		for( from = 0; from < maxtilect_remapped; from++ )
+		{
+			int bin = 0;
+
+			if( from < VPX_DO_DUAL_GLYPH_DIRECTION )
+			{
+				bin = from;
+			}
+			else
+			{
+				// Otherwise, find which bin we fit into.
+				float binscore[VPX_DO_DUAL_GLYPH_DIRECTION] = { 0 };
+				int b;
+				for( b = 0; b < VPX_DO_DUAL_GLYPH_DIRECTION; b++ )
+				{
+					int to;
+					int binsum = 0;
+					for( to = 0; to < maxtilect_remapped; to++ )
+					{
+						//printf( "%d*%d,",frequencyset[b][to], fromtofrequencyremap[from*maxtilect_remapped+to] );
+						binscore[b] += frequencyset[b][to] * fromtofrequencyremap[from*maxtilect_remapped+to];
+						binsum += frequencyset[b][to];
+					}
+					binscore[b] /= binsum;
+				}
+
+				int bestbin = 0;
+				float bestbinscore = 0;
+				for( b = 0; b < VPX_DO_DUAL_GLYPH_DIRECTION; b++ )
+				{
+					if( binscore[b] > bestbinscore )
+					{
+						bestbinscore = binscore[b];
+						bestbin = b;
+					}
+				}
+
+				bin = bestbin;
+				//printf( "%d/%d\n", binscore[0], binscore[1] );
+			}
+
+			selectchancebin[from] = bin;
+
+			int to;
+			for( to = 0; to < maxtilect_remapped; to++ )
+			{
+				frequencyset[bin][to] += fromtofrequencyremap[from*maxtilect_remapped+to];
+			}
+		}
+
+		// XXX TODO: Use K-Means to improve the mapping for selectchancebin
+
+		int bin;
+		int to;
+		FILE * fk = fopen( "paired.csv", "w" );
+		for( to = 0; to < maxtilect_remapped; to++ )
+		{
+			for( bin = 0; bin < VPX_DO_DUAL_GLYPH_DIRECTION; bin++ )
+				fprintf( fk, "%d,", frequencyset[bin][to] );
+			fprintf( fk, "\n" );
+		}
+		fclose( fk );
+
+		for( bin = 0; bin < VPX_DO_DUAL_GLYPH_DIRECTION; bin++ )
+		{
+			int nout = 0;
+			int n = 0;
+			int level = 0;
+		
+			for( level = 0; level < bitsfortileid; level++ )
+			{
+				int maxmask = 1<<bitsfortileid;
+				int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
+				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
+				int lincmask = comparemask<<1;
+				int maskcheck = 0;
+				for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
+				{
+					int count1 = 0;
+					int count0 = 0;
+					for( n = 0; n < maxtilect_remapped; n++ )
+					{
+						if( ( n & levelmask ) == maskcheck )
+						{
+							if( n & comparemask )
+								count1 += frequencyset[bin][n];
+							else
+								count0 += frequencyset[bin][n];
+						}
+					}
+					double chanceof0 = count0 / (double)(count0 + count1);
+					int prob = chanceof0 * 257 - 0.5;
+					if( prob < 0 ) prob = 0;
+					if( prob > 255 ) prob = 255;
+					ba_chancetable_glyph_dual[bin][nout++] = prob;
+					//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
+				}
+			}
+		}
+
+	}
+#else
+	uint8_t ba_chancetable_glyph[(1<<bitsfortileid)-1];
+	memset( ba_chancetable_glyph, 0, sizeof(ba_chancetable_glyph) );
 	{
 		int nout = 0;
 		int n = 0;
@@ -559,11 +729,12 @@ int main( int argc, char ** argv )
 				int prob = chanceof0 * 257 - 0.5;
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
-				chancetable_glyph[nout++] = prob;
+				ba_chancetable_glyph[nout++] = prob;
 				//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
 			}
 		}
 	}
+#endif
 
 #ifdef SKIP_FIRST_AFTER_TRANSITION
 	const int RSOPT = 1;
@@ -572,10 +743,10 @@ int main( int argc, char ** argv )
 #endif
 
 	// Now, we have to compress tilechanges & tileruns
-	uint8_t vpx_probs_by_tile_run[maxtilect_remapped];
-	uint8_t vpx_probs_by_tile_run_after_one[maxtilect_remapped];
+	uint8_t ba_vpx_probs_by_tile_run[maxtilect_remapped];
+	uint8_t ba_vpx_probs_by_tile_run_after_one[maxtilect_remapped];
 #ifdef RUNCODES_CONTINUOUS
-	uint8_t vpx_probs_by_tile_run_continuous[RUNCODES_CONTINUOUS];
+	uint8_t ba_vpx_probs_by_tile_run_continuous[RUNCODES_CONTINUOUS];
 #endif
 	{
 		int probcountmap[maxtilect_remapped];
@@ -654,17 +825,15 @@ int main( int argc, char ** argv )
 			prob = ( gratio * 257.0 ) - 1.5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
-			vpx_probs_by_tile_run[n] = prob;
+			ba_vpx_probs_by_tile_run[n] = prob;
 
 #ifdef RUNCODES_TWOLEVEL
 			gratio = glyphcounts_after_one[n] * 1.0 / probcountmap_after_one[n];
 			prob = ( gratio * 257.0 ) - 1.5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
-			vpx_probs_by_tile_run_after_one[n] = prob;
+			ba_vpx_probs_by_tile_run_after_one[n] = prob;
 #endif
-			//printf( "%d [%d %d] %d %d\n", n, vpx_probs_by_tile_run[n],
-			//	vpx_probs_by_tile_run_after_one[n], glyphcounts[n], probcountmap[n]);
 		}
 
 
@@ -678,7 +847,7 @@ int main( int argc, char ** argv )
 			prob = ( gratio * 257.0 ) - 1.5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
-			vpx_probs_by_tile_run_continuous[n] = prob;
+			ba_vpx_probs_by_tile_run_continuous[n] = prob;
 		}
 #endif
 
@@ -721,7 +890,7 @@ int main( int argc, char ** argv )
 	uint8_t vpx_glyph_tiles_buffer[1024*32];
 	int vpx_glyph_tiles_buffer_len = 0;
 	#define MAXRUNTOSTORE 16
-	uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
+	uint8_t ba_vpx_glyph_probability_run_0_or_1[2][MAXRUNTOSTORE];
 	vpx_writer w_glyphdata = { 0 };
 #if defined( SIMGREY4 )
 	{
@@ -773,13 +942,13 @@ int main( int argc, char ** argv )
 			int prob = chanceof0 * 257 - 0.5;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
-			int prob0 = prob_from_0_or_1[0][j] = prob;
+			int prob0 = ba_vpx_glyph_probability_run_0_or_1[0][j] = prob;
 
 			chanceof0 = runsets1to0[j] / (double)(runsets1to0[j]+runsets1to1[j]);
 			prob = chanceof0 * 257 - 0.5;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
-			int prob1 = prob_from_0_or_1[1][j] = prob;
+			int prob1 = ba_vpx_glyph_probability_run_0_or_1[1][j] = prob;
 			//printf( "%d (%d/%d) (%d/%d) %4d%4d\n", j, runsets0to0[j], runsets0to1[j], runsets1to0[j], runsets1to1[j] , prob0, prob1 );
 		}
 
@@ -790,7 +959,7 @@ int main( int argc, char ** argv )
 
 		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
 		{
-			uint8_t * prob = prob_from_0_or_1[is0or1];
+			uint8_t * prob = ba_vpx_glyph_probability_run_0_or_1[is0or1];
 			int tprob = prob[runsofar];
 
 			if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
@@ -954,11 +1123,22 @@ int main( int argc, char ** argv )
 #else
 		{
 #endif
+
+
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+			int frombin = selectchancebin[tilechangesfrom[n]];
+#endif
+
 			for( level = 0; level < bitsfortileid; level++ )
 			{
 				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
 				int bit = !!(tile & comparemask);
-				probability = chancetable_glyph[probplace];
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+				probability = ba_chancetable_glyph_dual[frombin][probplace];
+#else
+				probability = ba_chancetable_glyph[probplace];
+#endif
+
 				vpx_write(&w_glyphs, bit, probability);
 #ifndef VPX_USE_HUFFMAN_TILES
 				vpx_write(&w_combined, bit, probability);
@@ -975,24 +1155,24 @@ int main( int argc, char ** argv )
 		//printf( "%d ", run );
 		for( b = 0; b < run; b++ )
 		{
-			probability = vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
+			probability = ba_vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
 			//printf( "%d ", probability );
 			vpx_write(&w_run, 1, probability);
 			vpx_write(&w_combined, 1, probability);
 		}
-		probability = vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
+		probability = ba_vpx_probs_by_tile_run_continuous[(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
 		//printf( "%d\n", probability );
 		vpx_write(&w_run, 0, probability);
 		vpx_write(&w_combined, 0, probability);
 #else
-		probability = vpx_probs_by_tile_run[tileReal];
+		probability = ba_vpx_probs_by_tile_run[tileReal];
 		int b;
 		for( b = 0; b < run; b++ )
 		{
 			vpx_write(&w_run, 1, probability);
 			vpx_write(&w_combined, 1, probability);
 #ifdef RUNCODES_TWOLEVEL
-			probability = vpx_probs_by_tile_run_after_one[tileReal];
+			probability = ba_vpx_probs_by_tile_run_after_one[tileReal];
 #endif
 		}
 		vpx_write(&w_run, 0, probability);
@@ -1028,18 +1208,26 @@ int main( int argc, char ** argv )
 	sum += huffman_tile_stream_length_bytes + hufftreelen*3;
 #endif
 
-	printf( " + Tile Prob:%7d bits / bytes:%6d\n", (int)sizeof(chancetable_glyph) * 8, (int)sizeof(chancetable_glyph) );
-	sum += (int)sizeof(chancetable_glyph);
+
+
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+	printf( "TODO: Include information to switch which bin you go into\n" );
+	printf( " + Tile Prob:%7d bits / bytes:%6d\n", (int)sizeof(ba_chancetable_glyph_dual) * 8, (int)sizeof(ba_chancetable_glyph_dual) );
+	sum += (int)sizeof(ba_chancetable_glyph_dual);
+#else
+	printf( " + Tile Prob:%7d bits / bytes:%6d\n", (int)sizeof(ba_chancetable_glyph) * 8, (int)sizeof(ba_chancetable_glyph) );
+	sum += (int)sizeof(ba_chancetable_glyph);
+#endif
 
 #ifdef RUNCODES_CONTINUOUS
 	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)RUNCODES_CONTINUOUS * 8, (int)RUNCODES_CONTINUOUS );
 	sum += (int)RUNCODES_CONTINUOUS;
 #else
-	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run) * 8, (int)sizeof(vpx_probs_by_tile_run) );
-	sum += (int)sizeof(vpx_probs_by_tile_run);
+	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_probs_by_tile_run) * 8, (int)sizeof(ba_vpx_probs_by_tile_run) );
+	sum += (int)sizeof(ba_vpx_probs_by_tile_run);
 #ifdef RUNCODES_TWOLEVEL
-	printf( " + Run Prob2:%7d bits / bytes:%6d\n", (int)sizeof(vpx_probs_by_tile_run_after_one) * 8, (int)sizeof(vpx_probs_by_tile_run_after_one) );
-	sum += (int)sizeof(vpx_probs_by_tile_run_after_one);
+	printf( " + Run Prob2:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_probs_by_tile_run_after_one) * 8, (int)sizeof(ba_vpx_probs_by_tile_run_after_one) );
+	sum += (int)sizeof(ba_vpx_probs_by_tile_run_after_one);
 #endif
 #endif
 	int glyphsize = BLOCKSIZE * BLOCKSIZE / 8 * maxtilect_remapped;
@@ -1051,10 +1239,10 @@ int main( int argc, char ** argv )
 
 	if( vpx_glyph_tiles_buffer_len )
 	{
-		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1)) );
+		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) );
 		//printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
-		//printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(prob_from_0_or_1) * 8, (int)sizeof(prob_from_0_or_1) );
-		sum += (vpx_glyph_tiles_buffer_len + (int)sizeof(prob_from_0_or_1));
+		//printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) * 8, (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) );
+		sum += (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1));
 	}
 	else
 	{
@@ -1093,7 +1281,7 @@ int main( int argc, char ** argv )
 			//uint8_t vpx_glyph_tiles_buffer[1024*32];
 			//int vpx_glyph_tiles_buffer_len = 0;
 			//#define MAXRUNTOSTORE 8
-			//uint8_t prob_from_0_or_1[2][MAXRUNTOSTORE];
+			//uint8_t ba_vpx_glyph_probability_run_0_or_1[2][MAXRUNTOSTORE];
 			vpx_reader reader_tiles;
 			vpx_reader_init(&reader_tiles, vpx_glyph_tiles_buffer, vpx_glyph_tiles_buffer_len, 0, 0 );
 
@@ -1106,7 +1294,7 @@ int main( int argc, char ** argv )
 
 			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
 			{
-				uint8_t * prob = prob_from_0_or_1[is0or1];
+				uint8_t * prob = ba_vpx_glyph_probability_run_0_or_1[is0or1];
 				int tprob = prob[runsofar];
 
 				if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
@@ -1207,11 +1395,20 @@ int main( int argc, char ** argv )
 					}
 					else
 #endif
+
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+					int frombin = selectchancebin[curglyph[y][x]];
+#endif
+
 					{
 						int probplace = 0;
 						for( level = 0; level < bitsfortileid; level++ )
 						{
-							probability = chancetable_glyph[probplace];
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+							probability = ba_chancetable_glyph_dual[frombin][probplace];
+#else
+							probability = ba_chancetable_glyph[probplace];
+#endif
 							int bit = vpx_read( &reader, probability );
 							tile |= bit<<(bitsfortileid-level-1);
 							probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
@@ -1226,19 +1423,19 @@ int main( int argc, char ** argv )
 					int run = 0;
 					do
 					{
-						probability = vpx_probs_by_tile_run_continuous[(run < RUNCODES_CONTINUOUS - 1)?run:(RUNCODES_CONTINUOUS - 1)];
+						probability = ba_vpx_probs_by_tile_run_continuous[(run < RUNCODES_CONTINUOUS - 1)?run:(RUNCODES_CONTINUOUS - 1)];
 						if( vpx_read(&reader, probability) == 0 ) break;
 						run++;
 					}
 					while( true );
 #else
 
-					probability = vpx_probs_by_tile_run[tile];
+					probability = ba_vpx_probs_by_tile_run[tile];
 					int run = 0;
 					while( vpx_read(&reader, probability) )
 					{
 #ifdef RUNCODES_TWOLEVEL
-						probability = vpx_probs_by_tile_run_after_one[tile];
+						probability = ba_vpx_probs_by_tile_run_after_one[tile];
 #endif
 						run++;
 					}
@@ -1298,7 +1495,32 @@ int main( int argc, char ** argv )
 
 	FILE * fDataOut = fopen( "badapple_data.h", "w" );
 	fprintf( fDataOut, "#ifndef BADAPPLE_DATA_H\n" );
-	fprintf( fDataOut, "#define BADAPPLE_DATA_H\n\n" );
+	fprintf( fDataOut, "#define BADAPPLE_DATA_H\n" );
+	fprintf( fDataOut, "\n" );
+	fprintf( fDataOut, "#define VPXCODING_READER\n" );
+	fprintf( fDataOut, "#define VPX_32BIT\n" );
+	fprintf( fDataOut, "#include \"vpxcoding.h\"\n" );
+	fprintf( fDataOut, "\n" );
+	fprintf( fDataOut, "#define RESX %d\n", RESX );
+	fprintf( fDataOut, "#define RESY %d\n", RESY );
+	fprintf( fDataOut, "#define BLOCKSIZE %d\n", BLOCKSIZE );
+	fprintf( fDataOut, "\n" );
+	fprintf( fDataOut, "#define BLKX (RESX/BLOCKSIZE)\n" );
+	fprintf( fDataOut, "#define BLKY (RESY/BLOCKSIZE)\n" );
+	fprintf( fDataOut, "\n" );
+#ifdef RUNCODES_CONTINUOUS
+	fprintf( fDataOut, "#define RUNCODES_CONTINUOUS %d\n", RUNCODES_CONTINUOUS );
+	fprintf( fDataOut, "\n" );
+#endif
+#ifdef RUNCODES_TWOLEVEL
+	fprintf( fDataOut, "#define RUNCODES_TWOLEVEL %d\n", RUNCODES_TWOLEVEL );
+	fprintf( fDataOut, "\n" );
+#endif
+#ifdef MAXRUNTOSTORE
+	fprintf( fDataOut, "#define MAXRUNTOSTORE %d\n", MAXRUNTOSTORE );
+	fprintf( fDataOut, "\n" );
+#endif
+
 
 	fprintf( fDataOut, "// Sound\n\n" );
 
@@ -1306,67 +1528,66 @@ int main( int argc, char ** argv )
 	WriteOutFile( fDataOut, "sound_huffTN", "../song/huffTN_fmraw.dat" );
 	WriteOutFile( fDataOut, "sound_huffD", "../song/huffD_fmraw.dat" );
 
-	if( sHuffD > 0 )
-	{
-		printf( " + Sound (D):%7d bits / bytes:%6d\n", sHuffD * 8, sHuffD );
-		sum += sHuffD;
-	}
-	if( sHuffTL > 0 )
-	{
-		printf( " + Sound (L):%7d bits / bytes:%6d\n", sHuffTL * 8, sHuffTL );
-		sum += sHuffTL;
-	}
-	if( sHuffTN > 0 )
-	{
-		printf( " + Sound (N):%7d bits / bytes:%6d\n", sHuffTN * 8, sHuffTN );
-		sum += sHuffTN;
-	}
-
-
 	fprintf( fDataOut, "// Video\n\n" );
 
 	// Output stream 
-	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph[%d] = {", (int)sizeof(chancetable_glyph) );
-	for( j = 0; j < sizeof(chancetable_glyph); j++ )
+
+#ifdef VPX_DO_DUAL_GLYPH_DIRECTION
+	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph_dual[2][%d] = {", (int)sizeof(ba_chancetable_glyph_dual) );
+	for( i = 0; i < VPX_DO_DUAL_GLYPH_DIRECTION; i++ )
 	{
-		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", chancetable_glyph[j] );
+		fprintf( fDataOut, "\n\t{ " );
+		for( j = 0; j < sizeof(ba_chancetable_glyph_dual)/VPX_DO_DUAL_GLYPH_DIRECTION; j++ )
+		{
+			fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", ba_chancetable_glyph_dual[i][j] );
+		}
+		fprintf( fDataOut, "}," );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
-
-#ifndef RUNCODES_CONTINUOUS
-	fprintf( fDataOut, "const uint8_t vpx_probs_by_tile_run[%d] = {", maxtilect_remapped );
-	for( j = 0; j < maxtilect_remapped; j++ )
+	printf( "TODO: Output information for which bin\n" );
+#else
+	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph[%d] = {", (int)sizeof(ba_chancetable_glyph) );
+	for( j = 0; j < sizeof(ba_chancetable_glyph); j++ )
 	{
-		fprintf( fDataOut, "%s%3d,",  ((j & 0xf) == 0x0) ? "\n\t" : " ", vpx_probs_by_tile_run[j] );
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", ba_chancetable_glyph[j] );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
+
+#ifdef RUNCODES_CONTINUOUS
+	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_continuous[RUNCODES_CONTINUOUS] = {" );
+	for( j = 0; j < RUNCODES_CONTINUOUS; j++ )
+	{
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", ba_vpx_probs_by_tile_run_continuous[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
+#else
+	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run[%d] = {", maxtilect_remapped );
+	for( j = 0; j < maxtilect_remapped; j++ )
+	{
+		fprintf( fDataOut, "%s%3d,",  ((j & 0xf) == 0x0) ? "\n\t" : " ", ba_vpx_probs_by_tile_run[j] );
+	}
+	fprintf( fDataOut, "\n};\n\n" );
 #ifdef RUNCODES_TWOLEVEL
-	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_after_one[%d] = {", maxtilect_remapped );
+	fprintf( fDataOut, "const uint8_t ba_ba_vpx_probs_by_tile_run_after_one[%d] = {", maxtilect_remapped );
 	for( j = 0; j < maxtilect_remapped; j++ )
 	{
-		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", vpx_probs_by_tile_run_after_one[j] );
+		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", ba_vpx_probs_by_tile_run_after_one[j] );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
+#endif
 
-	fprintf( fDataOut, "static uint8_t ba_glyphdata_probs[2][%d] = {", MAXRUNTOSTORE );
+#ifdef MAXRUNTOSTORE
+	fprintf( fDataOut, "static uint8_t ba_vpx_glyph_probability_run_0_or_1[2][MAXRUNTOSTORE] = {" );
 	for( j = 0; j < 2; j++ )
 	{
 		fprintf( fDataOut, "\n\t{ " );
 		for( i = 0; i < MAXRUNTOSTORE; i++ )
 		{
-			fprintf( fDataOut, "%s%3d,", ((i & 0x1f) == 0x1f) ? "\n\t" : " ", prob_from_0_or_1[j][i] );
+			fprintf( fDataOut, "%s%3d,", ((i & 0x1f) == 0x1f) ? "\n\t" : " ", ba_vpx_glyph_probability_run_0_or_1[j][i] );
 		}
 		fprintf( fDataOut, "}%s", (j < 1) ? "," : "" );
-	}
-	fprintf( fDataOut, "\n};\n\n" );
-
-#ifdef RUNCODES_CONTINUOUS
-	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_continuous[%d] = {", RUNCODES_CONTINUOUS );
-	for( j = 0; j < RUNCODES_CONTINUOUS; j++ )
-	{
-		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", vpx_probs_by_tile_run_continuous[j] );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
