@@ -1326,7 +1326,7 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "// Video\n\n" );
 
 	// Output stream 
-	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph[%d] = {", (int)sizeof(chancetable_glyph) );
+	fprintf( fDataOut, "const uint8_t chancetable_glyph[%d] = {", (int)sizeof(chancetable_glyph) );
 	for( j = 0; j < sizeof(chancetable_glyph); j++ )
 	{
 		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", chancetable_glyph[j] );
@@ -1342,7 +1342,7 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
 #ifdef RUNCODES_TWOLEVEL
-	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_after_one[%d] = {", maxtilect_remapped );
+	fprintf( fDataOut, "const uint8_t vpx_probs_by_tile_run_after_one[%d] = {", maxtilect_remapped );
 	for( j = 0; j < maxtilect_remapped; j++ )
 	{
 		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", vpx_probs_by_tile_run_after_one[j] );
@@ -1350,7 +1350,8 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "\n};\n\n" );
 #endif
 
-	fprintf( fDataOut, "static uint8_t ba_glyphdata_probs[2][%d] = {", MAXRUNTOSTORE );
+	fprintf( fDataOut, "#define MAXRUNTOSTORE %d\n\n", MAXRUNTOSTORE );
+	fprintf( fDataOut, "static uint8_t prob_from_0_or_1[2][%d] = {", MAXRUNTOSTORE );
 	for( j = 0; j < 2; j++ )
 	{
 		fprintf( fDataOut, "\n\t{ " );
@@ -1363,7 +1364,7 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "\n};\n\n" );
 
 #ifdef RUNCODES_CONTINUOUS
-	fprintf( fDataOut, "const uint8_t ba_vpx_probs_by_tile_run_continuous[%d] = {", RUNCODES_CONTINUOUS );
+	fprintf( fDataOut, "const uint8_t vpx_probs_by_tile_run_continuous[%d] = {", RUNCODES_CONTINUOUS );
 	for( j = 0; j < RUNCODES_CONTINUOUS; j++ )
 	{
 		fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0) ? "\n\t" : " ", vpx_probs_by_tile_run_continuous[j] );
