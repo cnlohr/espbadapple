@@ -42,7 +42,7 @@ uint8_t bufferVPX[1024*1024];
 uint8_t bufferVPXg[1024*1024];
 uint8_t bufferVPXr[1024*1024];
 
-int intlog2 (int x){return __builtin_ctz (x);}
+int intctz (int x){return __builtin_ctz (x);}
 unsigned int intlog2roundup(unsigned int x) {
 	x--;
 	x |= x >> 1;
@@ -51,7 +51,19 @@ unsigned int intlog2roundup(unsigned int x) {
 	x |= x >> 8;
 	x |= x >> 16;
 	x++;
-	return intlog2(x);
+	return intctz(x);
+}
+
+static int flipbits( int v, int bitsfortileid )
+{
+	int ret = 0;
+	int n;
+	for( n = 0; n < bitsfortileid; n++ )
+	{
+		if( v & (1<<n) )
+			ret |= (1<<(bitsfortileid-n-1));
+	}
+	return ret;
 }
 
 void WriteFileStreamHeader( FILE * f, vpx_writer * w, const char * name )
@@ -765,7 +777,6 @@ int main( int argc, char ** argv )
 			int n = 0;
 			int level = 0;
 
-#if 1
 			for( level = 0; level < bitsfortileid; level++ )
 			{
 				int maxmask = 1<<bitsfortileid;
@@ -777,11 +788,18 @@ int main( int argc, char ** argv )
 				{
 					float count1 = 0;
 					float count0 = 0;
-					for( n = 0; n < maxtilect_remapped; n++ )
+					for( n = 0; n < (1<<bitsfortileid); n++ )
 					{
-						if( ( n & levelmask ) == maskcheck )
+#ifdef PROB_ENDIAN_FLIP
+						int tn = flipbits( n, bitsfortileid );
+#else
+						int tn = n;
+#endif
+						if( n >= maxtilect_remapped ) continue;
+
+						if( ( tn & levelmask ) == (maskcheck) )
 						{
-							if( n & comparemask )
+							if( tn & comparemask )
 								count1 += frequencyset[bin][n];
 							else
 								count0 += frequencyset[bin][n];
@@ -792,30 +810,10 @@ int main( int argc, char ** argv )
 					if( prob < 0 ) prob = 0;
 					if( prob > 255 ) prob = 255;
 					ba_chancetable_glyph_dual[bin][nout++] = prob;
-					//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
+					//printf( "%d: %08x %f %f (%d)\n", nout-1, maskcheck, count0, count1, prob );
 				}
 			}
-#endif
-			// Trying to redo this with the bit list backwards to save some space.
-			// Based on totals in frequencyset[bin][n], decide what we're looking at.
-			//
-			// 0                             < 0
-			// 1 2                           < 1
-			// 3 4 5 6                       < 2
-			// 7 8 9 10 11 12 13 14          < 3
-/*
-			for( n = 0; n < maxtilect_remapped; n++ )
-			{
-				int level = intlog2( n+1 );
-				int mask = ((1<<(level-1)-1)) << (bitsfortileid-1-level);
-				int match = n & mask;
-				//int bitsfortileid = intlog2roundup( maxtilect_remapped );
-
-			}
-*/
-
 		}
-
 	}
 #else
 	uint8_t ba_chancetable_glyph[(1<<bitsfortileid)-1];
@@ -836,11 +834,18 @@ int main( int argc, char ** argv )
 			{
 				int count1 = 0;
 				int count0 = 0;
-				for( n = 0; n < maxtilect_remapped; n++ )
+				for( n = 0; n < (1<<bitsfortileid); n++ )
 				{
-					if( ( n & levelmask ) == maskcheck )
+#ifdef PROB_ENDIAN_FLIP
+					int tn = flipbits( n, bitsfortileid );
+#else
+					int tn = n;
+#endif
+					if( n >= maxtilect_remapped ) continue;
+
+					if( ( tn & levelmask ) == maskcheck )
 					{
-						if( n & comparemask )
+						if( tn & comparemask )
 							count1 += tilecounts[n];
 						else
 							count0 += tilecounts[n];
@@ -1293,11 +1298,16 @@ int main( int argc, char ** argv )
 			int fromclass = selectchancebin[tilechangesfrom[n]];
 #endif
 
+			int ut = tile;
+#ifdef PROB_ENDIAN_FLIP
+			ut = flipbits( ut, bitsfortileid );
+#endif
 
 			for( level = 0; level < bitsfortileid; level++ )
 			{
 				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-				int bit = !!(tile & comparemask);
+				int bit = !!(ut & comparemask);
+
 #ifdef USE_TILE_CLASSES
 				probability = ba_chancetable_glyph_dual[fromclass][probplace];
 #else
@@ -1308,7 +1318,8 @@ int main( int argc, char ** argv )
 #ifndef VPX_USE_HUFFMAN_TILES
 				vpx_write(&w_combined, bit, probability);
 #endif
-				probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
+
+				probplace = ((1<<(level+1)) - 1 + ((ut)>>(bitsfortileid-level-1)));
 			}
 		}
 

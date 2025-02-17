@@ -74,8 +74,8 @@
 
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
-// DEEP QUESTION: Why is 15 a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 15
+// DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
+#define USE_TILE_CLASSES 16
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
@@ -97,6 +97,10 @@
 
 
 #define MAXPIXELRUNTOSTORE 16
+
+// Don't do this unless you know you want it.
+// This is mostly using to A/B test the encoding of non-1/0 symbols.
+//#define PROB_ENDIAN_FLIP 1
 
 //////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
 
