@@ -133,7 +133,7 @@ int main()
 
 	int changes = 0;
 	int removed = 0;
-	float fRemoveThreshold = 0.5; // How different can frames be but this gets preserved?
+	float fRemoveThreshold = 1.06; // How different can frames be but this gets preserved?
 	printf( "%d / %d %d %d\n", (int)sizeof(streamin), FRAMECT, BSY, BSX );
 	do
 	{

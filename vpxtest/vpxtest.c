@@ -462,7 +462,7 @@ int main( int argc, char ** argv )
 			tilecounts[n] = i->key;
 			tileremapfwd[i->data] = n;
 			// Display frequencies
-			printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
+			//printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
 			//printf( "%d,%d\n", n, i->key );
 			n--;
 		}
@@ -594,7 +594,7 @@ int main( int argc, char ** argv )
 	int probbacktrack = 0;
 	{
 		double chanceof0 = backtrackcount / (double)(tilechangect);
-		int prob = chanceof0 * 257 - 0.5;
+		int prob = chanceof0 * 256 - 0.5;
 		if( prob < 0 ) prob = 0;
 		if( prob > 255 ) prob = 255;
 		probbacktrack = prob;
@@ -806,7 +806,7 @@ int main( int argc, char ** argv )
 						}
 					}
 					double chanceof0 = count0 / (double)(count0 + count1);
-					int prob = chanceof0 * 257 - 0.5;
+					int prob = chanceof0 * 256 - .5;
 					if( prob < 0 ) prob = 0;
 					if( prob > 255 ) prob = 255;
 					ba_chancetable_glyph_dual[bin][nout++] = prob;
@@ -989,7 +989,7 @@ int main( int argc, char ** argv )
 #else
 				gratio = runcounts_tile_run_up_until_num[n] * 1.0 / runcounts_tile_run_up_until_denom[n];
 #endif
-				prob = ( gratio * 257.0 ) - 1.5;
+				prob = ( gratio * 256.0 ) - .5;
 				if( prob < 0 ) prob = 0; 
 				if( prob > 255 ) prob = 255;
 #ifdef RUNCODES_CONTINUOUS_BY_CLASS
@@ -1005,14 +1005,14 @@ int main( int argc, char ** argv )
 			double gratio;
 			int prob;
 			gratio = glyphcounts[n] * 1.0 / probcountmap[n];
-			prob = ( gratio * 257.0 ) - 1.5;
+			prob = ( gratio * 256.0 ) - .5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			ba_vpx_probs_by_tile_run[n] = prob;
 
 #ifdef RUNCODES_TWOLEVEL
 			gratio = glyphcounts_after_one[n] * 1.0 / probcountmap_after_one[n];
-			prob = ( gratio * 257.0 ) - 1.5;
+			prob = ( gratio * 256.0 ) - .5;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			ba_vpx_probs_by_tile_run_after_one[n] = prob;
@@ -1108,13 +1108,13 @@ int main( int argc, char ** argv )
 		for( int j = 0; j < MAXPIXELRUNTOSTORE; j++ )
 		{
 			double chanceof0 = runsets0to0[j] / (double)(runsets0to0[j]+runsets0to1[j]);
-			int prob = chanceof0 * 257 - 0.5;
+			int prob = chanceof0 * 256 - 0.5;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
 			int prob0 = ba_vpx_glyph_probability_run_0_or_1[0][j] = prob;
 
 			chanceof0 = runsets1to0[j] / (double)(runsets1to0[j]+runsets1to1[j]);
-			prob = chanceof0 * 257 - 0.5;
+			prob = chanceof0 * 256 - 0.5;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
 			int prob1 = ba_vpx_glyph_probability_run_0_or_1[1][j] = prob;
