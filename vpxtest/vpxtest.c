@@ -246,6 +246,7 @@ int FileLength( const char * filename )
 
 int main( int argc, char ** argv )
 {
+	uint8_t startcell = 0;
 	int i, j;
 	if( argc != 4 )
 	{
@@ -273,6 +274,10 @@ int main( int argc, char ** argv )
 		}
 	}
 	fclose( f );
+
+	// Select default cell to start with.
+	startcell = tiles[0];
+	int startcellremap;
 
 	FILE * fT = fopen( argv[2], "rb" );
 	while( !feof( fT ) )
@@ -312,8 +317,16 @@ int main( int argc, char ** argv )
 		memset( tilecounts_temp, 0, 4 * maxtilect );
 
 		static int tilechangerun[BLKY][BLKX] = { 0 };
-		static int lasttile[BLKY][BLKX] = { 0 };
+		static int lasttile[BLKY][BLKX];
+
 		int x, y, frame;
+
+		for( y = 0; y < BLKY; y++ )
+		for( x = 0; x < BLKX; x++ )
+		{
+			lasttile[y][x] = startcell;
+		}
+
 		for( frame = 0; frame < frames; frame++ )
 		{
 			for( y = 0; y < BLKY; y++ )
@@ -450,6 +463,9 @@ int main( int argc, char ** argv )
 			tilecounts[i] = tilecounts_temp[i];
 		}
 #endif
+
+		startcellremap = tileremapfwd[startcell];
+
 
 		for( i = 0; i < MAXTILEDIFF; i++ )
 		{
@@ -1124,10 +1140,10 @@ int main( int argc, char ** argv )
 		{
 #endif
 
-
 #ifdef VPX_DO_DUAL_GLYPH_DIRECTION
 			int frombin = selectchancebin[tilechangesfrom[n]];
 #endif
+
 
 			for( level = 0; level < bitsfortileid; level++ )
 			{
@@ -1334,6 +1350,12 @@ int main( int argc, char ** argv )
 		int frame;
 		int x, y;
 
+		for( y = 0; y < BLKY; y++ )
+		for( x = 0; x < BLKX; x++ )
+		{
+			curglyph[y][x] = startcellremap;
+		}
+
 		vpx_reader reader;
 		vpx_reader_init(&reader, bufferVPX, w_combined.pos, 0, 0 );
 
@@ -1415,6 +1437,7 @@ int main( int argc, char ** argv )
 						}
 					}
 #endif
+
 
 					curglyph[y][x] = tile;
 
@@ -1508,6 +1531,8 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "#define BLKX (RESX/BLOCKSIZE)\n" );
 	fprintf( fDataOut, "#define BLKY (RESY/BLOCKSIZE)\n" );
 	fprintf( fDataOut, "\n" );
+	fprintf( fDataOut, "#define INITIALIZE_CELL %d\n", startcellremap );
+	fprintf( fDataOut, "\n" );
 #ifdef RUNCODES_CONTINUOUS
 	fprintf( fDataOut, "#define RUNCODES_CONTINUOUS %d\n", RUNCODES_CONTINUOUS );
 	fprintf( fDataOut, "\n" );
@@ -1532,7 +1557,7 @@ int main( int argc, char ** argv )
 
 	// Output stream 
 #ifdef VPX_DO_DUAL_GLYPH_DIRECTION
-	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph_dual[2][%d] = {", (int)sizeof(ba_chancetable_glyph_dual) );
+	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph_dual[%d][%d] = {", VPX_DO_DUAL_GLYPH_DIRECTION, (int)sizeof(ba_chancetable_glyph_dual[0]) );
 	for( i = 0; i < VPX_DO_DUAL_GLYPH_DIRECTION; i++ )
 	{
 		fprintf( fDataOut, "\n\t{ " );
