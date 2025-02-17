@@ -13,6 +13,7 @@
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
 uint32_t streamin[FRAMECT][BSY][BSX];
+int dropflag[FRAMECT][BSY][BSX];
 
 #define ZOOM 4
 #define FRAMEOFFSET 2
@@ -50,6 +51,7 @@ void CommitRemoval( int x, int y, int frame )
 		int gl = streamin[frame][y][x];
 		if( gl != st ) break;
 		streamin[frame][y][x] = stp;
+		dropflag[frame][y][x] = 1;
 	}
 }
 
@@ -128,49 +130,10 @@ int main()
 	}
 	fclose( f );
 
-#if 0
-	int frame, x, y;
-	for( frame = 0; frame < FRAMECT-FRAMEOFFSET; frame++ )
-	{
-		CNFGClearFrame();
-		CNFGHandleInput();
-		for( y = 0; y < RESY; y++ )
-		{
-			for( x = 0; x < RESX; x++ )
-			{
-				uint32_t v = videodata[frame+FRAMEOFFSET][y][x];
-				float orig = v / 255.0;
-				uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
-				CNFGColor( color );
-				CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
 
-				int bid = streamin[frame][y/8][x/8];
-				float t = tiles[bid][y%8][x%8];
-
-				if( t < 0 ) t = 0; if( t >= 1 ) t = 1;
-				v = t * 255.5;
-
-				color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
-				CNFGColor( color );
-				CNFGTackRectangle( x*ZOOM + RESX*ZOOM + 100, y*ZOOM, x*ZOOM + RESX*ZOOM + 100 + ZOOM, y*ZOOM+ZOOM );
-
-				float dif = (orig - t)*(orig - t);
-				t = dif * 2.0;
-				if( t < 0 ) t = 0; if( t >= 1 ) t = 1;
-				v = t * 255.5;
-
-				color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
-				CNFGColor( color );
-				CNFGTackRectangle( x*ZOOM, y*ZOOM + RESY*ZOOM + 100, x*ZOOM + ZOOM, y*ZOOM+ZOOM + RESY*ZOOM + 100 );
-			}
-		}
-		CNFGSwapBuffers();
-		usleep(100000);
-	}
-#endif
 	int changes = 0;
 	int removed = 0;
-	float fRemoveThreshold = 1;
+	float fRemoveThreshold = 0.5; // How different can frames be but this gets preserved?
 	printf( "%d / %d %d %d\n", (int)sizeof(streamin), FRAMECT, BSY, BSX );
 	do
 	{
@@ -219,7 +182,50 @@ int main()
 	fwrite( streamin, 1, sizeof( streamin ), so );
 	fclose( so );
 
+#if 1
+	int frame, x, y;
+	for( frame = 0; frame < FRAMECT-FRAMEOFFSET; frame++ )
+	{
+		CNFGClearFrame();
+		CNFGHandleInput();
+		for( y = 0; y < RESY; y++ )
+		{
+			for( x = 0; x < RESX; x++ )
+			{
+				uint32_t v = videodata[frame+FRAMEOFFSET][y][x];
+				float orig = v / 255.0;
+				uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
+				CNFGColor( color );
+				CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
 
+				int bid = streamin[frame][y/8][x/8];
+				int df = dropflag[frame][y/8][x/8];
+				float t = tiles[bid][y%8][x%8];
+
+				if( t < 0 ) t = 0; if( t >= 1 ) t = 1;
+				v = t * 255.5;
+
+				if( df )
+					color = 0xFF | 0x00 | (v<<8) | 0xFF;
+				else
+					color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
+				CNFGColor( color );
+				CNFGTackRectangle( x*ZOOM + RESX*ZOOM + 100, y*ZOOM, x*ZOOM + RESX*ZOOM + 100 + ZOOM, y*ZOOM+ZOOM );
+
+				float dif = (orig - t)*(orig - t);
+				t = dif * 2.0;
+				if( t < 0 ) t = 0; if( t >= 1 ) t = 1;
+				v = t * 255.5;
+
+				color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
+				CNFGColor( color );
+				CNFGTackRectangle( x*ZOOM, y*ZOOM + RESY*ZOOM + 100, x*ZOOM + ZOOM, y*ZOOM+ZOOM + RESY*ZOOM + 100 );
+			}
+		}
+		CNFGSwapBuffers();
+		usleep(40000);
+	}
+#endif
 	return 0;
 }
 

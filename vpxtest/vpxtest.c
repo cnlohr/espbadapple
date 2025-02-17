@@ -462,7 +462,7 @@ int main( int argc, char ** argv )
 			tilecounts[n] = i->key;
 			tileremapfwd[i->data] = n;
 			// Display frequencies
-			//printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
+			printf( "Orig: %d  New: %d  Freq: %d\n", i->data, n, i->key );
 			//printf( "%d,%d\n", n, i->key );
 			n--;
 		}
@@ -1385,7 +1385,7 @@ int main( int argc, char ** argv )
 	vpx_stop_encode(&w_combined);
 	int combinedstream = w_combined.pos;
 
-	printf( "      Glyphs:%7d\n", maxtilect_remapped + 1 );
+	printf( "      Glyphs:%7d\n", maxtilect_remapped );
 	printf( " Num Changes:%7d\n", symsum );
 #ifdef SMART_TRANSITION_SKIP
 	printf( "   Ratcheted:%7d\n", ratcheted );
@@ -1774,7 +1774,6 @@ int main( int argc, char ** argv )
 		fprintf( fDataOut, "}," );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
-	printf( "TODO: Output information for which bin\n" );
 #else
 	fprintf( fDataOut, "const uint8_t ba_chancetable_glyph[%d] = {", (int)sizeof(ba_chancetable_glyph) );
 	for( j = 0; j < sizeof(ba_chancetable_glyph); j++ )
