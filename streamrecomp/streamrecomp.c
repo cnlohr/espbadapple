@@ -7,11 +7,92 @@
 
 #include "rawdraw_sf.h"
 
+#define BSX (RESX/BLOCKSIZE)
+#define BSY (RESY/BLOCKSIZE)
+
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
-uint32_t streamin[FRAMECT][RESY/BLOCKSIZE][RESX/BLOCKSIZE];
+uint32_t streamin[FRAMECT][BSY][BSX];
 
 #define ZOOM 4
+#define FRAMEOFFSET 2
+
+float LossFrom( int tile, int x, int y, int f )
+{
+	float fr = 0;
+	int lx, ly;
+	for( ly = 0; ly < BLOCKSIZE; ly++ )
+	{
+		for( lx = 0; lx < BLOCKSIZE; lx++ )
+		{
+			float t = tiles[tile][ly][lx];
+			float p = videodata[f+FRAMEOFFSET][ly+y*BLOCKSIZE][lx+x*BLOCKSIZE] / 255.0;
+			float d = t - p;
+			if( d < 0 ) d *= -1;
+			fr += d;
+			//printf( "[%.3f %.3f]", t, p );
+		}
+		//printf( "\n" );
+	}
+	//printf( "\n" );
+	return fr;
+}
+
+void CommitRemoval( int x, int y, int frame )
+{
+	if( frame == 0 )
+		return;
+	int stp = streamin[frame-1][y][x];
+	int st = streamin[frame][y][x];
+	int f;	
+	for( f = frame; f < FRAMECT; f++ )
+	{
+		int gl = streamin[frame][y][x];
+		if( gl != st ) break;
+		streamin[frame][y][x] = stp;
+	}
+}
+
+
+float ComputeCostOfRemoving( int x, int y, int frame )
+{
+	if( frame == 0 )
+		return 1e10;
+	// First compute the lost regularly.
+	int f;
+	int stp = streamin[frame-1][y][x];
+	int st = streamin[frame][y][x];
+	if( stp == st )
+	{
+		fprintf( stderr, "Warning: Trying to check invalid frame change (%d %d %d)\n", x, y, frame );
+		return 1e10;
+	}
+
+	float defloss = 0;
+	for( f = frame; f < FRAMECT-FRAMEOFFSET; f++ )
+	{
+		int gl = streamin[f][y][x];
+		if( st != gl )
+		{
+			break;
+		}
+
+		defloss += LossFrom( st, x, y, f );
+	}
+
+	float newloss = 0;
+	for( f = frame; f < FRAMECT-FRAMEOFFSET; f++ )
+	{
+		int gl = streamin[f][y][x];
+		if( st != gl )
+		{
+			break;
+		}
+		newloss += LossFrom( stp, x, y, f );
+	}
+	//printf( "%f / %f %f\n", defloss, newloss, newloss - defloss );
+	return newloss - defloss;
+}
 
 int main()
 {
@@ -47,15 +128,17 @@ int main()
 	}
 	fclose( f );
 
+#if 0
 	int frame, x, y;
-	for( frame = 0; frame < FRAMECT; frame++ )
+	for( frame = 0; frame < FRAMECT-FRAMEOFFSET; frame++ )
 	{
+		CNFGClearFrame();
 		CNFGHandleInput();
 		for( y = 0; y < RESY; y++ )
 		{
 			for( x = 0; x < RESX; x++ )
 			{
-				uint32_t v = videodata[frame][y][x];
+				uint32_t v = videodata[frame+FRAMEOFFSET][y][x];
 				float orig = v / 255.0;
 				uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
 				CNFGColor( color );
@@ -82,9 +165,61 @@ int main()
 			}
 		}
 		CNFGSwapBuffers();
-		usleep(1000);
+		usleep(100000);
 	}
-//CFLAGS:=-O2 -g -I../common -DRESX=${RESX} -DRESY=${RESY} -DBLOCKSIZE=${BLOCKSIZE}
+#endif
+	int changes = 0;
+	int removed = 0;
+	float fRemoveThreshold = 1;
+	printf( "%d / %d %d %d\n", (int)sizeof(streamin), FRAMECT, BSY, BSX );
+	do
+	{
+		changes = 0;
+		removed = 0;
+		int mcx, mcy, mcf;
+		float minDiff = 1e10;
+		int x, y, frame;
+		for( y = 0; y < BSY; y++ )
+		{
+			for( x = 0; x < BSX; x++ )
+			{
+				int lc = streamin[0][y][x];
+				//printf( "%d %d %d %d %d\n", x, y, frame, changes, removed );
+				for( frame = 1; frame < FRAMECT; frame++ )
+				{
+					int tc = streamin[frame][y][x];
+					if( tc != lc )
+					{
+						float costDiff = ComputeCostOfRemoving( x, y, frame );
+						if( costDiff < fRemoveThreshold )
+						{
+							CommitRemoval( x, y, frame );
+							removed++;
+						}
+						else
+						{
+							if( costDiff < minDiff )
+							{
+								minDiff = costDiff;
+								mcx = x;
+								mcy = y;
+								mcf = frame;
+							}
+							lc = tc;
+							changes++;
+						}
+					}
+				}
+			}
+		}
+		CommitRemoval( mcx, mcy, mcf );
+		printf( "%d, %d, %d, %f, %d, %d\n", mcx, mcy, mcf, minDiff, changes, removed );
+	} while( false ); // while( changes > 55000 );
+	FILE * so = fopen( "stream_stripped.dat", "wb" );
+	fwrite( streamin, 1, sizeof( streamin ), so );
+	fclose( so );
+
+
 	return 0;
 }
 

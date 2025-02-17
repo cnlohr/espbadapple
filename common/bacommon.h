@@ -84,7 +84,7 @@
 //#define VPX_USE_HUFFMAN_TILES 1
 
 // apply a filter to the image.
-//#define VPX_GORP_KERNEL_MOVE 1
+#define VPX_GORP_KERNEL_MOVE 1
 //#define VPX_TAA 1
 
 
