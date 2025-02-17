@@ -73,7 +73,9 @@
 //#define VPX_CODING_ALLOW_BACKTRACK 1
 
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
-#define VPX_DO_DUAL_GLYPH_DIRECTION 2
+// WARNING: This cannot be more than 16 because of the classificaiton output.
+// DEEP QUESTION: Why is 15 a magic number here, regardless of number of tiles?
+#define USE_TILE_CLASSES 15
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
@@ -85,6 +87,16 @@
 //#define VPX_GORP_KERNEL_MOVE 1
 //#define VPX_TAA 1
 
+
+#if RUNCODES_CONTINUOUS && USE_TILE_CLASSES
+// Optional (You canturn this off if you want) But make runtimes use classes.
+#define RUNCODES_CONTINUOUS_BY_CLASS 1
+// Optional. Make run lenght classes based on new glpyh not previous
+#define TILE_CLASSES_RUNCODE_FORWARD 1
+#endif
+
+
+#define MAXPIXELRUNTOSTORE 16
 
 //////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
 
