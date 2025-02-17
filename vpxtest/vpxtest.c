@@ -1434,6 +1434,7 @@ int main( int argc, char ** argv )
 
 	if( vpx_glyph_tiles_buffer_len )
 	{
+		printf( "TODO: Comp glyps do bnw separate from gs\n" );
 		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) );
 		//printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
 		//printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) * 8, (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) );

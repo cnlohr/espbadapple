@@ -10,6 +10,8 @@
 #define BSX (RESX/BLOCKSIZE)
 #define BSY (RESY/BLOCKSIZE)
 
+float fRemoveThreshold = 1.1; // How different can frames be but this gets preserved?
+
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
 uint32_t streamin[FRAMECT][BSY][BSX];
@@ -17,6 +19,7 @@ int dropflag[FRAMECT][BSY][BSX];
 
 #define ZOOM 4
 #define FRAMEOFFSET 2
+
 
 float LossFrom( int tile, int x, int y, int f )
 {
@@ -133,7 +136,6 @@ int main()
 
 	int changes = 0;
 	int removed = 0;
-	float fRemoveThreshold = 1.06; // How different can frames be but this gets preserved?
 	printf( "%d / %d %d %d\n", (int)sizeof(streamin), FRAMECT, BSY, BSX );
 	do
 	{
@@ -223,7 +225,7 @@ int main()
 			}
 		}
 		CNFGSwapBuffers();
-		usleep(40000);
+		//usleep(40000);
 	}
 #endif
 	return 0;
