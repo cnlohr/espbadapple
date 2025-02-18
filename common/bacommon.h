@@ -45,7 +45,7 @@
 
 // When doing output use VPX instead of huffman for length.
 #define USE_VPX_LEN  1
-#define UNIFIED_VPX 1
+#define UNIFIED_VPX  1
 
 
 // vpxtestonly:  How do we encode the run lengths?

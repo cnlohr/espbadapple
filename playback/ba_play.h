@@ -77,13 +77,14 @@ int ba_play_setup( ba_play_context * ctx )
 				runsofar = MAXPIXELRUNTOSTORE-1;
 			}
 			int color = vpx_read( &r, tprob );
-			cpixel |=  color<<(writeg++);
+			cpixel |=  color<<(++writeg);
 
 			int subpixel;
 			for( subpixel = 1; subpixel < BITSETS_TILECOMP; subpixel++ )
 			{
 				int lb = vpx_read( &r, color?GSC1:GSC0 );
-				cpixel |= lb<<(writeg++);
+				cpixel |= lb<<(writeg-1); // Yuck.. bit ordering here is weird.
+				writeg++;
 			}
 
 			if( (g & ((16/BITSETS_TILECOMP)-1)) == (((16/BITSETS_TILECOMP)-1)) )
