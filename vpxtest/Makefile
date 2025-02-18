@@ -5,8 +5,11 @@ include ../common/make.inc
 CFLAGS:=-O2 -g -DRESX=$(RESX) -DRESY=$(RESY) -DBLOCKSIZE=$(BLOCKSIZE) -Wno-unused-result -I../common
 
 #CFLAGS+=-fsanitize=address -static-libasan -g
-
-LDFLAGS:=-lm -lX11
+ifeq ($(OS),Windows_NT)
+	LDFLAGS:=-lkernel32 -lgdi32 -luser32
+else
+	LDFLAGS:=-lm -lX11
+endif
 
 vpxtest : vpxtest.c ../common/bacommon.h
 	gcc -o $@ $< $(LDFLAGS) $(CFLAGS) -lm

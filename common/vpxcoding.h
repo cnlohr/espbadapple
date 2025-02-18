@@ -32,7 +32,14 @@
 #include <stdint.h>
 #include <limits.h>
 #include <string.h>
-#include <endian.h>
+
+#if BYTE_ORDER == BIG_ENDIAN
+#define vpx_htobe32(x) (x)
+#define vpx_htobe64(x) (x)
+#else
+#define vpx_htobe32(x) __builtin_bswap32(x)
+#define vpx_htobe64(x) __builtin_bswap64(x)
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -179,9 +186,9 @@ VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
 		BD_VALUE big_endian_values;
 		memcpy(&big_endian_values, buffer, sizeof(BD_VALUE));
 #ifdef VPX_64BIT
-		big_endian_values = htobe64(big_endian_values);
+		big_endian_values = vpx_htobe64(big_endian_values);
 #else
-		big_endian_values = htobe32(big_endian_values);
+		big_endian_values = vpx_htobe32(big_endian_values);
 #endif
 		nv = big_endian_values >> (BD_VALUE_SIZE - bits);
 		count += bits;
