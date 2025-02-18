@@ -10,7 +10,7 @@ CFLAGS:=-O2 -g -Wno-unused-result -mavx2 -DBLOCKSIZE=${BLOCKSIZE} -I../common -D
 hufftreegentest : hufftreegentest.c
 	gcc $(CFLAGS) -o $@ $^
 
-decodevideo : ffmdecode.o decodevideo.o
+decodevideo : ../common/ffmdecode.c decodevideo.c
 	gcc $(CFLAGS) -o $@ $^ -lavcodec -lavformat -lswscale -lavutil  $(CFLAGS) $(LDFLAGS)
 
 videoout-${RES}.dat : badapple-sm8628149.mp4 decodevideo
