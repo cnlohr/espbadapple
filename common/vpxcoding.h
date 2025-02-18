@@ -36,9 +36,11 @@
 #if BYTE_ORDER == BIG_ENDIAN
 #define vpx_htobe32(x) (x)
 #define vpx_htobe64(x) (x)
-#else
+#elif BYTE_ORDER == LITTLE_ENDIAN
 #define vpx_htobe32(x) __builtin_bswap32(x)
 #define vpx_htobe64(x) __builtin_bswap64(x)
+#else
+#error Need a system endianness.
 #endif
 
 #ifdef __cplusplus
