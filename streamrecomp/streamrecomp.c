@@ -10,7 +10,7 @@
 #define BSX (RESX/BLOCKSIZE)
 #define BSY (RESY/BLOCKSIZE)
 
-float fRemoveThreshold = 1.1; // How different can frames be but this gets preserved?
+float fRemoveThreshold = 0.85; // How different can frames be but this gets preserved?
 
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
@@ -184,7 +184,7 @@ int main()
 	fwrite( streamin, 1, sizeof( streamin ), so );
 	fclose( so );
 
-#if 1
+#if 0
 	int frame, x, y;
 	for( frame = 0; frame < FRAMECT-FRAMEOFFSET; frame++ )
 	{

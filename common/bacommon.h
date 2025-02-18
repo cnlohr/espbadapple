@@ -53,7 +53,9 @@
 //#define RUNCODES_TWOLEVEL 1  // 84264 -> 84242
 //Instead use the codes themself, along each step, predict likliehood of being a 1 or a 0.
 // This is mutually exclusive with RUNCODES_TWOLEVEL
-#define RUNCODES_CONTINUOUS 32  // 84264 -> 83795  [RECOMMEND ON]
+// TUNE THIS!
+// WARNING: DO NOT SET THIS TO ABOVE 254 Otherwise it will overflow on the embedded decoder.
+#define RUNCODES_CONTINUOUS 128  // 84264 -> 83795  [RECOMMEND ON]
 
 #if defined( RUNCODES_TWOLEVEL ) && defined( RUNCODES_CONTINUOUS )
 #error mutually exclusive settings
@@ -76,7 +78,7 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 15
+#define USE_TILE_CLASSES 14 // TUNE ME!!!
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
@@ -96,12 +98,28 @@
 #define TILE_CLASSES_RUNCODE_FORWARD 1
 #endif
 
-
-#define MAXPIXELRUNTOSTORE 16
+// TUNE ME !!! 8 to 20
+#define MAXPIXELRUNTOSTORE 9
 
 // Don't do this unless you know you want it.
 // This is mostly using to A/B test the encoding of non-1/0 symbols.
 //#define PROB_ENDIAN_FLIP 1
+
+// TUNE ME!!  This controls how likely less-than-most significant bits in pixels are to be set/unset.
+#define GSC1 6
+#define GSC0 248
+
+
+// Relies on RUNCODES_CONTINUOUS_BY_CLASS
+#define INVERT_RUNCODE_COMPRESSION
+
+#if defined( INVERT_RUNCODE_COMPRESSION ) && !defined( RUNCODES_CONTINUOUS_BY_CLASS )
+#error configuration invalid
+#endif
+
+#if defined( VPX_CODING_ALLOW_BACKTRACK ) && defined( INVERT_RUNCODE_COMPRESSION )
+#error configuraiton invalid, VPX_CODING_ALLOW_BACKTRACK was invented before INVERT_RUNCODE_COMPRESSION.
+#endif 
 
 //////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
 
@@ -182,11 +200,6 @@
 #endif
 #define GLYPH_FLIP_X_MASK    0x2000
 #define GLYPH_FLIP_Y_MASK    0x1000
-
-
-
-#define GSC1 6
-#define GSC0 248
 
 #ifndef BA_CONFIG_ONLY
 

@@ -69,6 +69,14 @@ After Full VPX
  * The missstep of VPX_CODING_ALLOW_BACKTRACK
  * Always do A/B tests, so the absolut doesn't matter but doing A/B to compare them more broadly.
 
+
+... lots of steps
+...
+
+ * Inverting run data goes from 63365 to 63282
+
+Any time you do an experiment with this you make headway.
+
 ## Previous Work
  * Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
  * CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
