@@ -1049,7 +1049,7 @@ int main( int argc, char ** argv )
 				int k;
 				for( k = 0; k < BITSETS_TILECOMP; k++ )
 				{
-					bnw[((x+y*BLOCKSIZE)+i*BLOCKSIZE*BLOCKSIZE)*BITSETS_TILECOMP + k] = (c>>k)&1;
+					bnw[((x+y*BLOCKSIZE)+i*BLOCKSIZE*BLOCKSIZE)*BITSETS_TILECOMP + k] = (c>>(BITSETS_TILECOMP-k-1))&1;
 				}
 			}
 			fwrite( &osym, BITSETS_TILECOMP*BLOCKSIZE/8, 1, fRawTiles );
@@ -1071,12 +1071,12 @@ int main( int argc, char ** argv )
 		int runsets0to1[MAXPIXELRUNTOSTORE] = { 0 };
 		int runsets1to0[MAXPIXELRUNTOSTORE] = { 0 };
 		int runsets1to1[MAXPIXELRUNTOSTORE] = { 0 };
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i+=BITSETS_TILECOMP )
 		{
 			int color = bnw[i];
 			int j;
 			int b = 0;
-			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; j++ )
+			for( j = i+1; j < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; j+=BITSETS_TILECOMP )
 			{
 				int p = bnw[j];
 				if( color == 0 )
@@ -1126,17 +1126,25 @@ int main( int argc, char ** argv )
 		int runsofar = 0;
 		int is0or1 = bnw[0];
 
-		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
+		for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i+=BITSETS_TILECOMP )
 		{
 			uint8_t * prob = ba_vpx_glyph_probability_run_0_or_1[is0or1];
 			int tprob = prob[runsofar];
 
 			if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
-				tprob = 128;
+			{ tprob = 128; runsofar = 0; }
+
 
 			int color = bnw[i];
 			//printf( "%d: %d\n", color, tprob );
 			vpx_write(&w_glyphdata, color, tprob );
+
+			int subpixel;
+			for( subpixel = 1; subpixel < BITSETS_TILECOMP; subpixel++ )
+			{
+				int cpx = bnw[i+subpixel];
+				vpx_write(&w_glyphdata, cpx, color?GSC1:GSC0 );
+			}
 
 			if( color != is0or1 )
 			{
@@ -1491,24 +1499,28 @@ int main( int argc, char ** argv )
 			int k = 0;
 			int crun = 0;
 
-			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped*BITSETS_TILECOMP; i++ )
+			for( i = 0; i < BLOCKSIZE*BLOCKSIZE*maxtilect_remapped; i+=BITSETS_TILECOMP )
 			{
 				uint8_t * prob = ba_vpx_glyph_probability_run_0_or_1[is0or1];
 				int tprob = prob[runsofar];
 
 				if( ( i & ((BLOCKSIZE*BLOCKSIZE)-1)) == 0 )
-					tprob = 128;
+				{ tprob = 128; runsofar = 0; }
 
 				int color = vpx_read( &reader_tiles, tprob );
 
-				crun |= (color ? 1 : 0) << k;
-				k++;
-				if( k == BITSETS_TILECOMP )
+				int subpixel;
+				crun |= (color ? 1 : 0) << (BITSETS_TILECOMP-k-1);
+				for( subpixel = 1; subpixel < BITSETS_TILECOMP; subpixel++ )
 				{
-					glyphsnew[n++] = ((float)crun) / ((1<<BITSETS_TILECOMP)-1);
-					k = 0;
-					crun = 0;
+					int lc = vpx_read(&reader_tiles, color?GSC1:GSC0 );
+					k++;
+					crun |= (lc ? 1 : 0) << (BITSETS_TILECOMP-k-1);
 				}
+
+				glyphsnew[n++] = ((float)crun) / ((1<<BITSETS_TILECOMP)-1);
+				k = 0;
+				crun = 0;
 
 				if( color != is0or1 )
 				{
@@ -1746,6 +1758,8 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "\n" );
 #endif
 
+	fprintf( fDataOut, "#define TILE_COUNT %d\n\n", maxtilect_remapped );
+
 	fprintf( fDataOut, "// Sound\n\n" );
 
 	WriteOutFile( fDataOut, "sound_huffTL", "../song/huffTL_fmraw.dat" );
@@ -1794,7 +1808,7 @@ int main( int argc, char ** argv )
 		{
 			fprintf( fDataOut, "%3d,", ba_vpx_probs_by_tile_run_continuous[j][i] );
 		}
-		fprintf( fDataOut, "}%s", (j < 1) ? "," : "" );
+		fprintf( fDataOut, "}%s", (j < (USE_TILE_CLASSES-1)) ? "," : "" );
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 #else

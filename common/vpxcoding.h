@@ -44,7 +44,7 @@ extern "C" {
 #define VPXCODING_IMPLEMENTATION
 #endif
 
-
+#ifndef VPXCODING_CUSTOM_VPXNORM
 static const uint8_t vpx_norm[256] = {
 	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
@@ -63,6 +63,7 @@ static const uint8_t vpx_norm[256] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+#endif
 
 #ifdef VPXCODING_READER
 

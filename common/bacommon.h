@@ -4,8 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-
+#ifndef BA_CONFIG_ONLY
 #include "gifenc.h"
+#endif
 
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
@@ -181,6 +182,14 @@
 #endif
 #define GLYPH_FLIP_X_MASK    0x2000
 #define GLYPH_FLIP_Y_MASK    0x1000
+
+
+
+#define GSC1 6
+#define GSC0 248
+
+#ifndef BA_CONFIG_ONLY
+
 
 
 #if BLOCKSIZE==8
@@ -430,6 +439,8 @@ static int H264FUNDeBruijnLog2( uint64_t v )
 	};
 	return MultiplyDeBruijnBitPosition2[(uint64_t)(v * 0x6c04f118e9966f6bUL) >> 57];
 }
+
+#endif
 
 #endif
 
