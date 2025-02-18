@@ -33,16 +33,6 @@
 #include <limits.h>
 #include <string.h>
 
-#if BYTE_ORDER == BIG_ENDIAN
-#define vpx_htobe32(x) (x)
-#define vpx_htobe64(x) (x)
-#elif BYTE_ORDER == LITTLE_ENDIAN
-#define vpx_htobe32(x) __builtin_bswap32(x)
-#define vpx_htobe64(x) __builtin_bswap64(x)
-#else
-#error Need a system endianness.
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -185,12 +175,13 @@ VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
 	if (bits_left > BD_VALUE_SIZE) {
 		const int bits = (shift & 0xfffffff8) + CHAR_BIT;
 		BD_VALUE nv;
-		BD_VALUE big_endian_values;
-		memcpy(&big_endian_values, buffer, sizeof(BD_VALUE));
+		BD_VALUE big_endian_values = 0;
+		int n;
 #ifdef VPX_64BIT
-		big_endian_values = vpx_htobe64(big_endian_values);
+		// Formulated a little unusually, but selected by looking through different godbolt outputs, comparing this and |= (buffer[n]<<(56-n*8))
+		for( n = 0; n < 8; n++ ) big_endian_values = (big_endian_values<<8) | buffer[n];
 #else
-		big_endian_values = vpx_htobe32(big_endian_values);
+		for( n = 0; n < 4; n++ ) big_endian_values = (big_endian_values<<8) | buffer[n];
 #endif
 		nv = big_endian_values >> (BD_VALUE_SIZE - bits);
 		count += bits;
@@ -468,4 +459,5 @@ VPXCODING_DECORATOR int vpx_stop_encode(vpx_writer *br) {
 #endif
 
 #endif
+
 
