@@ -18,6 +18,9 @@
 #include <assert.h>
 
 
+#include "vpxtree.h"
+
+
 typedef uint64_t u64;
 typedef uint32_t u32;
 
@@ -803,6 +806,7 @@ int main( int argc, char ** argv )
 				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
 				int lincmask = comparemask<<1;
 				int maskcheck = 0;
+				int placeinlevel = 0;
 				for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
 				{
 					float count1 = 0;
@@ -828,8 +832,11 @@ int main( int argc, char ** argv )
 					int prob = chanceof0 * 256.5 - .5;
 					if( prob < 0 ) prob = 0;
 					if( prob > 255 ) prob = 255;
-					ba_chancetable_glyph_dual[bin][nout++] = prob;
+					int place = VPXTreePlaceByLevelPlace( level, placeinlevel, bitsfortileid );
+					//printf( "Writing: %d (%d %d %d (%.4f %.4f = %d))\n", place, level, placeinlevel, bitsfortileid, count0, count1, prob );
+					ba_chancetable_glyph_dual[bin][place] = prob;
 					//printf( "%d: %08x %f %f (%d)\n", nout-1, maskcheck, count0, count1, prob );
+					placeinlevel++;
 				}
 			}
 		}
@@ -874,7 +881,9 @@ int main( int argc, char ** argv )
 				int prob = chanceof0 * 257 - 0.5;
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
-				ba_chancetable_glyph[nout++] = prob;
+				int place = VPXTreePlaceByLevelPlace( level, nout, bitsfortileid );
+				ba_chancetable_glyph[place] = prob;
+				nout++;
 				//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
 			}
 		}
@@ -1355,7 +1364,6 @@ int main( int argc, char ** argv )
 			{
 				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
 				int bit = !!(ut & comparemask);
-
 #ifdef USE_TILE_CLASSES
 				probability = ba_chancetable_glyph_dual[fromclass][probplace];
 #else
@@ -1366,8 +1374,10 @@ int main( int argc, char ** argv )
 #ifndef VPX_USE_HUFFMAN_TILES
 				vpx_write(&w_combined, bit, probability);
 #endif
-
-				probplace = ((1<<(level+1)) - 1 + ((ut)>>(bitsfortileid-level-1)));
+				if( bit )
+					probplace += 1<<(bitsfortileid-level-1);
+				else
+					probplace++;
 			}
 		}
 
@@ -1483,7 +1493,10 @@ int main( int argc, char ** argv )
 						vpx_write(&w_glyphs, bit, probability);
 						vpx_write(&w_combined, bit, probability);
 
-						probplace = ((1<<(level+1)) - 1 + ((ut)>>(bitsfortileid-level-1)));
+						if( bit )
+							probplace += 1<<(bitsfortileid-level-1);
+						else
+							probplace++;
 					}
 
 					curtiles[y][x] = newtile;
@@ -1722,7 +1735,10 @@ int main( int argc, char ** argv )
 #endif
 						int bit = vpx_read( &reader, probability );
 						tile |= bit<<(bitsfortileid-level-1);
-						probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
+						if( bit )
+							probplace += 1<<(bitsfortileid-level-1);
+						else
+							probplace++;
 					}
 					curglyph[y][x] = tile;
 					currun[y][x] = 0;
@@ -1783,7 +1799,10 @@ int main( int argc, char ** argv )
 #endif
 							int bit = vpx_read( &reader, probability );
 							tile |= bit<<(bitsfortileid-level-1);
-							probplace = ((1<<(level+1)) - 1 + ((tile)>>(bitsfortileid-level-1)));
+							if( bit )
+								probplace += 1<<(bitsfortileid-level-1);
+							else
+								probplace++;
 						}
 					}
 #endif
