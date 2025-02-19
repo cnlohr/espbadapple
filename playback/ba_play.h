@@ -31,13 +31,21 @@ typedef uint16_t glyphtype;
 typedef uint8_t glyphtype;
 #endif
 
+#if BLOCKSIZE > 8
+#define GRAPHICSIZE_WORDS 4
+typedef uint32_t graphictype;
+#else
+#define GRAPHICSIZE_WORDS 2
+typedef uint16_t graphictype;
+#endif
+
 typedef struct ba_play_context_
 {
 	vpx_reader vpx_changes;
 	glyphtype  curmap[BLKY*BLKX];
 	uint8_t    currun[BLKY*BLKX];
-	uint16_t   glyphdata[TILE_COUNT][DBLOCKSIZE/2];
-	uint16_t   framebuffer[RESX*RESY*BITSETS_TILECOMP/16];
+	graphictype   glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
+	graphictype   framebuffer[RESX*RESY*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*2)];
 } ba_play_context;
 
 int ba_play_setup( ba_play_context * ctx )
@@ -55,7 +63,7 @@ int ba_play_setup( ba_play_context * ctx )
 		int runsofar = 0;
 		int is0or1 = 0;
 		int crun = 0;
-		uint16_t * gd = &ctx->glyphdata[0][0];
+		graphictype * gd = &ctx->glyphdata[0][0];
 		int cpixel = 0;
 		int writeg = 0;
 		for( g = 0; g < TILE_COUNT*BLOCKSIZE*BLOCKSIZE; g+=1 )
@@ -77,7 +85,7 @@ int ba_play_setup( ba_play_context * ctx )
 				writeg++;
 			}
 
-			if( (g & ((16/BITSETS_TILECOMP)-1)) == (((16/BITSETS_TILECOMP)-1)) )
+			if( (g & (((GRAPHICSIZE_WORDS*8)/BITSETS_TILECOMP)-1)) == ((((GRAPHICSIZE_WORDS*8)/BITSETS_TILECOMP)-1)) )
 			{
 				*(gd++) = cpixel;
 				writeg = cpixel = 0;
@@ -173,14 +181,14 @@ static int kk;
 			ctx->currun[n] = 0;
 
 			// Update framebuffer.
-			uint16_t * glyph = (uint16_t*)ctx->glyphdata[tile];
-			uint16_t * fbo = (uint16_t*)&ctx->framebuffer[(bx*BLOCKSIZE + by*BLOCKSIZE*RESX)*BITSETS_TILECOMP/16];
+			graphictype * glyph = (graphictype*)ctx->glyphdata[tile];
+			graphictype * fbo = (graphictype*)&ctx->framebuffer[(bx*BLOCKSIZE + by*BLOCKSIZE*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
 			//printf( "%d / %d\n", (bx + by*BLOCKSIZE)*BLOCKSIZE*BITSETS_TILECOMP/32, sizeof( ctx->framebuffer ) / 4 );
 			int lx, ly;
 			for( ly = 0; ly < BLOCKSIZE; ly++ )
 			{
 				fbo[0] = *(glyph++);
-				fbo += RESX * BITSETS_TILECOMP / 16;
+				fbo += RESX * BITSETS_TILECOMP / (GRAPHICSIZE_WORDS*8);
 			}
 		}
 

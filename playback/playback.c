@@ -19,14 +19,14 @@ ba_play_context ctx;
 
 int PValueAt( int x, int y )
 {
-	uint8_t * framebuffer = (uint8_t*)ctx.framebuffer;
+	graphictype * framebuffer = (graphictype*)ctx.framebuffer;
 	if( x < 0 ) x = 0;
 	if( x >= RESX ) x = RESX-1;
 	if( y < 0 ) y = 0;
 	if( y >= RESY ) y = RESY-1;
 
-	uint32_t fbv = framebuffer[(x + y*RESX)*BITSETS_TILECOMP/8];
-	int ofs = ((x + y*RESX)*BITSETS_TILECOMP)%8;
+	graphictype fbv = framebuffer[(x + y*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
+	int ofs = ((x + y*RESX)*BITSETS_TILECOMP)%(GRAPHICSIZE_WORDS*8);
 	fbv >>= ofs;
 	return (fbv&0x3);
 }
@@ -35,13 +35,13 @@ int SampleValueAt( int x, int y )
 {
 	int iSampleAdd = PValueAt( x, y );
 	int iSampleAddQty = 1;
-	if( (x & (BLOCKSIZE-1)) == 7 || (x & (BLOCKSIZE-1)) == 0 )
+	if( (x & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (x & (BLOCKSIZE-1)) == 0 )
 	{
 		iSampleAddQty += 2;
 		iSampleAdd += PValueAt( x-1, y );
 		iSampleAdd += PValueAt( x+1, y );
 	}
-	if( (y & (BLOCKSIZE-1)) == 7 || (y & (BLOCKSIZE-1)) == 0 )
+	if( (y & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (y & (BLOCKSIZE-1)) == 0 )
 	{
 		iSampleAddQty += 2;
 		iSampleAdd += PValueAt( x, y-1 );

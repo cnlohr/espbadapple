@@ -57,7 +57,7 @@
 // This is mutually exclusive with RUNCODES_TWOLEVEL
 // TUNE THIS!
 // WARNING: DO NOT SET THIS TO ABOVE 254 Otherwise it will overflow on the embedded decoder.
-#define RUNCODES_CONTINUOUS 110  // 84264 -> 83795  [RECOMMEND ON]
+#define RUNCODES_CONTINUOUS 128  // 84264 -> 83795  [RECOMMEND ON]
 
 #if defined( RUNCODES_TWOLEVEL ) && defined( RUNCODES_CONTINUOUS )
 #error mutually exclusive settings
