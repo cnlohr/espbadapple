@@ -158,6 +158,7 @@ static int kk;
 			// Have a new thing.
 			int probplace = 0;
 			tile = 0;
+			int ppo = (BITS_FOR_TILE_ID-1);
 			for( level = 0; level < BITS_FOR_TILE_ID; level++ )
 			{
 #ifdef USE_TILE_CLASSES
@@ -166,8 +167,13 @@ static int kk;
 				probability = ba_chancetable_glyph[probplace];
 #endif
 				int bit = vpx_read( rctx, probability );
-				tile |= bit<<(BITS_FOR_TILE_ID-level-1);
-				probplace = ((1<<(level+1)) - 1 + ((tile)>>(BITS_FOR_TILE_ID-level-1)));
+				tile |= bit<<ppo;
+
+				if( bit )
+					probplace += 1<<ppo;
+				else
+					probplace++;
+				ppo--;
 			}
 			ctx->curmap[n] = tile;
 			ctx->currun[n] = 0;

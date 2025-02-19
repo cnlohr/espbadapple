@@ -78,7 +78,7 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 14 // TUNE ME!!!
+#define USE_TILE_CLASSES 15 // TUNE ME!!!
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 

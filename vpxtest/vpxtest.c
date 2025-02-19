@@ -20,6 +20,8 @@
 
 #include "vpxtree.h"
 
+#define VPX_PROB_MULT 257.0
+#define VPX_PROB_SHIFT (-0.0)
 
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -597,7 +599,7 @@ int main( int argc, char ** argv )
 	int probbacktrack = 0;
 	{
 		double chanceof0 = backtrackcount / (double)(tilechangect);
-		int prob = chanceof0 * 256.5 - 0.5;
+		int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 		if( prob < 0 ) prob = 0;
 		if( prob > 255 ) prob = 255;
 		probbacktrack = prob;
@@ -610,8 +612,15 @@ int main( int argc, char ** argv )
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
 
+	float ftheoretical_bits_per_glyph_change = 0;
+
 #ifdef USE_TILE_CLASSES
-	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][(1<<bitsfortileid)-1];
+
+	// If we have a Power-of-2 number of cells, then we can leave off the last chance in the chancetable.
+	int chancetable_len = (maxtilect_remapped == (1<<bitsfortileid)) ? (maxtilect_remapped-1): maxtilect_remapped;
+
+
+	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
 	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );
 	uint8_t selectchancebin[maxtilect_remapped];
 	uint8_t ba_exportbinclass[(maxtilect_remapped+1)/2];
@@ -829,7 +838,7 @@ int main( int argc, char ** argv )
 						}
 					}
 					double chanceof0 = count0 / (double)(count0 + count1);
-					int prob = chanceof0 * 256.5 - .5;
+					int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 					if( prob < 0 ) prob = 0;
 					if( prob > 255 ) prob = 255;
 					int place = VPXTreePlaceByLevelPlace( level, placeinlevel, bitsfortileid );
@@ -840,6 +849,8 @@ int main( int argc, char ** argv )
 				}
 			}
 		}
+
+		printf( "TODO: Compute ftheoretical_bits_per_glyph_change\n" );
 	}
 #else
 	uint8_t ba_chancetable_glyph[(1<<bitsfortileid)-1];
@@ -878,7 +889,7 @@ int main( int argc, char ** argv )
 					}
 				}
 				double chanceof0 = count0 / (double)(count0 + count1);
-				int prob = chanceof0 * 257 - 0.5;
+				int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 				if( prob < 0 ) prob = 0;
 				if( prob > 255 ) prob = 255;
 				int place = VPXTreePlaceByLevelPlace( level, nout, bitsfortileid );
@@ -1028,7 +1039,7 @@ int main( int argc, char ** argv )
 #else
 				gratio = runcounts_tile_run_up_until_num[n] * 1.0 / runcounts_tile_run_up_until_denom[n];
 #endif
-				prob = ( gratio * 256.5 ) - .5;
+				prob = gratio * VPX_PROB_MULT - VPX_PROB_SHIFT;
 				if( prob < 0 ) prob = 0; 
 				if( prob > 255 ) prob = 255;
 #ifdef RUNCODES_CONTINUOUS_BY_CLASS
@@ -1046,14 +1057,14 @@ int main( int argc, char ** argv )
 			double gratio;
 			int prob;
 			gratio = glyphcounts[n] * 1.0 / probcountmap[n];
-			prob = ( gratio * 256.5 ) - .5;
+			prob = gratio * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			ba_vpx_probs_by_tile_run[n] = prob;
 
 #ifdef RUNCODES_TWOLEVEL
 			gratio = glyphcounts_after_one[n] * 1.0 / probcountmap_after_one[n];
-			prob = ( gratio * 256.5 ) - .5;
+			prob = gratio * VPX_PROB_MULT - VPX_PROB_SHIFT
 			if( prob < 0 ) prob = 0; 
 			if( prob > 255 ) prob = 255;
 			ba_vpx_probs_by_tile_run_after_one[n] = prob;
@@ -1149,13 +1160,13 @@ int main( int argc, char ** argv )
 		for( int j = 0; j < MAXPIXELRUNTOSTORE; j++ )
 		{
 			double chanceof0 = runsets0to0[j] / (double)(runsets0to0[j]+runsets0to1[j]);
-			int prob = chanceof0 * 256.5 - 0.5;
+			int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
 			int prob0 = ba_vpx_glyph_probability_run_0_or_1[0][j] = prob;
 
 			chanceof0 = runsets1to0[j] / (double)(runsets1to0[j]+runsets1to1[j]);
-			prob = chanceof0 * 256.5 - 0.5;
+			prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
 			int prob1 = ba_vpx_glyph_probability_run_0_or_1[1][j] = prob;
@@ -1322,7 +1333,6 @@ int main( int argc, char ** argv )
 	vpx_writer w_combined = { 0 };
 	vpx_start_encode( &w_combined, bufferVPX, sizeof(bufferVPX));
 
-	printf( "TODO: Make [RUNCODES_CONTINUOUS-1] = average for all future\n" );
 #ifndef INVERT_RUNCODE_COMPRESSION
 	for( n = 0; n < tilechangect; n++ )
 	{
@@ -1521,7 +1531,7 @@ int main( int argc, char ** argv )
 #ifdef SMART_TRANSITION_SKIP
 	printf( "   Ratcheted:%7d\n", ratcheted );
 #endif
-	printf( "      Stream:%7d bits / bytes:%6d\n", glyphbytes*8, glyphbytes );
+	printf( "      Stream:%7d bits / bytes:%6d (%.3f bits per glyph change, %.3f theoretical)\n", glyphbytes*8, glyphbytes, glyphbytes*8.0/symsum, ftheoretical_bits_per_glyph_change );
 	printf( "         Run:%7d bits / bytes:%6d\n", runbytes*8, runbytes );
 	printf( "\n" );
 	int sum = 0;
@@ -1950,12 +1960,11 @@ int main( int argc, char ** argv )
 	}
 	fprintf( fDataOut, "\n};\n\n" );
 
-
-	fprintf( fDataOut, "BADATA_DECORATOR uint8_t ba_chancetable_glyph_dual[%d][%d] = {", USE_TILE_CLASSES, (int)sizeof(ba_chancetable_glyph_dual[0]) );
+	fprintf( fDataOut, "BADATA_DECORATOR uint8_t ba_chancetable_glyph_dual[%d][%d] = {", USE_TILE_CLASSES, chancetable_len );
 	for( i = 0; i < USE_TILE_CLASSES; i++ )
 	{
 		fprintf( fDataOut, "\n\t{ " );
-		for( j = 0; j < sizeof(ba_chancetable_glyph_dual)/USE_TILE_CLASSES; j++ )
+		for( j = 0; j < chancetable_len; j++ )
 		{
 			fprintf( fDataOut, "%s%3d,", ((j & 0xf) == 0x0) ? "\n\t" : " ", ba_chancetable_glyph_dual[i][j] );
 		}
