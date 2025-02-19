@@ -1,6 +1,6 @@
 /*
  *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
- *  Amalgam is (c) 2024 cnlohr
+ *  Amalgam is (c) 2024,2025 cnlohr
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the libvpx
@@ -15,6 +15,8 @@
  *  This amalgam has some notable changes:
  *    1. Changed decrypt_state / decrypt_cb to ingest for reader.
  *    2. Removed all libvpx dependencies.
+ *    3. Changed vpx_norm to be configurable (For low-flash situations)
+ *    4. Removed endian-specific code, and just iterated directly.
  *
  *  To Use:
 
