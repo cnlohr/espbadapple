@@ -101,7 +101,7 @@ int main()
 				else
 					p++;
 
-				treeplace--;
+				levelplace--;
 			}
 			printf( "%3d", p );
 		}

@@ -10,7 +10,7 @@
 #define BSX (RESX/BLOCKSIZE)
 #define BSY (RESY/BLOCKSIZE)
 
-float fRemoveThreshold = 0.39; // How different can frames be but this gets preserved?
+float fRemoveThreshold = -1000; // How different can frames be but this gets preserved?
 
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
@@ -18,7 +18,7 @@ uint32_t streamin[FRAMECT][BSY][BSX];
 int dropflag[FRAMECT][BSY][BSX];
 
 #define ZOOM 4
-#define FRAMEOFFSET 2
+#define FRAMEOFFSET 0
 
 float LossFrom( int tile, int x, int y, int f )
 {
@@ -155,6 +155,7 @@ int main()
 					if( tc != lc )
 					{
 						float costDiff = ComputeCostOfRemoving( x, y, frame );
+						printf( "%f\n", costDiff );
 						if( costDiff < fRemoveThreshold )
 						{
 							CommitRemoval( x, y, frame );

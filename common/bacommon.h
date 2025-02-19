@@ -57,7 +57,7 @@
 // This is mutually exclusive with RUNCODES_TWOLEVEL
 // TUNE THIS!
 // WARNING: DO NOT SET THIS TO ABOVE 254 Otherwise it will overflow on the embedded decoder.
-#define RUNCODES_CONTINUOUS 128  // 84264 -> 83795  [RECOMMEND ON]
+#define RUNCODES_CONTINUOUS 110  // 84264 -> 83795  [RECOMMEND ON]
 
 #if defined( RUNCODES_TWOLEVEL ) && defined( RUNCODES_CONTINUOUS )
 #error mutually exclusive settings
@@ -80,7 +80,7 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 15 // TUNE ME!!!
+#define USE_TILE_CLASSES 15// TUNE ME!!!
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 

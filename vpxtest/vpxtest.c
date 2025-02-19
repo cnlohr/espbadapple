@@ -617,8 +617,28 @@ int main( int argc, char ** argv )
 #ifdef USE_TILE_CLASSES
 
 	// If we have a Power-of-2 number of cells, then we can leave off the last chance in the chancetable.
-	int chancetable_len = (maxtilect_remapped == (1<<bitsfortileid)) ? (maxtilect_remapped-1): maxtilect_remapped;
+	//    I thought you could do this, but it's more unintuitive than I thought, so we just calculate it.
+	//  ((maxtilect_remapped == (1<<bitsfortileid)) ? (maxtilect_remapped-1): maxtilect_remapped); << Doesn't work
+	int chancetable_len = 0;
 
+
+	{
+		// levelplace starts
+		int levelplace = bitsfortileid-1;
+		int level;
+		int chancetable_place = 0;
+		int n = maxtilect_remapped;
+		for( level = 0; level < bitsfortileid; level++ )
+		{
+			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
+			int bit = !!(maxtilect_remapped & comparemask);
+			if( bit )
+				chancetable_len += 1<<(bitsfortileid-level-1);
+			else
+				chancetable_len++;
+		}
+		printf( "Chancetable Length: %d\n", chancetable_len );
+	}
 
 	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
 	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );

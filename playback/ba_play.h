@@ -4,9 +4,9 @@
 #include <stdint.h>
 
 #define VPXCODING_READER
-#define VPXCODING_CUSTOM_VPXNORM
 #define VPX_32BIT
 
+//#include "vpxcoding.h"
 #include "vpxcoding_tinyread.h"
 
 #define BA_CONFIG_ONLY
@@ -46,7 +46,11 @@ int ba_play_setup( ba_play_context * ctx )
 	// Load glyphs into RAM.
 	{
 		vpx_reader r;
+#ifdef _VPX_TINYREAD_SFH_H
 		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata) );
+#else
+		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata), 0, 0 );
+#endif
 		int g, p;
 		int runsofar = 0;
 		int is0or1 = 0;
@@ -101,7 +105,11 @@ int ba_play_setup( ba_play_context * ctx )
 	memset( ctx->framebuffer, 0, sizeof(ctx->framebuffer) );
 	
 	vpx_reader * rctx = &ctx->vpx_changes;
+#ifdef _VPX_TINYREAD_SFH_H
 	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload) );
+#else
+	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload), 0, 0 );
+#endif
 }
 
 int ba_play_frame( ba_play_context * ctx )
