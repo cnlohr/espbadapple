@@ -1,3 +1,5 @@
+// Be sure to check make.inc for more, basic settings.
+
 #ifndef _BACOMMON_H
 #define _BACOMMON_H
 

@@ -1909,10 +1909,6 @@ int main( int argc, char ** argv )
 	fprintf( fDataOut, "#ifndef BADAPPLE_DATA_H\n" );
 	fprintf( fDataOut, "#define BADAPPLE_DATA_H\n" );
 	fprintf( fDataOut, "\n" );
-	fprintf( fDataOut, "#define VPXCODING_READER\n" );
-	fprintf( fDataOut, "#define VPX_32BIT\n" );
-	fprintf( fDataOut, "#include \"vpxcoding.h\"\n" );
-	fprintf( fDataOut, "\n" );
 	fprintf( fDataOut, "#define RESX %d\n", RESX );
 	fprintf( fDataOut, "#define RESY %d\n", RESY );
 	fprintf( fDataOut, "#define BLOCKSIZE %d\n", BLOCKSIZE );

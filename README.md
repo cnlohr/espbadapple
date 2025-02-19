@@ -8,6 +8,26 @@ My shot at bad apple on an '8266.  The source video for bad apple is 512x384
 sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
+### Workflow
+```bash
+cd comp2
+make clean tiles-64x48x8.dat
+cd ../ml
+make setup runcomp
+```
+
+wait a few minutes
+
+```bash
+cd ../ml
+make reconstruct
+cd ../streamrecomp
+make streamrecomp && ./streamrecomp
+cd ../vpxtest
+make clean test.gif #or test.mp4
+```
+
+
 ### Future TODO
  * Perceptual/Semantic Loss Function
  * De-Blocking Filter

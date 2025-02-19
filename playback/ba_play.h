@@ -6,8 +6,8 @@
 #define VPXCODING_READER
 #define VPXCODING_CUSTOM_VPXNORM
 #define VPX_32BIT
-extern uint8_t vpx_norm[256];
-#include "vpxcoding.h"
+
+#include "vpxcoding_tinyread.h"
 
 #define BA_CONFIG_ONLY
 #include "bacommon.h"
@@ -24,8 +24,6 @@ extern uint8_t vpx_norm[256];
 #endif
 
 #define DBLOCKSIZE (BLOCKSIZE*BLOCKSIZE*BITSETS_TILECOMP/8)
-
-uint8_t vpx_norm[256];
 
 #if TILE_COUNT > 256
 typedef uint16_t glyphtype;
@@ -44,23 +42,11 @@ typedef struct ba_play_context_
 
 int ba_play_setup( ba_play_context * ctx )
 {
-	if( vpx_norm[1] == 0 )
-	{
-		//	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,...
-		int n;
-		for( n = 1; n < 256; n++ )
-		{
-			int b;
-			for( b = 0; ((255-n)<<b)&0x80; b++ );
-			vpx_norm[n] = b;
-			//printf( "%d=%d\n", n, b );
-		}
-	}
 
 	// Load glyphs into RAM.
 	{
 		vpx_reader r;
-		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata), 0, 0 );
+		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata) );
 		int g, p;
 		int runsofar = 0;
 		int is0or1 = 0;
@@ -115,7 +101,7 @@ int ba_play_setup( ba_play_context * ctx )
 	memset( ctx->framebuffer, 0, sizeof(ctx->framebuffer) );
 	
 	vpx_reader * rctx = &ctx->vpx_changes;
-	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload), 0, 0 );
+	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload) );
 }
 
 int ba_play_frame( ba_play_context * ctx )

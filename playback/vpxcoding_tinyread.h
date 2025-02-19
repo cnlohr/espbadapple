@@ -1,0 +1,175 @@
+/*
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
+ *  Amalgam is (c) 2024,2025 cnlohr
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the libvpx
+ *  source tree. An additional intellectual property rights grant can
+ *  be found in the file PATENTS in the libvpx source tree.  All
+ *  contributing project authors may be found in the AUTHORS file in
+ *  the root of the libvpx source tree.
+ *
+ * This is designed for very tight embedded use, edited by cnlohr.
+ */
+
+#ifndef _VPX_TINYREAD_SFH_H
+#define _VPX_TINYREAD_SFH_H
+
+#include <stdint.h>
+#include <limits.h>
+#include <string.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef VPXCODING_DECORATOR
+#define VPXCODING_DECORATOR static
+#endif
+
+uint8_t vpx_norm[256];
+
+// This is meant to be a large, positive constant that can still be
+// efficiently loaded as an immediate (on platforms like ARM, for example).
+// Even relatively modest values like 100 would work fine.  Also
+// on RISC-V this turns into a LUI
+#define LOTS_OF_BITS 0x40000000
+
+
+typedef uint32_t BD_VALUE;
+typedef uint8_t vpx_prob;
+
+#define BD_VALUE_SIZE ((int)sizeof(BD_VALUE) * CHAR_BIT)
+
+typedef void (*vpx_ingest_cb)(void *decrypt_state, const unsigned char *input,
+                               unsigned char *output, int count);
+
+typedef struct {
+	// Be careful when reordering this struct, it may impact the caching.
+	BD_VALUE value;
+	unsigned int range;
+	int count;
+	const uint8_t *buffer_end;
+	const uint8_t *buffer;
+	uint8_t clear_buffer[sizeof(BD_VALUE) + 1];
+} vpx_reader;
+
+
+VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size);
+VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r);
+VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob);
+
+// These 3 should always be static inline.
+static inline int vpx_read_bit(vpx_reader *r) {
+	return vpx_read(r, 128);  // vpx_prob_half
+}
+
+#define VPXMIN(x, y) (((x) < (y)) ? (x) : (y))
+#define VPXMAX(x, y) (((x) > (y)) ? (x) : (y))
+
+VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer,
+	size_t size ) {
+
+	if( vpx_norm[1] == 0 )
+	{
+		//	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,...
+		int n;
+		for( n = 1; n < 256; n++ )
+		{
+			int b;
+			for( b = 0; ((255-n)<<b)&0x80; b++ );
+			vpx_norm[n] = b;
+			//printf( "%d=%d\n", n, b );
+		}
+	}
+
+	r->buffer_end = buffer + size;
+	r->buffer = buffer;
+	r->value = 0;
+	r->count = -8;
+	r->range = 255;
+	return vpx_read_bit(r) != 0;  // marker bit
+}
+
+VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
+{
+	const uint8_t *const buffer_end = r->buffer_end;
+	const uint8_t *buffer = r->buffer;
+	const uint8_t *buffer_start = buffer;
+	BD_VALUE value = r->value;
+	int count = r->count;
+	const size_t bytes_left = buffer_end - buffer;
+	const size_t bits_left = bytes_left * CHAR_BIT;
+	int shift = BD_VALUE_SIZE - CHAR_BIT - (count + CHAR_BIT);
+
+	if (bits_left > BD_VALUE_SIZE) {
+		const int bits = (shift & 0xfffffff8) + CHAR_BIT;
+		BD_VALUE nv;
+		BD_VALUE big_endian_values = 0;
+		int n;
+		for( n = 0; n < 4; n++ ) big_endian_values = (big_endian_values<<8) | buffer[n];
+		nv = big_endian_values >> (BD_VALUE_SIZE - bits);
+		count += bits;
+		buffer += (bits >> 3);
+		value = r->value | (nv << (shift & 0x7));
+	} else {
+		const int bits_over = (int)(shift + CHAR_BIT - (int)bits_left);
+		int loop_end = 0;
+		if (bits_over >= 0) {
+			count += LOTS_OF_BITS;
+			loop_end = bits_over;
+		}
+
+		if (bits_over < 0 || bits_left) {
+			while (shift >= loop_end) {
+				count += CHAR_BIT;
+				value |= (BD_VALUE)*buffer++ << shift;
+				shift -= CHAR_BIT;
+			}
+		}
+	}
+
+	// NOTE: Variable 'buffer' may not relate to 'r->buffer' after decryption,
+	// so we increase 'r->buffer' by the amount that 'buffer' moved, rather
+	// than assign 'buffer' to 'r->buffer'.
+	r->buffer += buffer - buffer_start;
+	r->value = value;
+	r->count = count;
+}
+
+
+VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob) {
+	unsigned int bit = 0;
+	BD_VALUE value;
+	BD_VALUE bigsplit;
+	int count;
+	unsigned int range;
+	unsigned int split = (r->range * prob + (256 - prob)) >> CHAR_BIT;
+
+	if (r->count < 0) vpx_reader_fill(r);
+
+	value = r->value;
+	count = r->count;
+
+	bigsplit = (BD_VALUE)split << (BD_VALUE_SIZE - CHAR_BIT);
+
+	range = split;
+
+	if (value >= bigsplit) {
+		range = r->range - split;
+		value = value - bigsplit;
+		bit = 1;
+	}
+
+	const unsigned char shift = vpx_norm[(unsigned char)range];
+	r->range = range << shift;
+	r->value = value << shift;
+	r->count = count - shift;
+	return bit;
+}
+
+#ifdef __cplusplus
+};
+#endif
+
+#endif
