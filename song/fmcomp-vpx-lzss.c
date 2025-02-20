@@ -195,7 +195,7 @@ int main()
 
 	for( i = 0; i < dtNotes.numUnique; i++ )
 	{
-		float fPortion = (dtNotes.uniqueCount[i] / numNotes);
+		float fPortion = (dtNotes.uniqueCount[i] / numReg);
 		if( dtNotes.uniqueCount[i] == 0 ) continue;
 		float fBitContrib = -log(fPortion)/log(2.0);
 		fBitsNotes += fBitContrib * dtNotes.uniqueCount[i];
@@ -203,34 +203,39 @@ int main()
 
 	for( i = 0; i < dtLenAndRun.numUnique; i++ )
 	{
-		float fPortion = (dtLenAndRun.uniqueCount[i] / numNotes);
+		float fPortion = (dtLenAndRun.uniqueCount[i] / numReg);
 		if( dtLenAndRun.uniqueCount[i] == 0 ) continue;
 		float fBitContrib = -log(fPortion)/log(2.0);
 		fBitsLens += fBitContrib * dtLenAndRun.uniqueCount[i];
 	}
 
-	printf( "Notes: %.1f bits\n", fBitsNotes );
-	printf( " Lens: %.1f bits\n", fBitsLens );
-	printf( "Total: %.1f bits (%.1f bytes)\n", fBitsLens + fBitsNotes, (fBitsLens + fBitsNotes)/8.0 );
+	float options[2] = { numReg, numRev };
+	float fBitsFromSwitch = 0;
+	for( i = 0; i < 2; i++ )
+	{
+		float fPortion = (options[i] / (numReg+numRev));
+		float fBitContrib = -log(fPortion)/log(2.0);
+		fBitsFromSwitch += fBitContrib * options[i];
+	}
 
+	float fBitsFromRev = numRev * ( MRBits + RLBits );
 
+	printf( "Notes: %.1f bits (%.1f bits per note)\n", fBitsNotes, fBitsNotes/numReg );
+	printf( " Lens: %.1f bits (%.1f bits per note)\n", fBitsLens, fBitsLens/numReg );
+	printf( "Switc: %.1f bits\n", fBitsFromSwitch );
+	printf( " RevL: %.1f bits\n", fBitsFromRev );
+	printf( "Total: %.1f bits (%.1f bytes)\n", fBitsLens + fBitsNotes + fBitsFromSwitch + fBitsFromRev, (fBitsLens + fBitsNotes + fBitsFromSwitch + fBitsFromRev)/8.0 );
 
-	
 	int probability_of_reverse = ( 256 * numReg ) / (numReg + numRev + 1);
 	if( probability_of_reverse > 255 ) probability_of_reverse = 255;
 	if( probability_of_reverse < 0 ) probability_of_reverse = 0;
+	printf( "Reverse Probability: %d\n", probability_of_reverse );
 
 	for( i = 0; i < numNotes; i++ )
 	{
 
 		int note = completeNoteList[i]&0xff;
 		int len = completeNoteList[i]>>8;
-
-		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
-			probabilitiesNotes, treeSizeNotes, bitsForNotes );
-
-		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
-			probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
 
 		// Search for repeated sections.
 		int searchStart = i - MaxREV;
@@ -276,6 +281,12 @@ int main()
 		else
 		{
 			vpx_write( &writer, 0, probability_of_reverse );
+
+			VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
+				probabilitiesNotes, treeSizeNotes, bitsForNotes );
+
+			VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
+				probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
 		}
 	}
 	printf( "Reverse Peek: %d (reverses) / reg: %d (encoded notes)\n", numRev, numReg );
