@@ -24,6 +24,14 @@
 // so the right side can be lopped off.
 //
 
+#ifndef VPX_PROB_MULT
+#define VPX_PROB_MULT 257.0
+#endif
+
+#ifndef VPX_PROB_SHIFT
+#define VPX_PROB_SHIFT (-0.0)
+#endif
+
 static int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
 {
 	int l;
@@ -40,8 +48,91 @@ static int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevel
 	return p;
 }
 
+static inline int VPXTreeBitsForMaxElement( unsigned elements )
+{
+#if 0 && (defined( __GNUC__ ) || defined( __clang__ ))
+	return 32 - __builtin_clz( elements );
+#else
+	int n = 32;
+	unsigned y;
+	unsigned x = elements;
+	y = x >>16; if (y != 0) { n = n -16; x = y; }
+	y = x >> 8; if (y != 0) { n = n - 8; x = y; }
+	y = x >> 4; if (y != 0) { n = n - 4; x = y; }
+	y = x >> 2; if (y != 0) { n = n - 2; x = y; }
+	y = x >> 1; if (y != 0) return 32 - (n - 2);
+	return 32 - (n - x);
+#endif
+}
 
-#if 0
+static int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
+{
+	int chancetable_len = 0;
+	int levelplace = needed_bits-1;
+	int level;
+	int n = elements - 1;
+	for( level = 0; level < needed_bits; level++ )
+	{
+		int comparemask = 1<<(needed_bits-level-1); //i.e. 0x02 one fewer than the levelmask
+		int bit = !!(n & comparemask);
+		if( bit )
+			chancetable_len += 1<<(needed_bits-level-1);
+		else
+			chancetable_len++;
+	}
+	return chancetable_len;
+}
+
+// OUTPUTS probabilities
+static void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, float * frequencies, unsigned elements, unsigned needed_bits )
+{
+	int level;
+	for( level = 0; level < needed_bits; level++ )
+	{
+		int maxmask = 1<<needed_bits;
+		int levelmask = (0xffffffffULL >> (32 - level)) << (needed_bits-level); // i.e. 0xfc (number of bits that must match)
+		int comparemask = 1<<(needed_bits-level-1); //i.e. 0x02 one fewer than the levelmask
+		int lincmask = comparemask<<1;
+		int maskcheck = 0;
+		int placeinlevel = 0;
+		for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
+		{
+			float count1 = 0;
+			float count0 = 0;
+			int n;
+			for( n = 0; n < (1<<needed_bits); n++ )
+			{
+				int tn = n;
+				if( n >= elements ) continue;
+
+				if( ( tn & levelmask ) == (maskcheck) )
+				{
+					if( tn & comparemask )
+						count1 += frequencies[n];
+					else
+						count0 += frequencies[n];
+				}
+			}
+			double chanceof0 = count0 / (double)(count0 + count1);
+			int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
+			if( prob < 0 ) prob = 0;
+			if( prob > 255 ) prob = 255;
+			int place = VPXTreePlaceByLevelPlace( level, placeinlevel, needed_bits );
+			if( place < nr_probabilities )
+				probabilities[place] = prob;
+			placeinlevel++;
+		}
+	}
+}
+
+static int VPXTreeRead( uint8_t * probabilities, int bits_for_max_element )
+{
+}
+
+/*
+
+Notes:
+
 Output:
   0 
   1   8 
@@ -57,10 +148,8 @@ Output:
   1  8  1  8  1  8  1  8
   2  9  5 12  2  9  5 12
   3 10  6 13  4 11  7 14
-#endif
 
 
-/*
 int main()
 {
 	int tree_bits = 4;

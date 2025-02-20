@@ -18,10 +18,10 @@
 #include <assert.h>
 
 
-#include "vpxtree.h"
-
 #define VPX_PROB_MULT 257.0
 #define VPX_PROB_SHIFT (-0.0)
+
+#include "vpxtree.h"
 
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -614,7 +614,7 @@ int main( int argc, char ** argv )
 	printf( "Prob Backtrack: %d\n", probbacktrack );
 #endif
 
-	int bitsfortileid = intlog2roundup( maxtilect_remapped );
+	int bitsfortileid = VPXTreeBitsForMaxElement( maxtilect_remapped );
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
@@ -626,25 +626,7 @@ int main( int argc, char ** argv )
 	// If we have a Power-of-2 number of cells, then we can leave off the last chance in the chancetable.
 	//    I thought you could do this, but it's more unintuitive than I thought, so we just calculate it.
 	//  ((maxtilect_remapped == (1<<bitsfortileid)) ? (maxtilect_remapped-1): maxtilect_remapped); << Doesn't work
-	int chancetable_len = 0;
-
-
-	{
-		// levelplace starts
-		int levelplace = bitsfortileid-1;
-		int level;
-		int chancetable_place = 0;
-		int n = maxtilect_remapped-1;
-		for( level = 0; level < bitsfortileid; level++ )
-		{
-			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-			int bit = !!(n & comparemask);
-			if( bit )
-				chancetable_len += 1<<(bitsfortileid-level-1);
-			else
-				chancetable_len++;
-		}
-	}
+	int chancetable_len = VPXTreeGetSize( maxtilect_remapped, bitsfortileid );
 
 	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
 	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );
@@ -874,48 +856,7 @@ int main( int argc, char ** argv )
 
 		for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
 		{
-			int nout = 0;
-			int n = 0;
-			int level = 0;
-
-			for( level = 0; level < bitsfortileid; level++ )
-			{
-				int maxmask = 1<<bitsfortileid;
-				int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
-				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-				int lincmask = comparemask<<1;
-				int maskcheck = 0;
-				int placeinlevel = 0;
-				for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
-				{
-					float count1 = 0;
-					float count0 = 0;
-					for( n = 0; n < (1<<bitsfortileid); n++ )
-					{
-#ifdef PROB_ENDIAN_FLIP
-						int tn = flipbits( n, bitsfortileid );
-#else
-						int tn = n;
-#endif
-						if( n >= maxtilect_remapped ) continue;
-
-						if( ( tn & levelmask ) == (maskcheck) )
-						{
-							if( tn & comparemask )
-								count1 += frequencyset[bin][n];
-							else
-								count0 += frequencyset[bin][n];
-						}
-					}
-					double chanceof0 = count0 / (double)(count0 + count1);
-					int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
-					if( prob < 0 ) prob = 0;
-					if( prob > 255 ) prob = 255;
-					int place = VPXTreePlaceByLevelPlace( level, placeinlevel, bitsfortileid );
-					ba_chancetable_glyph_dual[bin][place] = prob;
-					placeinlevel++;
-				}
-			}
+			VPXTreeGenerateProbabilities( ba_chancetable_glyph_dual[bin], chancetable_len, frequencyset[bin], maxtilect_remapped, bitsfortileid );
 		}
 
 		printf( "Classes: (Theoretical Space)\n" );
@@ -959,51 +900,10 @@ int main( int argc, char ** argv )
 		ftheoretical_bits_per_glyph_change /= tilechangect;
 	}
 #else
-	uint8_t ba_chancetable_glyph[(1<<bitsfortileid)-1];
+	uint8_t ba_chancetable_glyph[chancetable_len];
 	memset( ba_chancetable_glyph, 0, sizeof(ba_chancetable_glyph) );
 	{
-		int nout = 0;
-		int n = 0;
-		int level = 0;
-	
-		for( level = 0; level < bitsfortileid; level++ )
-		{
-			int maxmask = 1<<bitsfortileid;
-			int levelmask = (0xffffffffULL >> (32 - level)) << (bitsfortileid-level); // i.e. 0xfc (number of bits that must match)
-			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-			int lincmask = comparemask<<1;
-			int maskcheck = 0;
-			for( maskcheck = 0; maskcheck < maxmask; maskcheck += lincmask )
-			{
-				int count1 = 0;
-				int count0 = 0;
-				for( n = 0; n < (1<<bitsfortileid); n++ )
-				{
-#ifdef PROB_ENDIAN_FLIP
-					int tn = flipbits( n, bitsfortileid );
-#else
-					int tn = n;
-#endif
-					if( n >= maxtilect_remapped ) continue;
-
-					if( ( tn & levelmask ) == maskcheck )
-					{
-						if( tn & comparemask )
-							count1 += tilecounts[n];
-						else
-							count0 += tilecounts[n];
-					}
-				}
-				double chanceof0 = count0 / (double)(count0 + count1);
-				int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
-				if( prob < 0 ) prob = 0;
-				if( prob > 255 ) prob = 255;
-				int place = VPXTreePlaceByLevelPlace( level, nout, bitsfortileid );
-				ba_chancetable_glyph[place] = prob;
-				nout++;
-				//printf( "%d: %08x %d %d (%d)\n", nout-1, maskcheck, count0, count1, prob );
-			}
-		}
+		VPXTreeGenerateProbabilities( ba_chancetable_glyph, chancetable_len, tilecounts, maxtilect_remapped, bitsfortileid );
 	}
 #endif
 
