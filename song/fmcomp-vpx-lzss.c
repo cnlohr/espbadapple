@@ -87,12 +87,65 @@ int main()
 		// Combine note and run.
 		len |= run<<8;
 
-		AddValue( &dtNotes, note );
-		AddValue( &dtLenAndRun, len );
 		completeNoteList = realloc( completeNoteList, sizeof(completeNoteList[0]) * (numNotes+1) );
 		completeNoteList[numNotes] = (note | (len<<8));
 		numNotes++;
 	}
+
+	// STAGE 1: DRY RUN.
+	int numReg = 0;
+	int numRev = 0;
+
+	// Allow referencing things in the past.
+	int MinRL = 2;
+	int MRBits = 8;
+	int RLBits = 7;
+	int MaxREV = (1<<MRBits)-1;
+	int MaxRL = (1<<RLBits)-1;
+
+	for( i = 0; i < numNotes; i++ )
+	{
+		// Search for repeated sections.
+		int searchStart = i - MaxREV;
+		if( searchStart < 0 ) searchStart = 0;
+		int s;
+		int maxrl = 0, maxms = 0;
+		for( s = searchStart; s <= i; s++ )
+		{
+			int ml;
+			int mlc;
+			int rl;
+			for( 
+				ml = s, mlc = i, rl = 0;
+				ml < i && mlc < numNotes && rl < MaxRL;
+				ml++, mlc++, rl++ )
+			{
+				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
+			}
+
+			if( rl > maxrl )
+			{
+				maxrl = rl;
+				maxms = s;
+			}
+		}
+		if( maxrl > MinRL )
+		{
+			printf( "Found Readback at %d (%d %d)\n", i, i-maxms, maxrl );
+			i += maxrl;
+			numRev++;
+		}
+		else
+		{
+			// No readback found, we will have toa ctaully emit encode this note.
+			int note = completeNoteList[i]&0xff;
+			int len = completeNoteList[i]>>8;
+			AddValue( &dtNotes, note );
+			AddValue( &dtLenAndRun, len );
+			numReg++;
+		}
+	}
+
 
 	int bitsForNotes = VPXTreeBitsForMaxElement( dtNotes.numUnique );
 	int bitsForLenAndRun = VPXTreeBitsForMaxElement( dtLenAndRun.numUnique );
@@ -103,9 +156,7 @@ int main()
 	uint8_t probabilitiesNotes[treeSizeNotes];
 	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
 
-	printf( "===========\n" );
 	VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
-	printf( "===========\n" );
 	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	vpx_writer writer = { 0 };
@@ -160,56 +211,9 @@ int main()
 
 	printf( "Notes: %.1f bits\n", fBitsNotes );
 	printf( " Lens: %.1f bits\n", fBitsLens );
-	printf( "Total: %.1f bits\n", fBitsLens + fBitsNotes );
+	printf( "Total: %.1f bits (%.1f bytes)\n", fBitsLens + fBitsNotes, (fBitsLens + fBitsNotes)/8.0 );
 
-	// STAGE 1: DRY RUN.
 
-	// Allow referencing things in the past.
-	int numReg = 0;
-	int numRev = 0;
-	int MinRL = 2;
-	int MRBits = 7;
-	int RLBits = 7;
-	int MaxREV = (1<<MRBits)-1;
-	int MaxRL = (1<<RLBits)-1;
-	for( i = 0; i < numNotes; i++ )
-	{
-		uint32_t note = dtNotes.fullList[i];
-		uint32_t lenAndRun = dtLenAndRun.fullList[i];
-
-		// Search for repeated sections.
-		int searchStart = i - MaxREV;
-		if( searchStart < 0 ) searchStart = 0;
-		int s;
-		int maxrl = 0, maxms = 0;
-		for( s = searchStart; s <= i; s++ )
-		{
-			int ml;
-			int mlc;
-			int rl;
-			for( 
-				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
-				ml++, mlc++, rl++ )
-			{
-				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
-			}
-
-			if( rl > maxrl )
-			{
-				maxrl = rl;
-			}
-		}
-		if( maxrl > MinRL )
-		{
-			i += maxrl;
-			numRev++;
-		}
-		else
-		{
-			numReg++;
-		}
-	}
 
 	
 	int probability_of_reverse = ( 256 * numReg ) / (numReg + numRev + 1);
@@ -218,12 +222,14 @@ int main()
 
 	for( i = 0; i < numNotes; i++ )
 	{
-		uint32_t note = dtNotes.fullList[i];
-		uint32_t lenAndRun = dtLenAndRun.fullList[i];
+
+		int note = completeNoteList[i]&0xff;
+		int len = completeNoteList[i]>>8;
+
 		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
 			probabilitiesNotes, treeSizeNotes, bitsForNotes );
 
-		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, dtLenAndRun.fullList[i] ),
+		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
 			probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
 
 		// Search for repeated sections.
@@ -272,7 +278,7 @@ int main()
 			vpx_write( &writer, 0, probability_of_reverse );
 		}
 	}
-	printf( "Reverse Peek: %d / reg: %d\n", numRev, numReg );
+	printf( "Reverse Peek: %d (reverses) / reg: %d (encoded notes)\n", numRev, numReg );
 	printf( "Notes: %d\n", numNotes );
 	uint32_t sum = writer.pos;
 	printf( "Data: %d bytes\n", writer.pos );
