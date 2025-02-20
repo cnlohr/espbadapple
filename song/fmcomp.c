@@ -12,14 +12,17 @@ int main()
 	int i, j, k, l;
 	FILE * f = fopen( "fmraw.dat", "rb" );
 
+	// Notes
 	hufftype * symbols = 0;
 	hufffreq * symcounts = 0;
 	int numsym = 0;
 
+	// The play length of the note
 	hufftype * lenss = 0;
 	hufffreq * lencountss = 0;
 	int numlens = 0;
 
+	// How long between each run (Not used)
 	hufftype * runss = 0;
 	hufffreq * runcountss = 0;
 	int numrun = 0;

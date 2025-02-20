@@ -1363,45 +1363,34 @@ int main( int argc, char ** argv )
 		{
 			vpx_write(&w_glyphs, 1, probbacktrack);
 			vpx_write(&w_combined, 1, probbacktrack);
-#else
-		{
-#endif
-
-#ifdef USE_TILE_CLASSES
-			int fromclass = selectchancebin[tileLast];
-#endif
-
-			int ut = tile;
-#ifdef PROB_ENDIAN_FLIP
-			ut = flipbits( ut, bitsfortileid );
-#endif
-
-			for( level = 0; level < bitsfortileid; level++ )
-			{
-				int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-				int bit = !!(ut & comparemask);
-#ifdef USE_TILE_CLASSES
-				probability = ba_chancetable_glyph_dual[fromclass][probplace];
-				if( probplace >= chancetable_len )
-				{
-					fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
-					exit( -9 );
-				}
-#else
-				probability = ba_chancetable_glyph[probplace];
-#endif
-
-				vpx_write(&w_glyphs, bit, probability);
-#ifndef VPX_USE_HUFFMAN_TILES
-				vpx_write(&w_combined, bit, probability);
-#endif
-
-				if( bit )
-					probplace += 1<<(bitsfortileid-level-1);
-				else
-					probplace++;
-			}
 		}
+#endif
+
+		int ut = tile;
+#ifdef PROB_ENDIAN_FLIP
+		ut = flipbits( ut, bitsfortileid );
+#endif
+
+#ifdef USE_TILE_CLASSES
+		if( VPXTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid ) < 0 )
+		{
+			fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
+			exit( -9 );
+		}
+#ifndef VPX_USE_HUFFMAN_TILES
+		VPXTreeWriteSym( &w_combined, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
+#endif
+#else
+		if( VPXTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid ) < 0 )
+		{
+			fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
+			exit( -9 );
+		}
+#ifndef VPX_USE_HUFFMAN_TILES
+		VPXTreeWriteSym( &w_combined, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid );
+#endif
+
+#endif
 
 		int run = tileruns[n] - RSOPT;
 
@@ -1744,24 +1733,12 @@ int main( int argc, char ** argv )
 				}
 				else
 				{
-					// Have a new thing.
-					int probplace = 0;
-					tile = 0;
-					for( level = 0; level < bitsfortileid; level++ )
-					{
 
 #ifdef USE_TILE_CLASSES
-						probability = ba_chancetable_glyph_dual[fromclass][probplace];
+					tile = VPXTreeRead( &reader, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
 #else
-						probability = ba_chancetable_glyph[probplace];
+					tile = VPXTreeRead( &reader, ba_chancetable_glyph[probplace], chancetable_len, bitsfortileid );
 #endif
-						int bit = vpx_read( &reader, probability );
-						tile |= bit<<(bitsfortileid-level-1);
-						if( bit )
-							probplace += 1<<(bitsfortileid-level-1);
-						else
-							probplace++;
-					}
 					curglyph[y][x] = tile;
 					currun[y][x] = 0;
 				}

@@ -1,5 +1,14 @@
-// Explaination on how to store trees for storing multiple symbols when doing VPX coding.
+#ifndef _VPXTREE_H
+#define _VPXTREE_H
 
+// Explaination on how to store trees for storing multiple symbols when doing VPX coding.
+//
+// The tree implicitly stores its structre based on its index, so only the probabilities
+// need to be provided.
+//
+// Copyright 2025 Charles Lohr (cnlohr) under the MIT license. (See end of file)
+//
+//
 // MSB is always at root of tree so you can lop off unused portions of the tree.
 //
 // Tree:
@@ -24,6 +33,9 @@
 // so the right side can be lopped off.
 //
 
+//
+// You may want to tune the mult/shift values, I've seen some improvements in slight adjustments.
+//
 #ifndef VPX_PROB_MULT
 #define VPX_PROB_MULT 257.0
 #endif
@@ -32,7 +44,21 @@
 #define VPX_PROB_SHIFT (-0.0)
 #endif
 
-static int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
+#ifndef VPX_TREE_DECORATOR
+#define VPX_TREE_DECORATOR static
+#endif
+
+VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels );
+VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements );
+VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits );
+VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits );
+VPX_TREE_DECORATOR int VPXTreeReadSym( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
+VPX_TREE_DECORATOR int VPXTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
+
+
+
+
+VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
 {
 	int l;
 	int p = 0;
@@ -48,7 +74,7 @@ static int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevel
 	return p;
 }
 
-static inline int VPXTreeBitsForMaxElement( unsigned elements )
+VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements )
 {
 #if 0 && (defined( __GNUC__ ) || defined( __clang__ ))
 	return 32 - __builtin_clz( elements );
@@ -65,7 +91,7 @@ static inline int VPXTreeBitsForMaxElement( unsigned elements )
 #endif
 }
 
-static int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
+VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
 {
 	int chancetable_len = 0;
 	int levelplace = needed_bits-1;
@@ -84,7 +110,7 @@ static int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
 }
 
 // OUTPUTS probabilities
-static void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, float * frequencies, unsigned elements, unsigned needed_bits )
+VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits )
 {
 	int level;
 	for( level = 0; level < needed_bits; level++ )
@@ -125,8 +151,42 @@ static void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_p
 	}
 }
 
-static int VPXTreeRead( uint8_t * probabilities, int bits_for_max_element )
+VPX_TREE_DECORATOR int VPXTreeRead( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
 {
+	int probplace = 0;
+	int ret = 0;
+	int level;
+	for( level = 0; level < bits_for_max_element; level++ )
+	{
+		if( probplace >= num_probabilities ) return -1;
+		uint8_t probability = probabilities[probplace];
+		int bit = vpx_read( reader, probability );
+		ret |= bit<<(bits_for_max_element-level-1);
+		if( bit )
+			probplace += 1<<(bits_for_max_element-level-1);
+		else
+			probplace++;
+	}
+	return ret;
+}
+
+VPX_TREE_DECORATOR int VPXTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
+{
+	int level;
+	int probplace = 0;
+	for( level = 0; level < bits_for_max_element; level++ )
+	{
+		int comparemask = 1<<(bits_for_max_element-level-1); //i.e. 0x02 one fewer than the levelmask
+		int bit = !!(sym & comparemask);
+		if( probplace >= num_probabilities ) return -1;
+		uint8_t probability = probabilities[probplace];
+		vpx_write( writer, bit, probability);
+		if( bit )
+			probplace += 1<<(bits_for_max_element-level-1);
+		else
+			probplace++;
+	}
+	return 0;
 }
 
 /*
@@ -232,3 +292,26 @@ int main()
 }
 
 */
+
+/*
+  Copyright 2025 <>< cnlohr (Charles Lohr)
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to
+  deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+  sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  DEALINGS IN THE SOFTWARE.
+*/
+#endif
