@@ -53,38 +53,21 @@ int main()
 		int run = (s)&0x07;
 
 		// Combine note and run.
-		len |= run<<8;
+		len |= run<<5;
+
+		note |= len<<8;
+
+		//printf( "%d %02x\n", note, len );
 
 		numsym = HuffmanAppendHelper( &symbols, &symcounts, numsym, note );
 		notearray = realloc( notearray, (notecount + 1) * sizeof( notearray[0] ) );
 		notearray[notecount++] = note;
-
-		numlens = HuffmanAppendHelper( &lenss, &lencountss, numlens, len );
-		lenarray = realloc( lenarray, (lencount + 1) * sizeof( lenarray[0] ) );
-		lenarray[lencount++] = len;
-
-		numrun = HuffmanAppendHelper( &runss, &runcountss, numrun, run );
-		runarray = realloc( runarray, (runcount + 1) * sizeof( runarray[0] ) );
-		runarray[runcount++] = run;
 	}
 	
 	int hufflen;
 	huffelement * he = GenerateHuffmanTree( symbols, symcounts, numsym, &hufflen );
-
 	int htlen = 0;
 	huffup * hu = GenPairTable( he, &htlen );
-
-	int hufflenl;
-	huffelement * hel = GenerateHuffmanTree( lenss, lencountss, numlens, &hufflenl );
-
-	int htlenl = 0;
-	huffup * hul = GenPairTable( hel, &htlenl );
-
-	int hufflenr;
-	huffelement * her = GenerateHuffmanTree( runss, runcountss, numrun, &hufflenr );
-
-	int htlenr = 0;
-	huffup * hur = GenPairTable( her, &htlenr );
 
 
 	printf( "NOTES:\n" );
@@ -97,20 +80,8 @@ int main()
 			printf( "%c", thu->bitstream[k]+'0' );
 		printf( "\n" );
 	}
-	printf( "LENS:\n" );
-	for( i = 0; i < htlenl; i++ )
-	{
-		huffup * thu = hul + i;
-		printf( "%3d: %04x :%5d : ", i, thu->value, thu->freq );
-
-		for( k = 0; k < thu->bitlen; k++ )
-			printf( "%c", thu->bitstream[k]+'0' );
-		printf( "\n" );
-	}
-
 
 	FILE * fTN = fopen( "huffTN_fmraw.dat", "wb" );
-	FILE * fTL = fopen( "huffTL_fmraw.dat", "wb" );
 	FILE * fD = fopen( "huffD_fmraw.dat", "wb" );
 
 	FILE * fData = fopen( "espbadapple_song.h", "wb" );
@@ -151,42 +122,7 @@ int main()
 		}
 	}
 	fprintf( fData, "};\n\n" );
-	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl );
 
-	printf( "max pd %d / %d\n", maxpdA, maxpdB );
-
-	maxpdA = 0;
-	maxpdB = 0;
-	int htnlen2 = 0;
-	for( i = 0; i < hufflenl; i++ )
-	{
-		huffelement * h = hel + i;
-		if( h->is_term )
-		{
-			uint32_t sym = h->value;
-			fwrite( &sym, 1, 1, fTL );
-			htnlen2 += 1;
-			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
-		}
-		else
-		{
-			int pd0 = h->pair0 - i;
-			int pd1 = h->pair1 - i;
-			if( pd0 < 0 || pd1 < 0 )
-			{
-				fprintf( stderr, "Error: Illegal pd\n" );
-				return -5;
-			}
-			if( pd0 > maxpdA ) maxpdA = pd0;
-			if( pd1 > maxpdB ) maxpdB = pd1;
-			uint32_t sym = 0x8000 | (pd0) | (pd1<<8);
-			fwrite( &sym, 1, 2, fTL );
-			htnlen2 += 2;
-			fprintf( fData, "0x%02x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
-		}
-	}
-
-	fprintf( fData, "};\n\n" );
 	fprintf( fData, "static uint8_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
@@ -194,8 +130,6 @@ int main()
 	uint8_t runbyte = 0;
 	uint8_t runbyteplace = 0;
 	int total_bytes = 0;
-	printf( "NOTES: %d\n", notecount );
-	int bitcount = 0;
 	for( i = 0; i < notecount; i++ )
 	{
 		int n = notearray[i];
@@ -205,8 +139,6 @@ int main()
 			if( thu->value == n )
 			{
 				int l;
-				bitcount += thu->bitlen;
-
 				for( l = 0; l < thu->bitlen; l++ )
 				{
 					runbyte |= thu->bitstream[l] << runbyteplace;
@@ -229,39 +161,7 @@ int main()
 			return -4;
 		}
 
-		int l = lenarray[i];
-		for( k = 0; k < htlenl; k++ )
-		{
-			huffup * thul = hul + k;
-			if( thul->value == l )
-			{
-				int l;
-				bitcount += thul->bitlen;
-
-				for( l = 0; l < thul->bitlen; l++ );
-				{
-					runbyte |= thul->bitstream[l] << runbyteplace;
-					runbyteplace++;
-					if( runbyteplace == 8 )
-					{
-						fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
-						total_bytes++;
-						fwrite( &runbyte, 1, 1, fD );
-						runbyte = 0;
-						runbyteplace = 0;
-					}
-				}
-				break;
-			}
-		}
-		if( k == htlenl )
-		{
-			fprintf( stderr, "Fault: Internal Error (run %d not in map)\n", l );
-			return -4;
-		}
 	}
-
-	printf( "Bitcount: %d\n", bitcount );
 
 	if( runbyteplace )
 	{
@@ -275,8 +175,7 @@ int main()
 	fclose( fData );
 	printf( "Used mask: %04x\n", usedmask );
 	printf( "Huff Tree (N): %d bytes\n", htnlen );
-	printf( "Huff Tree (D): %d bytes\n", htnlen2 );
 	printf( "Data len: %d bytes\n", total_bytes );
-	printf( "TOTAL: %d bytes\n", htnlen + htnlen2 + total_bytes );
+	printf( "TOTAL: %d bytes\n", htnlen + total_bytes );
 	return 0;
 }

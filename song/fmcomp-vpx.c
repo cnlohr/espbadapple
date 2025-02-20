@@ -1,41 +1,72 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define HUFFER_IMPLEMENTATION
-#include "hufftreegen.h"
+//XXX THIS DOES NOT WORK YET.  DATA OUTPUT IS BAD.
 
+#define VPXCODING_READER
+#define VPXCODING_WRITER
+#include "vpxcoding.h"
+
+#include "vpxtree.h"
 
 // TODO: Can we also store substrings here?
+
+struct DataTree
+{
+	int numUnique;
+	int numList;
+	uint32_t * uniqueMap;
+	float * uniqueCount; // Float to play nice with the vpx tree code.
+	uint32_t * fullList;
+};
+
+int GetIndexFromValue( struct DataTree * dt, uint32_t value )
+{
+	int i;
+	for( i = 0; i < dt->numUnique; i++ )
+	{
+		if( dt->uniqueMap[i] == value )
+		{
+			return i;
+		}
+	}
+	fprintf( stderr, "Error: Requesting unknown value (%d)\n", value );
+	return -1;
+}
+
+void AddValue( struct DataTree * dt, uint32_t value )
+{
+	int nu = dt->numList;
+	dt->fullList = realloc( dt->fullList, (nu+1) * sizeof(dt->fullList[0]) );
+	dt->fullList[nu] = value;
+	dt->numList = nu + 1;
+	int n;
+	for( n = 0; n < dt->numUnique; n++ )
+	{
+		if( dt->uniqueMap[n] == value )
+		{
+			dt->uniqueCount[n]++;
+			return;
+		}
+	}
+
+	dt->uniqueMap = realloc( dt->uniqueMap, (n+1)*sizeof(dt->uniqueMap[0]) );
+	dt->uniqueMap[n] = value;
+	dt->uniqueCount = realloc( dt->uniqueCount, (n+1)*sizeof(dt->uniqueCount[0]) );
+	dt->uniqueCount[n] = 1;
+	dt->numUnique = n+1;
+}
 
 int main()
 {
 	int i, j, k, l;
 	FILE * f = fopen( "fmraw.dat", "rb" );
 
-	// Notes
-	hufftype * symbols = 0;
-	hufffreq * symcounts = 0;
-	int numsym = 0;
+	struct DataTree dtNotes = { 0 };
+	struct DataTree dtLenAndRun = { 0 };
 
-	// The play length of the note
-	hufftype * lenss = 0;
-	hufffreq * lencountss = 0;
-	int numlens = 0;
+	int numNotes = 0;
 
-	// How long between each run (Not used)
-	hufftype * runss = 0;
-	hufffreq * runcountss = 0;
-	int numrun = 0;
-
-	uint16_t * notearray = 0;
-	int notecount = 0;
-	uint16_t * lenarray = 0;
-	int lencount = 0;
-	uint16_t * runarray = 0;
-	int runcount = 0;
-
-
-	uint16_t usedmask = 0;
 	while( !feof( f ) )
 	{
 		uint16_t s;
@@ -47,7 +78,7 @@ int main()
 			return -6;
 		}
 
-		usedmask |= s;
+		//usedmask |= s;
 		int note = (s>>8)&0xff; // ( (next_note >> 8 ) & 0xff) + 47;
 		int len = (s>>3)&0x1f;       // ( (next_note >> 3 ) & 0x1f) + t + 1;
 		int run = (s)&0x07;
@@ -55,19 +86,82 @@ int main()
 		// Combine note and run.
 		len |= run<<8;
 
-		numsym = HuffmanAppendHelper( &symbols, &symcounts, numsym, note );
-		notearray = realloc( notearray, (notecount + 1) * sizeof( notearray[0] ) );
-		notearray[notecount++] = note;
-
-		numlens = HuffmanAppendHelper( &lenss, &lencountss, numlens, len );
-		lenarray = realloc( lenarray, (lencount + 1) * sizeof( lenarray[0] ) );
-		lenarray[lencount++] = len;
-
-		numrun = HuffmanAppendHelper( &runss, &runcountss, numrun, run );
-		runarray = realloc( runarray, (runcount + 1) * sizeof( runarray[0] ) );
-		runarray[runcount++] = run;
+		AddValue( &dtNotes, note );
+		AddValue( &dtLenAndRun, len );
+		numNotes++;
 	}
+
+	int bitsForNotes = VPXTreeBitsForMaxElement( dtNotes.numUnique );
+	int bitsForLenAndRun = VPXTreeBitsForMaxElement( dtLenAndRun.numUnique );
+
+	int treeSizeNotes = VPXTreeGetSize( dtNotes.numUnique, bitsForNotes );
+	int treeSizeLenAndRun = VPXTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
+
+	uint8_t probabilitiesNotes[treeSizeNotes];
+	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
+
+	printf( "===========\n" );
+	VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
+	printf( "===========\n" );
+	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
+
+	vpx_writer writer = { 0 };
+
+	uint8_t vpxbuffer[1024*16];
+	vpx_start_encode( &writer, vpxbuffer, sizeof(vpxbuffer) );
+
+	printf( "Bits: %d/%d\n", bitsForNotes, bitsForLenAndRun );
+
+	for( i = 0; i < dtNotes.numUnique; i++ )
+	{
+		printf( "%2d %02x %f\n", i, dtNotes.uniqueMap[i], dtNotes.uniqueCount[i] );
+	}
+
+	for( i = 0; i < treeSizeNotes; i++ )
+	{
+		printf( "%d ", probabilitiesNotes[i] );
+	}
+	printf( "\n" );
+
+	for( i = 0; i < dtLenAndRun.numUnique; i++ )
+	{
+		printf( "%2d %04x %f\n", i, dtLenAndRun.uniqueMap[i], dtLenAndRun.uniqueCount[i] );
+	}
+
+	for( i = 0; i < treeSizeLenAndRun; i++ )
+	{
+		printf( "%d ", probabilitiesLenAndRun[i] );
+	}
+	printf( "\n" );
+
+	for( i = 0; i < numNotes; i++ )
+	{
+		uint32_t note = dtNotes.fullList[i];
+		uint32_t lenAndRun = dtLenAndRun.fullList[i];
+		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
+			probabilitiesNotes, treeSizeNotes, bitsForNotes );
+
+		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, dtLenAndRun.fullList[i] ),
+			probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
+	}
+	printf( "Notes: %d\n", numNotes );
+	uint32_t sum = writer.pos;
+	printf( "Data: %d bytes\n", writer.pos );
+
+	printf( "Notes: %d / %d\n", treeSizeNotes, dtNotes.numUnique * 1 );
+	sum += treeSizeNotes;
+	sum += dtNotes.numUnique * 1;
+
+	printf( "LenAndRun: %d / %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 2 );
+	sum += treeSizeLenAndRun;
+	sum += dtLenAndRun.numUnique * 2;
+
+	printf( "Total: %d\n", sum );
+	//unsigned int pos;
+	//unsigned int size;
+
 	
+#if 0
 	int hufflen;
 	huffelement * he = GenerateHuffmanTree( symbols, symcounts, numsym, &hufflen );
 
@@ -194,8 +288,6 @@ int main()
 	uint8_t runbyte = 0;
 	uint8_t runbyteplace = 0;
 	int total_bytes = 0;
-	printf( "NOTES: %d\n", notecount );
-	int bitcount = 0;
 	for( i = 0; i < notecount; i++ )
 	{
 		int n = notearray[i];
@@ -205,8 +297,6 @@ int main()
 			if( thu->value == n )
 			{
 				int l;
-				bitcount += thu->bitlen;
-
 				for( l = 0; l < thu->bitlen; l++ )
 				{
 					runbyte |= thu->bitstream[l] << runbyteplace;
@@ -236,8 +326,6 @@ int main()
 			if( thul->value == l )
 			{
 				int l;
-				bitcount += thul->bitlen;
-
 				for( l = 0; l < thul->bitlen; l++ );
 				{
 					runbyte |= thul->bitstream[l] << runbyteplace;
@@ -261,8 +349,6 @@ int main()
 		}
 	}
 
-	printf( "Bitcount: %d\n", bitcount );
-
 	if( runbyteplace )
 	{
 		fwrite( &runbyte, 1, 1, fD );
@@ -278,5 +364,6 @@ int main()
 	printf( "Huff Tree (D): %d bytes\n", htnlen2 );
 	printf( "Data len: %d bytes\n", total_bytes );
 	printf( "TOTAL: %d bytes\n", htnlen + htnlen2 + total_bytes );
+#endif
 	return 0;
 }

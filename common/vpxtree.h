@@ -48,7 +48,6 @@
 #define VPX_TREE_DECORATOR static
 #endif
 
-VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels );
 VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements );
 VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits );
 VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits );
@@ -57,7 +56,7 @@ VPX_TREE_DECORATOR int VPXTreeWriteSym( vpx_writer * writer, int sym, uint8_t * 
 
 
 
-
+// Used by below functions
 VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
 {
 	int l;
@@ -110,7 +109,8 @@ VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
 }
 
 // OUTPUTS probabilities
-VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits )
+VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities,
+	const float * frequencies, unsigned elements, unsigned needed_bits )
 {
 	int level;
 	for( level = 0; level < needed_bits; level++ )
@@ -140,6 +140,7 @@ VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, u
 				}
 			}
 			double chanceof0 = count0 / (double)(count0 + count1);
+			printf( "[%f %f]\n", count0, count1 );
 			int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
