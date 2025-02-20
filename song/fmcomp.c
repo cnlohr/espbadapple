@@ -204,13 +204,14 @@ int main()
 			huffup * thu = hu + k;
 			if( thu->value == n )
 			{
-				int l;
+				int ll;
 				bitcount += thu->bitlen;
 
-				for( l = 0; l < thu->bitlen; l++ )
+				for( ll = 0; ll < thu->bitlen; ll++ )
 				{
-					runbyte |= thu->bitstream[l] << runbyteplace;
+					runbyte |= thu->bitstream[ll] << runbyteplace;
 					runbyteplace++;
+
 					if( runbyteplace == 8 )
 					{
 						fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
@@ -228,19 +229,18 @@ int main()
 			fprintf( stderr, "Fault: Internal Error (%04x not in map)\n", n );
 			return -4;
 		}
-
-		int l = lenarray[i];
+		int lev = lenarray[i];
 		for( k = 0; k < htlenl; k++ )
 		{
 			huffup * thul = hul + k;
-			if( thul->value == l )
+			if( thul->value == lev )
 			{
-				int l;
+				int ll;
 				bitcount += thul->bitlen;
 
-				for( l = 0; l < thul->bitlen; l++ );
+				for( ll = 0; ll < thul->bitlen; ll++ )
 				{
-					runbyte |= thul->bitstream[l] << runbyteplace;
+					runbyte |= thul->bitstream[ll] << runbyteplace;
 					runbyteplace++;
 					if( runbyteplace == 8 )
 					{
@@ -276,7 +276,7 @@ int main()
 	printf( "Used mask: %04x\n", usedmask );
 	printf( "Huff Tree (N): %d bytes\n", htnlen );
 	printf( "Huff Tree (D): %d bytes\n", htnlen2 );
-	printf( "Data len: %d bytes\n", total_bytes );
+	printf( "Data len: %d bytes (%d -> %d)\n", total_bytes, bitcount, (bitcount+7)/8 );
 	printf( "TOTAL: %d bytes\n", htnlen + htnlen2 + total_bytes );
 	return 0;
 }

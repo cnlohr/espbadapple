@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <math.h>
 //XXX THIS DOES NOT WORK YET.  DATA OUTPUT IS BAD.
 
 #define VPXCODING_READER
@@ -134,6 +134,31 @@ int main()
 	}
 	printf( "\n" );
 
+	printf( "Theoretical:\n" );
+
+	float fBitsNotes = 0;
+	float fBitsLens = 0;
+
+	for( i = 0; i < dtNotes.numUnique; i++ )
+	{
+		float fPortion = (dtNotes.uniqueCount[i] / numNotes);
+		if( dtNotes.uniqueCount[i] == 0 ) continue;
+		float fBitContrib = -log(fPortion)/log(2.0);
+		fBitsNotes += fBitContrib * dtNotes.uniqueCount[i];
+	}
+
+	for( i = 0; i < dtLenAndRun.numUnique; i++ )
+	{
+		float fPortion = (dtLenAndRun.uniqueCount[i] / numNotes);
+		if( dtLenAndRun.uniqueCount[i] == 0 ) continue;
+		float fBitContrib = -log(fPortion)/log(2.0);
+		fBitsLens += fBitContrib * dtLenAndRun.uniqueCount[i];
+	}
+
+	printf( "Notes: %.1f bits\n", fBitsNotes );
+	printf( " Lens: %.1f bits\n", fBitsLens );
+	printf( "Total: %.1f bits\n", fBitsLens + fBitsNotes );
+
 	for( i = 0; i < numNotes; i++ )
 	{
 		uint32_t note = dtNotes.fullList[i];
@@ -148,11 +173,11 @@ int main()
 	uint32_t sum = writer.pos;
 	printf( "Data: %d bytes\n", writer.pos );
 
-	printf( "Notes: %d / %d\n", treeSizeNotes, dtNotes.numUnique * 1 );
+	printf( "Notes: %d + %d\n", treeSizeNotes, dtNotes.numUnique * 1 );
 	sum += treeSizeNotes;
 	sum += dtNotes.numUnique * 1;
 
-	printf( "LenAndRun: %d / %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 2 );
+	printf( "LenAndRun: %d + %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 2 );
 	sum += treeSizeLenAndRun;
 	sum += dtLenAndRun.numUnique * 2;
 

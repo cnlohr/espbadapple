@@ -1,6 +1,6 @@
 all : testsynth midiexport fmcomp-vpx track-float-48000.dat
 
-CFLAGS:=-O2 -g -I../common
+CFLAGS:=-Og -g -I../common
 
 midiexport : midiexport.c
 	gcc $(CFLAGS) -o $@ $^ -lm
