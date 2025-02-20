@@ -386,26 +386,36 @@ int main( int argc, char ** argv )
 					// based on
 					//int tilechanges;
 
-#ifdef VPX_CODING_ALLOW_BACKTRACK
-					// Allow row-wrapping.
-					int backtile = (x == 0 && y == 0 ) ? lasttile[BLKY-1][BLKX-1] : lasttile[y][x-1];
-					if( t == backtile )
-					{
-						backtrackcount++;
-						tilechanges[tilechangect] = -1;
-					}
-					else
-#endif			
-					{
-						tilechanges[tilechangect] = t;
-						tilecounts_temp[t]++;					// For frequency monitoring.
-					}
-					tilechangesReal[tilechangect] = t;
-					tileruns[tilechangect] = forward;
-
 					int lt = lasttile[y][x];
-					tilechangesfrom[tilechangect] = lt;
-					tilechangect++;
+#ifdef RUNCODES_CONTINUOUS_BY_CLASS
+					// If we're doing continuous runcodes, then we can actually skip the first cell from being emitted, since we don't need it to know run length.
+					if( t != startcell || frame != 0 )
+#endif
+					{
+
+#ifdef VPX_CODING_ALLOW_BACKTRACK
+						// Allow row-wrapping.
+						int backtile = (x == 0 && y == 0 ) ? lasttile[BLKY-1][BLKX-1] : lasttile[y][x-1];
+						if( t == backtile )
+						{
+							backtrackcount++;
+							tilechanges[tilechangect] = -1;
+						}
+						else
+#endif
+						{
+							tilechanges[tilechangect] = t;
+							tilecounts_temp[t]++;					// For frequency monitoring.
+						}
+
+						tilechangesReal[tilechangect] = t;
+						tileruns[tilechangect] = forward;
+
+						tilechangesfrom[tilechangect] = lt;
+						tilechangect++;
+
+						fromtofrequency[lt*maxtilect+t]++;
+					}
 
 					fwrite( &t, 1, 1, fRawTileStream );
 					fwrite( &t, 1, 2, fRawTileRunLen );
@@ -413,9 +423,6 @@ int main( int argc, char ** argv )
 					// For knowing when to pull a new cell.
 					tilechangerun[y][x] = forward;
 					lasttile[y][x] = t;
-
-					// New experiment: Synthesize a full matrix.
-					fromtofrequency[lt*maxtilect+t]++;
 				}
 				else
 				{
@@ -627,17 +634,16 @@ int main( int argc, char ** argv )
 		int levelplace = bitsfortileid-1;
 		int level;
 		int chancetable_place = 0;
-		int n = maxtilect_remapped;
+		int n = maxtilect_remapped-1;
 		for( level = 0; level < bitsfortileid; level++ )
 		{
 			int comparemask = 1<<(bitsfortileid-level-1); //i.e. 0x02 one fewer than the levelmask
-			int bit = !!(maxtilect_remapped & comparemask);
+			int bit = !!(n & comparemask);
 			if( bit )
 				chancetable_len += 1<<(bitsfortileid-level-1);
 			else
 				chancetable_len++;
 		}
-		printf( "Chancetable Length: %d\n", chancetable_len );
 	}
 
 	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
@@ -711,6 +717,19 @@ int main( int argc, char ** argv )
 		// Perform some k-means iterations on the dataset to anneal the data set.
 		int kmeansiter = 20;
 		int least_matching_glyph = -1;  // What is the most poorly matching glyph, so if we need to fill in a bin, we can use this one.
+		float * fromtofrequencyremap_from_normalized = calloc( 4, maxtilect_remapped*maxtilect_remapped );
+		for( from = 0; from < maxtilect_remapped; from++ )
+		{
+			float tfc = 0.0;
+			int to;
+			for( to = 0; to < maxtilect_remapped; to++ )
+				tfc += fromtofrequencyremap[from*maxtilect_remapped+to]*fromtofrequencyremap[from*maxtilect_remapped+to];
+			tfc = sqrtf( tfc ); // normalization = sqrt( n*n );
+			for( to = 0; to < maxtilect_remapped; to++ )
+				fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to] = fromtofrequencyremap[from*maxtilect_remapped+to] / tfc;
+		}
+
+
 		for( i = 0; i < kmeansiter; i++ )
 		{
 			int to, b;
@@ -718,44 +737,54 @@ int main( int argc, char ** argv )
 				for( b = 0; b < USE_TILE_CLASSES; b++ )
 					frequencyset[b][to] = 0;
 
+			int mapped_bins[USE_TILE_CLASSES] = { 0 };
 			for( from = 0; from < maxtilect_remapped; from++ )
 			{
 				int bin = selectchancebin[from];
+				mapped_bins[bin]++;
 				for( to = 0; to < maxtilect_remapped; to++ )
 				{
-					frequencyset[bin][to] += fromtofrequencyremap[from*maxtilect_remapped+to];
+					frequencyset[bin][to] += fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to];
 				}
 			}
 
 			for( b = 0; b < USE_TILE_CLASSES; b++ )
 			{
-				float binsum = 0;
-				for( to = 0; to < maxtilect_remapped; to++ )
+				if( mapped_bins[b] == 0 && least_matching_glyph != -1 )
 				{
-					binsum += frequencyset[b][to];
-				}
-				for( to = 0; to < maxtilect_remapped; to++ )
-				{
-					frequencyset[b][to]/=binsum;
-				}
-				//printf( "%.1f(%d)\n", binsum, least_matching_glyph );
-				if( binsum < 1 && least_matching_glyph != -1 )
-				{
-					// No matching things for this bin.  Pick one at random.
-					selectchancebin[least_matching_glyph] = b;
+					// No matching things for this bin.  
+					int fromtile = 
+							least_matching_glyph;      // = b; // Use least used.
+							//rand()%maxtilect_remapped; // Pick one at random.
+
+					selectchancebin[least_matching_glyph] = fromtile;
+
+					//printf( "Reassign %d to %d\n", fromtile, b );
 					for( to = 0; to < maxtilect_remapped; to++ )
 					{
-						binsum += frequencyset[b][to] = fromtofrequencyremap[least_matching_glyph*maxtilect_remapped+to];
+						frequencyset[b][to] = fromtofrequencyremap_from_normalized[fromtile*maxtilect_remapped+to];
 					}
-					for( to = 0; to < maxtilect_remapped; to++ )
-					{
-						frequencyset[b][to]/=binsum;
-					}
+					mapped_bins[b] = 1;
 					//printf( "S: %d %.1f\n", least_matching_glyph, binsum );
 					least_matching_glyph = -1;
 				}
+				else
+				{
+					float sumset = 0.0;
+#if 0
+					for( to = 0; to < maxtilect_remapped; to++ )
+						sumset += frequencyset[b][to];
+
+					sumset *= sumset;
+
+					for( to = 0; to < maxtilect_remapped; to++ )
+						frequencyset[b][to] /= sumset;
+#endif
+					for( to = 0; to < maxtilect_remapped; to++ )
+						frequencyset[b][to] /= mapped_bins[b];
+
+				}
 			}
-			//printf( "\n" );
 
 			float weakestscore = 1e20;
 			for( from = 0; from < maxtilect_remapped; from++ )
@@ -772,7 +801,7 @@ int main( int argc, char ** argv )
 					for( to = 0; to < maxtilect_remapped; to++ )
 					{
 						//printf( "%d*%d,",frequencyset[b][to], fromtofrequencyremap[from*maxtilect_remapped+to] );
-						binscore[b] += frequencyset[b][to] * fromtofrequencyremap[from*maxtilect_remapped+to];
+						binscore[b] += frequencyset[b][to] * fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to];
 					}
 				}
 
@@ -780,13 +809,14 @@ int main( int argc, char ** argv )
 				float bestbinscore = 0;
 				for( b = 0; b < USE_TILE_CLASSES; b++ )
 				{
+					//printf( "%6.2f ", binscore[b] );
 					if( binscore[b] > bestbinscore )
 					{
 						bestbinscore = binscore[b];
 						bestbin = b;
 					}
 				}
-
+				//printf( " Best for %d from to class %d score: %f\n", from, bestbin, bestbinscore );
 				bin = bestbin;
 
 				selectchancebin[from] = bin;
@@ -813,14 +843,34 @@ int main( int argc, char ** argv )
 
 		int bin;
 		int to;
-		FILE * fk = fopen( "paired.csv", "w" );
-		for( to = 0; to < maxtilect_remapped; to++ )
 		{
-			for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
-				fprintf( fk, "%f,", frequencyset[bin][to] );
-			fprintf( fk, "\n" );
+			FILE * fk = fopen( "paired.csv", "w" );
+			for( to = 0; to < maxtilect_remapped; to++ )
+			{
+				for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+					fprintf( fk, "%f,", frequencyset[bin][to] );
+				fprintf( fk, "\n" );
+			}
+			fclose( fk );
 		}
-		fclose( fk );
+
+
+		{
+			int counts[maxtilect_remapped];
+			memset( counts, 0, sizeof( counts ) );
+			FILE * fk = fopen( "tile_selection_counts.csv", "w" );
+			int i;
+			for( i = 0; i < tilechangect; i++ )
+			{
+				counts[tilechanges[i]]++;
+			}
+			for( i = 0; i < maxtilect_remapped; i++ )
+			{
+				fprintf( fk, "%d\n", counts[i] );
+			}
+			fclose( fk );
+		}
+
 
 		for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
 		{
@@ -862,15 +912,51 @@ int main( int argc, char ** argv )
 					if( prob < 0 ) prob = 0;
 					if( prob > 255 ) prob = 255;
 					int place = VPXTreePlaceByLevelPlace( level, placeinlevel, bitsfortileid );
-					//printf( "Writing: %d (%d %d %d (%.4f %.4f = %d))\n", place, level, placeinlevel, bitsfortileid, count0, count1, prob );
 					ba_chancetable_glyph_dual[bin][place] = prob;
-					//printf( "%d: %08x %f %f (%d)\n", nout-1, maskcheck, count0, count1, prob );
 					placeinlevel++;
 				}
 			}
 		}
 
-		printf( "TODO: Compute ftheoretical_bits_per_glyph_change\n" );
+		printf( "Classes: (Theoretical Space)\n" );
+		for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+		{
+			int counts[maxtilect_remapped];
+			memset( counts, 0, sizeof( counts ) );
+			int i;
+			float ct = 0.0;
+			ct = 0;
+			for( i = 0; i < tilechangect; i++ )
+			{
+				int from = tilechangesfrom[i];
+				int class = selectchancebin[from];
+				if( class == bin )
+				{
+					counts[tilechanges[i]]++;
+					ct++;
+				}
+			}
+
+			float bitsthisbin = 0;
+			for( i = 0; i < maxtilect_remapped; i++ )
+			{
+				float fPortion = (counts[i] / ct);
+				if( counts[i] == 0 ) continue;
+				float fBitContrib = -log(fPortion)/log(2.0);
+				bitsthisbin += fBitContrib * counts[i];
+			}
+
+			printf( "%3d:%6.0f:%6.0f bits (%f bits per symbol)", bin, ct, bitsthisbin, bitsthisbin/ct );
+			ftheoretical_bits_per_glyph_change += bitsthisbin;
+
+			for( i = 0; i < maxtilect_remapped; i++ )
+			{
+				int class = selectchancebin[i];
+				if( class == bin ) printf( " %d", i );
+			}
+			printf( "\n" );
+		}
+		ftheoretical_bits_per_glyph_change /= tilechangect;
 	}
 #else
 	uint8_t ba_chancetable_glyph[(1<<bitsfortileid)-1];
@@ -1382,7 +1468,7 @@ int main( int argc, char ** argv )
 #endif
 
 #ifdef USE_TILE_CLASSES
-			int fromclass = selectchancebin[tilechangesfrom[n]];
+			int fromclass = selectchancebin[tileLast];
 #endif
 
 			int ut = tile;
@@ -1396,6 +1482,11 @@ int main( int argc, char ** argv )
 				int bit = !!(ut & comparemask);
 #ifdef USE_TILE_CLASSES
 				probability = ba_chancetable_glyph_dual[fromclass][probplace];
+				if( probplace >= chancetable_len )
+				{
+					fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
+					exit( -9 );
+				}
 #else
 				probability = ba_chancetable_glyph[probplace];
 #endif
@@ -1404,6 +1495,7 @@ int main( int argc, char ** argv )
 #ifndef VPX_USE_HUFFMAN_TILES
 				vpx_write(&w_combined, bit, probability);
 #endif
+
 				if( bit )
 					probplace += 1<<(bitsfortileid-level-1);
 				else
@@ -1412,7 +1504,6 @@ int main( int argc, char ** argv )
 		}
 
 		int run = tileruns[n] - RSOPT;
-
 
 #ifdef RUNCODES_CONTINUOUS
 		int b;
@@ -1423,6 +1514,7 @@ int main( int argc, char ** argv )
 #else
 		int class = selectchancebin[tileLast];
 #endif
+
 		for( b = 0; b < run; b++ )
 		{
 			probability = ba_vpx_probs_by_tile_run_continuous[class][(b < RUNCODES_CONTINUOUS - 1)?b:(RUNCODES_CONTINUOUS - 1)];
