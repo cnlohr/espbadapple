@@ -85,7 +85,7 @@ int main()
 		int run = (s)&0x07;
 
 		// Combine note and run.
-		len |= run<<8;
+		len |= run<<4;
 
 		completeNoteList = realloc( completeNoteList, sizeof(completeNoteList[0]) * (numNotes+1) );
 		completeNoteList[numNotes] = (note | (len<<8));
@@ -97,16 +97,19 @@ int main()
 	int numRev = 0;
 
 	// Allow referencing things in the past.
+	// Kind of arbitrary tuning.
 	int MinRL = 2;
 	int MRBits = 8;
 	int RLBits = 7;
 	int MaxREV = (1<<MRBits)-1;
 	int MaxRL = (1<<RLBits)-1;
 
+printf( "TODO: Make maximum reverse be presented where index is length + distance\n" );
+
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV;
+		int searchStart = i - MaxREV - MaxRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int maxrl = 0, maxms = 0;
@@ -123,7 +126,7 @@ int main()
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > maxrl )
+			if( rl > maxrl && (i - (s + maxrl) < MaxREV) ) // XXX TODO VALIDATE ME
 			{
 				maxrl = rl;
 				maxms = s;
@@ -179,7 +182,7 @@ int main()
 
 	for( i = 0; i < dtLenAndRun.numUnique; i++ )
 	{
-		printf( "%2d %04x %f\n", i, dtLenAndRun.uniqueMap[i], dtLenAndRun.uniqueCount[i] );
+		printf( "%2d %02x %f\n", i, dtLenAndRun.uniqueMap[i], dtLenAndRun.uniqueCount[i] );
 	}
 
 	for( i = 0; i < treeSizeLenAndRun; i++ )
@@ -238,7 +241,7 @@ int main()
 		int len = completeNoteList[i]>>8;
 
 		// Search for repeated sections.
-		int searchStart = i - MaxREV;
+		int searchStart = i - MaxREV - MaxRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int maxrl = 0, maxms = 0;
@@ -255,7 +258,7 @@ int main()
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > maxrl )
+			if( rl > maxrl && (i - (s + maxrl) < MaxREV) ) // XXX TODO I think this is wrong.
 			{
 				maxrl = rl;
 				maxms = s;
@@ -263,7 +266,10 @@ int main()
 		}
 		if( maxrl > MinRL )
 		{
+			int offset = i-maxms-maxrl;
 			i += maxrl;
+			printf( "Emitting: %d %d\n", maxrl, offset );
+
 			vpx_write( &writer, 1, probability_of_reverse );
 			//printf( "Backlook: %d %d\n", maxrl, maxms );
 			int k;
@@ -272,11 +278,13 @@ int main()
 				vpx_write( &writer, !!(maxrl&1), 128 );
 				maxrl>>=1;
 			}
+
 			for( k = 0; k < MRBits; k++ )
 			{
-				vpx_write( &writer, !!(maxms&1), 128 );
-				maxms>>=1;
+				vpx_write( &writer, !!(offset&1), 128 );
+				offset>>=1;
 			}
+
 		}
 		else
 		{
@@ -300,7 +308,7 @@ int main()
 
 	printf( "LenAndRun: %d + %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 2 );
 	sum += treeSizeLenAndRun;
-	sum += dtLenAndRun.numUnique * 2;
+	sum += dtLenAndRun.numUnique * 1;
 
 	printf( "Total: %d\n", sum );
 	//unsigned int pos;
