@@ -66,6 +66,8 @@ int main()
 
 	int numNotes = 0;
 
+	uint32_t * completeNoteList = 0;
+
 	while( !feof( f ) )
 	{
 		uint16_t s;
@@ -87,6 +89,8 @@ int main()
 
 		AddValue( &dtNotes, note );
 		AddValue( &dtLenAndRun, len );
+		completeNoteList = realloc( completeNoteList, sizeof(completeNoteList[0]) * (numNotes+1) );
+		completeNoteList[numNotes] = (note | (len<<8));
 		numNotes++;
 	}
 
@@ -99,7 +103,9 @@ int main()
 	uint8_t probabilitiesNotes[treeSizeNotes];
 	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
 
+	printf( "===========\n" );
 	VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
+	printf( "===========\n" );
 	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	vpx_writer writer = { 0 };
@@ -156,6 +162,60 @@ int main()
 	printf( " Lens: %.1f bits\n", fBitsLens );
 	printf( "Total: %.1f bits\n", fBitsLens + fBitsNotes );
 
+	// STAGE 1: DRY RUN.
+
+	// Allow referencing things in the past.
+	int numReg = 0;
+	int numRev = 0;
+	int MinRL = 2;
+	int MRBits = 7;
+	int RLBits = 7;
+	int MaxREV = (1<<MRBits)-1;
+	int MaxRL = (1<<RLBits)-1;
+	for( i = 0; i < numNotes; i++ )
+	{
+		uint32_t note = dtNotes.fullList[i];
+		uint32_t lenAndRun = dtLenAndRun.fullList[i];
+
+		// Search for repeated sections.
+		int searchStart = i - MaxREV;
+		if( searchStart < 0 ) searchStart = 0;
+		int s;
+		int maxrl = 0, maxms = 0;
+		for( s = searchStart; s <= i; s++ )
+		{
+			int ml;
+			int mlc;
+			int rl;
+			for( 
+				ml = s, mlc = i, rl = 0;
+				ml < i && mlc < numNotes && rl < MaxRL;
+				ml++, mlc++, rl++ )
+			{
+				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
+			}
+
+			if( rl > maxrl )
+			{
+				maxrl = rl;
+			}
+		}
+		if( maxrl > MinRL )
+		{
+			i += maxrl;
+			numRev++;
+		}
+		else
+		{
+			numReg++;
+		}
+	}
+
+	
+	int probability_of_reverse = ( 256 * numReg ) / (numReg + numRev + 1);
+	if( probability_of_reverse > 255 ) probability_of_reverse = 255;
+	if( probability_of_reverse < 0 ) probability_of_reverse = 0;
+
 	for( i = 0; i < numNotes; i++ )
 	{
 		uint32_t note = dtNotes.fullList[i];
@@ -165,7 +225,54 @@ int main()
 
 		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, dtLenAndRun.fullList[i] ),
 			probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
+
+		// Search for repeated sections.
+		int searchStart = i - MaxREV;
+		if( searchStart < 0 ) searchStart = 0;
+		int s;
+		int maxrl = 0, maxms = 0;
+		for( s = searchStart; s <= i; s++ )
+		{
+			int ml;
+			int mlc;
+			int rl;
+			for( 
+				ml = s, mlc = i, rl = 0;
+				ml < i && mlc < numNotes && rl < MaxRL;
+				ml++, mlc++, rl++ )
+			{
+				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
+			}
+
+			if( rl > maxrl )
+			{
+				maxrl = rl;
+				maxms = s;
+			}
+		}
+		if( maxrl > MinRL )
+		{
+			i += maxrl;
+			vpx_write( &writer, 1, probability_of_reverse );
+			//printf( "Backlook: %d %d\n", maxrl, maxms );
+			int k;
+			for( k = 0; k < RLBits; k++ )
+			{
+				vpx_write( &writer, !!(maxrl&1), 128 );
+				maxrl>>=1;
+			}
+			for( k = 0; k < MRBits; k++ )
+			{
+				vpx_write( &writer, !!(maxms&1), 128 );
+				maxms>>=1;
+			}
+		}
+		else
+		{
+			vpx_write( &writer, 0, probability_of_reverse );
+		}
 	}
+	printf( "Reverse Peek: %d / reg: %d\n", numRev, numReg );
 	printf( "Notes: %d\n", numNotes );
 	uint32_t sum = writer.pos;
 	printf( "Data: %d bytes\n", writer.pos );

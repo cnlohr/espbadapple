@@ -1,4 +1,4 @@
-all : testsynth midiexport fmcomp-vpx track-float-48000.dat
+all : testsynth midiexport fmcomp-vpx-lzss track-float-48000.dat
 
 CFLAGS:=-Og -g -I../common
 
@@ -11,14 +11,17 @@ fmraw.dat : midiexport BadApple-mod.mid
 track-float-48000.dat : testsynth fmraw.dat
 	./testsynth  > track-float-48000.dat
 
-test : testsynth fmraw.dat fmcomp-vpx
-	./fmcomp-vpx
+test : testsynth fmraw.dat fmcomp-vpx-lzss
+	./fmcomp-vpx-lzss
 	./testsynth  | aplay -D pulse -c 1 -t raw -r 48000 -f FLOAT_LE
 
-espbadapple_song.h : fmcomp-vpx fmraw.dat
-	./fmcomp-vpx
+espbadapple_song.h : fmcomp-vpx-lzss fmraw.dat
+	./fmcomp-vpx-lzss
 
 fmcomp-vpx : fmcomp-vpx.c
+	gcc $(CFLAGS) -o $@ $^ -lm
+
+fmcomp-vpx-lzss : fmcomp-vpx-lzss.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
 fmcomp : fmcomp.c
@@ -28,4 +31,4 @@ testsynth : testsynth.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
 clean :
-	rm -rf *.o ~* midiexport fmcomp fmcomp-vpx testsynth bitlzsstest huffTN_fmraw.dat huffTL_fmraw.dat huffD_fmraw.dat fmraw.dat track-float-48000.dat
+	rm -rf *.o ~* midiexport fmcomp fmcomp-vpx fmcomp-vpx-lzss testsynth bitlzsstest huffTN_fmraw.dat huffTL_fmraw.dat huffD_fmraw.dat fmraw.dat track-float-48000.dat

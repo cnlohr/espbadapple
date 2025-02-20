@@ -140,7 +140,6 @@ VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, u
 				}
 			}
 			double chanceof0 = count0 / (double)(count0 + count1);
-			printf( "[%f %f]\n", count0, count1 );
 			int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
