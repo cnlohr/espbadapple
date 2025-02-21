@@ -80,7 +80,7 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 15// TUNE ME!!!
+#define USE_TILE_CLASSES 11 // TUNE ME!!!
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
@@ -96,7 +96,7 @@
 #if RUNCODES_CONTINUOUS && USE_TILE_CLASSES
 // Optional (You canturn this off if you want) But make runtimes use classes.
 #define RUNCODES_CONTINUOUS_BY_CLASS 1
-// Optional. Make run lenght classes based on new glpyh not previous
+// Optional. Make run lenght classes based on new glpyh not previous. NOTE: This should universally produce smaller outputs.
 #define TILE_CLASSES_RUNCODE_FORWARD 1
 #endif
 
@@ -113,7 +113,7 @@
 
 
 // Relies on RUNCODES_CONTINUOUS_BY_CLASS
-#define INVERT_RUNCODE_COMPRESSION
+#define INVERT_RUNCODE_COMPRESSION // Shouldn't really have an effect but sometimes does?
 
 #if defined( INVERT_RUNCODE_COMPRESSION ) && !defined( RUNCODES_CONTINUOUS_BY_CLASS )
 #error configuration invalid

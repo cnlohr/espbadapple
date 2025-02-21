@@ -65,7 +65,7 @@ int main()
 			{
 				voices[i] = ( (next_note >> 8 ) & 0xff) + 47;
 				tstop[i] = ((next_note >> 3) & 0x1f) + t + 1;
-//				fprintf( stderr, "Adding [%04x] (%d/%d) [%d]\n", next_note, t, tstop[i], i );
+				fprintf( stderr, "Adding @%d [%04x] %d %d (%d/%d) [%d]\n", t, next_note, voices[i], ((next_note >> 3) & 0x1f), t, tstop[i], i );
 				fsin[i] = 0;
 			}
 
@@ -82,7 +82,7 @@ int main()
 				int endurement = ((next_note) & 0x7);
 				if( endurement == 7 ) endurement = 8; // XXX Special case scenario at ending.
 				nexttrel = t + endurement;
-//				fprintf( stderr, "NEXT: %d -> %d (%04x)\n", t, nexttrel, next_note );
+				fprintf( stderr, "NEXT: LEN %d -> %d -> %d (%04x)\n", endurement, t, nexttrel, next_note );
 			}
 		}
 

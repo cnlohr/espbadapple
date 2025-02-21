@@ -51,13 +51,13 @@ typedef struct {
 	int count;
 	const uint8_t *buffer_end;
 	const uint8_t *buffer;
-	uint8_t clear_buffer[sizeof(BD_VALUE) + 1];
 } vpx_reader;
 
 
 VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size);
 VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r);
 VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob);
+VPXCODING_DECORATOR int vpx_tree_read( vpx_reader * reader, const uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
 
 // These 3 should always be static inline.
 static inline int vpx_read_bit(vpx_reader *r) {
@@ -67,9 +67,8 @@ static inline int vpx_read_bit(vpx_reader *r) {
 #define VPXMIN(x, y) (((x) < (y)) ? (x) : (y))
 #define VPXMAX(x, y) (((x) > (y)) ? (x) : (y))
 
-VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer,
-	size_t size ) {
-
+VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size )
+{
 	if( vpx_norm[1] == 0 )
 	{
 		//	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,...
@@ -138,7 +137,8 @@ VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
 }
 
 
-VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob) {
+VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob)
+{
 	unsigned int bit = 0;
 	BD_VALUE value;
 	BD_VALUE bigsplit;
@@ -166,6 +166,25 @@ VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob) {
 	r->value = value << shift;
 	r->count = count - shift;
 	return bit;
+}
+
+VPXCODING_DECORATOR int vpx_tree_read( vpx_reader * reader, const uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
+{
+	int probplace = 0;
+	int ret = 0;
+	int level;
+	for( level = 0; level < bits_for_max_element; level++ )
+	{
+		if( probplace >= num_probabilities ) return -1;
+		uint8_t probability = probabilities[probplace];
+		int bit = vpx_read( reader, probability );
+		ret |= bit<<(bits_for_max_element-level-1);
+		if( bit )
+			probplace += 1<<(bits_for_max_element-level-1);
+		else
+			probplace++;
+	}
+	return ret;
 }
 
 #ifdef __cplusplus

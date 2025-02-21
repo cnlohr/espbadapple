@@ -75,12 +75,12 @@ VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, in
 
 VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements )
 {
-#if 0 && (defined( __GNUC__ ) || defined( __clang__ ))
-	return 32 - __builtin_clz( elements );
+#if (defined( __GNUC__ ) || defined( __clang__ ))
+	return 32 - __builtin_clz( elements - 1 );
 #else
 	int n = 32;
 	unsigned y;
-	unsigned x = elements;
+	unsigned x = elements - 1;
 	y = x >>16; if (y != 0) { n = n -16; x = y; }
 	y = x >> 8; if (y != 0) { n = n - 8; x = y; }
 	y = x >> 4; if (y != 0) { n = n - 4; x = y; }

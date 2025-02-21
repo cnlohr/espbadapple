@@ -24,6 +24,9 @@ fmcomp-vpx : fmcomp-vpx.c
 fmcomp-vpx-lzss : fmcomp-vpx-lzss.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
+test-vpx-lzss : test-vpx-lzss.c
+	gcc $(CFLAGS) -o $@ $^ -lm
+
 fmcomp : fmcomp.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
@@ -31,4 +34,4 @@ testsynth : testsynth.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
 clean :
-	rm -rf *.o ~* midiexport fmcomp fmcomp-vpx fmcomp-vpx-lzss testsynth bitlzsstest huffTN_fmraw.dat huffTL_fmraw.dat huffD_fmraw.dat fmraw.dat track-float-48000.dat
+	rm -rf *.o ~* test-vpx-lzss midiexport fmcomp fmcomp-vpx fmcomp-vpx-lzss testsynth bitlzsstest huffTN_fmraw.dat huffTL_fmraw.dat huffD_fmraw.dat fmraw.dat track-float-48000.dat

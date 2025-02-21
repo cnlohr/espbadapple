@@ -8,7 +8,17 @@
 
 #include "vpxtree.h"
 
-// TODO: Can we also store substrings here?
+// Allow referencing things in the past.
+// Kind of arbitrary tuning.
+const int MinRL = 2;
+const int MRBits = 10;
+const int RLBits = 8;
+const int MaxREV = (1<<MRBits)-1;
+const int MaxRL = (1<<RLBits)-1;
+// Tune the slopes for maximum compression
+// I.e. for each message we start at 50/50 chance, but as we move up in bit significant, we reduce the chance it could be a 1.
+const int rl_slope = (128/(RLBits-1));
+const int mr_slope = (128/(MRBits-1));
 
 struct DataTree
 {
@@ -29,7 +39,7 @@ int GetIndexFromValue( struct DataTree * dt, uint32_t value )
 			return i;
 		}
 	}
-	fprintf( stderr, "Error: Requesting unknown value (%d)\n", value );
+	//fprintf( stderr, "Error: Requesting unknown value (%d)\n", value );
 	return -1;
 }
 
@@ -56,8 +66,24 @@ void AddValue( struct DataTree * dt, uint32_t value )
 	dt->numUnique = n+1;
 }
 
+void WriteOutBuffer( FILE * fData, const char * name, uint8_t * data, int len )
+{
+	fprintf( fData, "BAS_DECORATOR const uint8_t %s[%d] = {", name, len );
+	int i;
+	for( i = 0; i < len; i++ )
+	{
+		if( (i & 0xf) == 0 )
+		{
+			fprintf( fData, "\n\t" );
+		}
+		fprintf( fData, "0x%02x, ", data[i] );
+	}
+	fprintf( fData, "};\n\n" );
+}
+
 int main()
 {
+
 	int i, j, k, l;
 	FILE * f = fopen( "fmraw.dat", "rb" );
 
@@ -67,6 +93,8 @@ int main()
 	int numNotes = 0;
 
 	uint32_t * completeNoteList = 0;
+
+	FILE * fNoteList = fopen( "noteList.csv", "w" );
 
 	while( !feof( f ) )
 	{
@@ -84,7 +112,8 @@ int main()
 		int len = (s>>3)&0x1f;       // ( (next_note >> 3 ) & 0x1f) + t + 1;
 		int run = (s)&0x07;
 
-		// Combine note and run.
+		fprintf( fNoteList, "%d,%d,%d,0x%04x\n", note, len, run, s );
+
 		len |= run<<4;
 
 		completeNoteList = realloc( completeNoteList, sizeof(completeNoteList[0]) * (numNotes+1) );
@@ -92,27 +121,33 @@ int main()
 		numNotes++;
 	}
 
+	for( i = 0; i < numNotes; i++ )
+	{
+		uint32_t nn = completeNoteList[i];
+		uint32_t nnnext = completeNoteList[i + 1];
+
+		int note = nn&0xff;
+		int len = (nn>>8)&0xf;
+		int run = (nn>>12)&0xf;
+
+		// Could do something here.
+	}
+
+	fclose( fNoteList );
+
 	// STAGE 1: DRY RUN.
 	int numReg = 0;
 	int numRev = 0;
 
-	// Allow referencing things in the past.
-	// Kind of arbitrary tuning.
-	int MinRL = 2;
-	int MRBits = 8;
-	int RLBits = 7;
-	int MaxREV = (1<<MRBits)-1;
-	int MaxRL = (1<<RLBits)-1;
-
-printf( "TODO: Make maximum reverse be presented where index is length + distance\n" );
+	int highestNoteCnt = 0;
 
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL;
+		int searchStart = i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
-		int maxrl = 0, maxms = 0;
+		int bestrl = 0, bestrunstart = 0;
 		for( s = searchStart; s <= i; s++ )
 		{
 			int ml;
@@ -126,16 +161,17 @@ printf( "TODO: Make maximum reverse be presented where index is length + distanc
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > maxrl && (i - (s + maxrl) < MaxREV) ) // XXX TODO VALIDATE ME
+			if( rl > bestrl && // Make sure it's best
+				s + MinRL + rl + MaxREV >= i )
 			{
-				maxrl = rl;
-				maxms = s;
+				bestrl = rl;
+				bestrunstart = s;
 			}
 		}
-		if( maxrl > MinRL )
+		if( bestrl > MinRL )
 		{
-			printf( "Found Readback at %d (%d %d)\n", i, i-maxms, maxrl );
-			i += maxrl;
+			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
+			i += bestrl;
 			numRev++;
 		}
 		else
@@ -145,21 +181,36 @@ printf( "TODO: Make maximum reverse be presented where index is length + distanc
 			int len = completeNoteList[i]>>8;
 			AddValue( &dtNotes, note );
 			AddValue( &dtLenAndRun, len );
+			if( note >= highestNoteCnt ) highestNoteCnt = note+1;
 			numReg++;
 		}
 	}
 
-
-	int bitsForNotes = VPXTreeBitsForMaxElement( dtNotes.numUnique );
+	int bitsForNotes = VPXTreeBitsForMaxElement( highestNoteCnt );
 	int bitsForLenAndRun = VPXTreeBitsForMaxElement( dtLenAndRun.numUnique );
 
-	int treeSizeNotes = VPXTreeGetSize( dtNotes.numUnique, bitsForNotes );
+	int treeSizeNotes = VPXTreeGetSize( highestNoteCnt, bitsForNotes );
 	int treeSizeLenAndRun = VPXTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	uint8_t probabilitiesNotes[treeSizeNotes];
 	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
 
-	VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
+	{
+		float fNoteFrequencies[highestNoteCnt];
+		int n;
+
+		for( n = 0; n < highestNoteCnt; n++ )
+		{
+			int idx = GetIndexFromValue( &dtNotes, n );
+			if( idx < 0 )
+				fNoteFrequencies[n] = 0;
+			else
+				fNoteFrequencies[n] = dtNotes.uniqueCount[idx];
+		}
+
+		VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, fNoteFrequencies, highestNoteCnt, bitsForNotes );
+	}
+
 	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	vpx_writer writer = { 0 };
@@ -234,17 +285,19 @@ printf( "TODO: Make maximum reverse be presented where index is length + distanc
 	if( probability_of_reverse < 0 ) probability_of_reverse = 0;
 	printf( "Reverse Probability: %d\n", probability_of_reverse );
 
-	for( i = 0; i < numNotes; i++ )
+	int deepestReverseSearch = 0;
+
+	for( i = 0; i < numNotes; )
 	{
 
 		int note = completeNoteList[i]&0xff;
 		int len = completeNoteList[i]>>8;
 
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL;
+		int searchStart = i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
-		int maxrl = 0, maxms = 0;
+		int bestrl = 0, bestrunstart = 0;
 		for( s = searchStart; s <= i; s++ )
 		{
 			int ml;
@@ -258,55 +311,77 @@ printf( "TODO: Make maximum reverse be presented where index is length + distanc
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > maxrl && (i - (s + maxrl) < MaxREV) ) // XXX TODO I think this is wrong.
+			if( rl > bestrl && // Make sure it's best
+				s + MinRL + rl + MaxREV >= i )
 			{
-				maxrl = rl;
-				maxms = s;
+				bestrl = rl;
+				bestrunstart = s;
 			}
 		}
-		if( maxrl > MinRL )
+		if( bestrl > MinRL )
 		{
-			int offset = i-maxms-maxrl;
-			i += maxrl;
-			printf( "Emitting: %d %d\n", maxrl, offset );
+			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
+			int offset = i-bestrunstart-bestrl;
+			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
+
+			int searchBack = i-bestrunstart; 
+			if( searchBack >= deepestReverseSearch )
+				deepestReverseSearch = searchBack-1; // Need one extra so that the decoder doesn't get confused and drop a block of exactly max size.
+
+			// Need to make sure we allocate enough for the run. (I don't think this is needed, and should be covered by the above case)
+			if( bestrl >= deepestReverseSearch )
+				deepestReverseSearch = bestrl-1;
+
+			int emit_best_rl = bestrl - MinRL - 1;
 
 			vpx_write( &writer, 1, probability_of_reverse );
+
 			//printf( "Backlook: %d %d\n", maxrl, maxms );
+			//printf( "Reversing RUN:%4d OFFSET:%d\n", emit_best_rl, offset );
 			int k;
 			for( k = 0; k < RLBits; k++ )
 			{
-				vpx_write( &writer, !!(maxrl&1), 128 );
-				maxrl>>=1;
+				int bprob = 128 + k*rl_slope;
+				vpx_write( &writer, !!(emit_best_rl&1), bprob );
+				emit_best_rl>>=1;
 			}
+			if( emit_best_rl ) fprintf( stderr, "ERROR: Invalid RL Emitted %d remain\n", emit_best_rl );
 
 			for( k = 0; k < MRBits; k++ )
 			{
-				vpx_write( &writer, !!(offset&1), 128 );
+				int bprob = 128 + k*mr_slope;
+				vpx_write( &writer, !!(offset&1), bprob );
 				offset>>=1;
 			}
+			if( offset ) fprintf( stderr, "ERROR: Invalid offset Emitted %d remain\n", offset );
 
+			i += bestrl;
 		}
 		else
 		{
+			// We could do a (i<=MinRL)?0xff:, but the code to detect that is larger than fraction of a bit you would save.
 			vpx_write( &writer, 0, probability_of_reverse );
 
-			VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
-				probabilitiesNotes, treeSizeNotes, bitsForNotes );
+			//printf( "EMIT: %02x %02x\n",  note, len );
+			VPXTreeWriteSym( &writer, note,	probabilitiesNotes, treeSizeNotes, bitsForNotes );
 
 			VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
 				probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
+			i++;
 		}
 	}
+
+	vpx_stop_encode( &writer );
 	printf( "Reverse Peek: %d (reverses) / reg: %d (encoded notes)\n", numRev, numReg );
 	printf( "Notes: %d\n", numNotes );
 	uint32_t sum = writer.pos;
 	printf( "Data: %d bytes\n", writer.pos );
 
-	printf( "Notes: %d + %d\n", treeSizeNotes, dtNotes.numUnique * 1 );
+	printf( "Notes: %d (Table Only)\n", treeSizeNotes );
 	sum += treeSizeNotes;
-	sum += dtNotes.numUnique * 1;
+//	sum += dtNotes.numUnique * 1;
 
-	printf( "LenAndRun: %d + %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 2 );
+	printf( "LenAndRun: %d + %d\n", treeSizeLenAndRun, dtLenAndRun.numUnique * 1 );
 	sum += treeSizeLenAndRun;
 	sum += dtLenAndRun.numUnique * 1;
 
@@ -314,7 +389,43 @@ printf( "TODO: Make maximum reverse be presented where index is length + distanc
 	//unsigned int pos;
 	//unsigned int size;
 
-	
+	FILE * fData = fopen( "espbadapple_song.h", "wb" );
+	fprintf( fData, "#ifndef _ESPBADAPPLE_SONG_H\n" );
+	fprintf( fData, "#define _ESPBADAPPLE_SONG_H\n" );
+	fprintf( fData, "\n" );
+	fprintf( fData, "#define bas_required_output_buffer %d\n", deepestReverseSearch );
+	fprintf( fData, "#define bas_required_output_buffer_po2_bits %d\n", VPXTreeBitsForMaxElement( deepestReverseSearch ) );
+	fprintf( fData, "\n" );
+	fprintf( fData, "const uint8_t bas_probability_of_peekback = %d;\n", probability_of_reverse );
+	fprintf( fData, "const uint8_t bas_peekback_slope_for_length = %d;\n", rl_slope );
+	fprintf( fData, "const uint8_t bas_peekback_slope_for_offset = %d;\n", mr_slope );
+	fprintf( fData, "const uint8_t bas_bit_used_for_peekback_length = %d;\n", RLBits );
+	fprintf( fData, "const uint8_t bas_bit_used_for_peekback_offset = %d;\n", MRBits );
+	fprintf( fData, "\n" );
+	fprintf( fData, "#define bas_min_run_length %d\n", MinRL );
+	fprintf( fData, "#define bas_note_probsize %d\n", treeSizeNotes );
+	fprintf( fData, "#define bas_note_bits %d\n", bitsForNotes );
+	fprintf( fData, "#define bas_lenandrun_probsize %d\n", treeSizeLenAndRun );
+	fprintf( fData, "#define bas_lenandrun_bits %d\n", bitsForLenAndRun );
+	fprintf( fData, "#define bas_songlen_notes %d\n", numNotes );
+	fprintf( fData, "\n" );
+
+	WriteOutBuffer( fData, "bas_notes_probabilities", probabilitiesNotes, treeSizeNotes );
+	WriteOutBuffer( fData, "bas_lenandrun_probabilities", probabilitiesLenAndRun, treeSizeLenAndRun );
+
+
+	uint8_t codeinfos[dtLenAndRun.numUnique];
+	for( i = 0; i < dtLenAndRun.numUnique; i++ )
+		codeinfos[i] = dtLenAndRun.uniqueMap[i];
+	WriteOutBuffer( fData, "bas_lenandrun_codes", codeinfos, dtLenAndRun.numUnique );
+
+	WriteOutBuffer( fData, "bas_data", vpxbuffer, writer.pos );
+
+	fprintf( fData, "\n" );
+	fprintf( fData, "#endif\n" );
+
+
+
 #if 0
 	int hufflen;
 	huffelement * he = GenerateHuffmanTree( symbols, symcounts, numsym, &hufflen );
