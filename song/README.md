@@ -15,7 +15,7 @@ In general this is a cover of the "Bad Apple" version by Alstroemeria Records fe
 To do sanity checks, I decided to compare the compression a few steps along the way.  (All sizes in octets (bytes))
 
 | Compression | .xml | .json (jq formatting) | .json.min | .mid | .dat | 
-| -- | -- | -- |
+| -- | -- | -- | -- | -- | -- |
 | uncompressed | 160952 | 111498 | 63483 | 12755 | 2824 |
 | [heatshrink](https://github.com/atomicobject/heatshrink) | 23926 | 17599 | 11255 | 2345 | 881
 | gzip -9      | 9145 | 8662 | 7986 | 1042 | 568 |
@@ -29,6 +29,7 @@ There's an issue, all of the good ones in this list these are state of the art a
 Then when ingesting the data into my algorithms:
 
 | Compression | Size |
+| -- | -- |
 | Huffman (1 table) | 1465 |
 | Huffman (2 table) | 1336 |
 | Huffman (3 table) | 1245 |
