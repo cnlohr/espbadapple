@@ -34,6 +34,8 @@ Then when ingesting the data into my algorithms:
 | Huffman (2 table) | 1336 |
 | Huffman (3 table) | 1245 |
 | VPX (no LZSS) | 1269 |
+| VPX (non-entropy LZSS) | 600 |
+| VPX (entropy LZSS) | 554 |
 
 Note the uptick in size because to use VPX, you have to have a probability table, and huffman tables can be used in lower compression arenas to more effectivity. 
 
@@ -48,6 +50,8 @@ Boom.
 I then also used entropy coding to encode the run lengths and indexes where I assumed the numbers were smaller, so for small jumps, it would use less bits, and it went down to a final amount of **554 bytes**!
 
 So, not only is our decoder only about 50 lines of code, orders of magnitude simpler than any of the big boy compression algorithms... It eeks out just a little more compression than they can muster!
+
+**TODO**: I want to test what happens if I store a probability table for the various bit places for the LZSS values to optimally encode each LZSS entry.  This would likely be a huge boon on large files.
 
 ## Mechanism
 
