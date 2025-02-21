@@ -1615,7 +1615,8 @@ int main( int argc, char ** argv )
 	printf( "\n" );
 	//printf( " Video: %6d Bytes (%d bits) (%.3f bits/frame) (%d frames)\n", sum, sum*8, sum*8.0/frames, frames );
 	sum += soundsum;
-	printf( " Total: %6d Bytes (%d bits) (%.3f bits/frame) (%d frames)\n", sum, sum*8, sum*8.0/frames, frames );
+	printf( " Total: %6d Bytes (%d bits) (%.3f bits/frame VO) (%d frames)\n",
+		sum, sum*8, (sum - soundsum)*8.0/frames, frames );
 
 	// test validate
 	if( 1 )
