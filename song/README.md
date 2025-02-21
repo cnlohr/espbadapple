@@ -30,6 +30,7 @@ There's an issue, all of the good ones in this list these are state of the art a
 
 | Compression | Size |
 | -- | -- |
+| Raw .dat | 2824 |
 | Huffman (1 table) | 1465 |
 | Huffman (2 table) | 1336 |
 | Huffman (3 table) | 1245 |
