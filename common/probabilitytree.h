@@ -1,15 +1,21 @@
-#ifndef _VPXTREE_H
-#define _VPXTREE_H
+#ifndef _PROBABILITYTREE_H
+#define _PROBABILITYTREE_H
 
-// Explaination on how to store trees for storing multiple symbols when doing VPX coding.
+// Explaination on how to optimally store trees for storing elements that
+// require multiple bits when doing VPX coding.
 //
-// The tree implicitly stores its structre based on its index, so only the probabilities
-// need to be provided.
+// The encoder uses floating point math to allow for floating-point overall
+// probabilities.  But, the decoding of these trees can be done on embedded
+// systems trivailly.
 //
-// Copyright 2025 Charles Lohr (cnlohr) under the MIT license. (See end of file)
+// The tree implicitly stores its structre based on its index, so only the
+// probabilities need to be provided.
+//
+// Copyright 2025 Charles Lohr (cnlohr) under the MIT license. See end of file.
 //
 //
-// MSB is always at root of tree so you can lop off unused portions of the tree.
+// MSB is always at root of tree so you can lop off unused portions of the
+// tree.
 //
 // Tree:
 // L0  0
@@ -33,8 +39,10 @@
 // so the right side can be lopped off.
 //
 
-//
-// You may want to tune the mult/shift values, I've seen some improvements in slight adjustments.
+
+
+// You may want to tune the mult/shift values, I've seen some improvements in
+// slight adjustments.
 //
 #ifndef VPX_PROB_MULT
 #define VPX_PROB_MULT 257.0
@@ -44,20 +52,20 @@
 #define VPX_PROB_SHIFT (-0.0)
 #endif
 
-#ifndef VPX_TREE_DECORATOR
-#define VPX_TREE_DECORATOR static
+#ifndef PROBABILITY_TREE_DECORATOR
+#define PROBABILITY_TREE_DECORATOR static
 #endif
 
-VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements );
-VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits );
-VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits );
-VPX_TREE_DECORATOR int VPXTreeReadSym( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
-VPX_TREE_DECORATOR int VPXTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
+PROBABILITY_TREE_DECORATOR inline int ProbabilityTreeBitsForMaxElement( unsigned elements );
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeGetSize( unsigned elements, unsigned needed_bits );
+PROBABILITY_TREE_DECORATOR void ProbabilityTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities, const float * frequencies, unsigned elements, unsigned needed_bits );
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeReadSym( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
 
 
 
 // Used by below functions
-VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
+PROBABILITY_TREE_DECORATOR int ProbabilityTreePlaceByLevelPlace( int level, int placeinlevel, int totallevels )
 {
 	int l;
 	int p = 0;
@@ -73,7 +81,7 @@ VPX_TREE_DECORATOR int VPXTreePlaceByLevelPlace( int level, int placeinlevel, in
 	return p;
 }
 
-VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements )
+PROBABILITY_TREE_DECORATOR inline int ProbabilityTreeBitsForMaxElement( unsigned elements )
 {
 #if (defined( __GNUC__ ) || defined( __clang__ ))
 	return 32 - __builtin_clz( elements - 1 );
@@ -90,7 +98,7 @@ VPX_TREE_DECORATOR inline int VPXTreeBitsForMaxElement( unsigned elements )
 #endif
 }
 
-VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeGetSize( unsigned elements, unsigned needed_bits )
 {
 	int chancetable_len = 0;
 	int levelplace = needed_bits-1;
@@ -109,7 +117,7 @@ VPX_TREE_DECORATOR int VPXTreeGetSize( unsigned elements, unsigned needed_bits )
 }
 
 // OUTPUTS probabilities
-VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities,
+PROBABILITY_TREE_DECORATOR void ProbabilityTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities,
 	const float * frequencies, unsigned elements, unsigned needed_bits )
 {
 	int level;
@@ -143,7 +151,7 @@ VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, u
 			int prob = chanceof0 * VPX_PROB_MULT - VPX_PROB_SHIFT;
 			if( prob < 0 ) prob = 0;
 			if( prob > 255 ) prob = 255;
-			int place = VPXTreePlaceByLevelPlace( level, placeinlevel, needed_bits );
+			int place = ProbabilityTreePlaceByLevelPlace( level, placeinlevel, needed_bits );
 			if( place < nr_probabilities )
 				probabilities[place] = prob;
 			placeinlevel++;
@@ -151,7 +159,7 @@ VPX_TREE_DECORATOR void VPXTreeGenerateProbabilities( uint8_t * probabilities, u
 	}
 }
 
-VPX_TREE_DECORATOR int VPXTreeRead( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeRead( vpx_reader * reader, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
 {
 	int probplace = 0;
 	int ret = 0;
@@ -170,7 +178,7 @@ VPX_TREE_DECORATOR int VPXTreeRead( vpx_reader * reader, uint8_t * probabilities
 	return ret;
 }
 
-VPX_TREE_DECORATOR int VPXTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
+PROBABILITY_TREE_DECORATOR int ProbabilityTreeWriteSym( vpx_writer * writer, int sym, uint8_t * probabilities, int num_probabilities, int bits_for_max_element )
 {
 	int level;
 	int probplace = 0;

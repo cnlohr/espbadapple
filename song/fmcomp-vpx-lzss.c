@@ -6,7 +6,7 @@
 #define VPXCODING_WRITER
 #include "vpxcoding.h"
 
-#include "vpxtree.h"
+#include "probabilitytree.h"
 
 // Allow referencing things in the past.
 // Kind of arbitrary tuning.
@@ -186,11 +186,11 @@ int main()
 		}
 	}
 
-	int bitsForNotes = VPXTreeBitsForMaxElement( highestNoteCnt );
-	int bitsForLenAndRun = VPXTreeBitsForMaxElement( dtLenAndRun.numUnique );
+	int bitsForNotes = ProbabilityTreeBitsForMaxElement( highestNoteCnt );
+	int bitsForLenAndRun = ProbabilityTreeBitsForMaxElement( dtLenAndRun.numUnique );
 
-	int treeSizeNotes = VPXTreeGetSize( highestNoteCnt, bitsForNotes );
-	int treeSizeLenAndRun = VPXTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
+	int treeSizeNotes = ProbabilityTreeGetSize( highestNoteCnt, bitsForNotes );
+	int treeSizeLenAndRun = ProbabilityTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	uint8_t probabilitiesNotes[treeSizeNotes];
 	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
@@ -208,10 +208,10 @@ int main()
 				fNoteFrequencies[n] = dtNotes.uniqueCount[idx];
 		}
 
-		VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, fNoteFrequencies, highestNoteCnt, bitsForNotes );
+		ProbabilityTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, fNoteFrequencies, highestNoteCnt, bitsForNotes );
 	}
 
-	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
+	ProbabilityTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	vpx_writer writer = { 0 };
 
@@ -363,9 +363,9 @@ int main()
 			vpx_write( &writer, 0, probability_of_reverse );
 
 			//printf( "EMIT: %02x %02x\n",  note, len );
-			VPXTreeWriteSym( &writer, note,	probabilitiesNotes, treeSizeNotes, bitsForNotes );
+			ProbabilityTreeWriteSym( &writer, note,	probabilitiesNotes, treeSizeNotes, bitsForNotes );
 
-			VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
+			ProbabilityTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, len ),
 				probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
 			i++;
 		}
@@ -389,12 +389,12 @@ int main()
 	//unsigned int pos;
 	//unsigned int size;
 
-	FILE * fData = fopen( "espbadapple_song.h", "wb" );
+	FILE * fData = fopen( "../playback/badapple_song.h", "wb" );
 	fprintf( fData, "#ifndef _ESPBADAPPLE_SONG_H\n" );
 	fprintf( fData, "#define _ESPBADAPPLE_SONG_H\n" );
 	fprintf( fData, "\n" );
 	fprintf( fData, "#define bas_required_output_buffer %d\n", deepestReverseSearch );
-	fprintf( fData, "#define bas_required_output_buffer_po2_bits %d\n", VPXTreeBitsForMaxElement( deepestReverseSearch ) );
+	fprintf( fData, "#define bas_required_output_buffer_po2_bits %d\n", ProbabilityTreeBitsForMaxElement( deepestReverseSearch ) );
 	fprintf( fData, "\n" );
 	fprintf( fData, "const uint8_t bas_probability_of_peekback = %d;\n", probability_of_reverse );
 	fprintf( fData, "const uint8_t bas_peekback_slope_for_length = %d;\n", rl_slope );

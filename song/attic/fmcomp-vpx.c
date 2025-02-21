@@ -6,7 +6,7 @@
 #define VPXCODING_WRITER
 #include "vpxcoding.h"
 
-#include "vpxtree.h"
+#include "probabilitytree.h"
 
 // TODO: Can we also store substrings here?
 
@@ -90,17 +90,17 @@ int main()
 		numNotes++;
 	}
 
-	int bitsForNotes = VPXTreeBitsForMaxElement( dtNotes.numUnique );
-	int bitsForLenAndRun = VPXTreeBitsForMaxElement( dtLenAndRun.numUnique );
+	int bitsForNotes = ProbabilityTreeBitsForMaxElement( dtNotes.numUnique );
+	int bitsForLenAndRun = ProbabilityTreeBitsForMaxElement( dtLenAndRun.numUnique );
 
-	int treeSizeNotes = VPXTreeGetSize( dtNotes.numUnique, bitsForNotes );
-	int treeSizeLenAndRun = VPXTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
+	int treeSizeNotes = ProbabilityTreeGetSize( dtNotes.numUnique, bitsForNotes );
+	int treeSizeLenAndRun = ProbabilityTreeGetSize( dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	uint8_t probabilitiesNotes[treeSizeNotes];
 	uint8_t probabilitiesLenAndRun[treeSizeLenAndRun];
 
-	VPXTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
-	VPXTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
+	ProbabilityTreeGenerateProbabilities( probabilitiesNotes, treeSizeNotes, dtNotes.uniqueCount, dtNotes.numUnique, bitsForNotes );
+	ProbabilityTreeGenerateProbabilities( probabilitiesLenAndRun, treeSizeLenAndRun, dtLenAndRun.uniqueCount, dtLenAndRun.numUnique, bitsForLenAndRun );
 
 	vpx_writer writer = { 0 };
 
@@ -160,10 +160,10 @@ int main()
 	{
 		uint32_t note = dtNotes.fullList[i];
 		uint32_t lenAndRun = dtLenAndRun.fullList[i];
-		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
+		ProbabilityTreeWriteSym( &writer, GetIndexFromValue( &dtNotes, note ),
 			probabilitiesNotes, treeSizeNotes, bitsForNotes );
 
-		VPXTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, dtLenAndRun.fullList[i] ),
+		ProbabilityTreeWriteSym( &writer, GetIndexFromValue( &dtLenAndRun, dtLenAndRun.fullList[i] ),
 			probabilitiesLenAndRun, treeSizeLenAndRun, bitsForLenAndRun );
 	}
 	printf( "Notes: %d\n", numNotes );

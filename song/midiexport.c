@@ -230,6 +230,13 @@ int main( int argc, char ** argv )
 	int i;
 
 	FILE * fMRaw = fopen( "fmraw.dat", "wb" );
+	FILE * fMXML = fopen( "fmraw.dat.xml", "w" );
+	FILE * fMJSON = fopen( "fmraw.dat.json", "w" );
+
+	fprintf( fMXML, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" );
+	fprintf( fMXML, "<song>\n" );
+	fprintf( fMJSON, "{\"notes\":[" );
+
 	int eLastTime = 0;
 	for( i = 0; i < notehead; i++ )
 	{
@@ -277,10 +284,23 @@ int main( int argc, char ** argv )
 			// For video, show how big it is if you gzip with all the data, it's bigger than heatshrink after remvoing the entropy
 			fwrite( &combda, 1, 1, fMRaw );
 			fwrite( &note_and_track, 1, 1, fMRaw );
+
+			fprintf( fMXML, "    <note>\n" );
+			fprintf( fMXML, "        <pitch>%d</pitch>\n", e->Note );
+			fprintf( fMXML, "        <ontime>%d</ontime>\n", e->OnTime );
+			fprintf( fMXML, "        <offtime>%d</offtime>\n", e->OffTime );
+			fprintf( fMXML, "    </note>\n" );
+			fprintf( fMJSON, "{\"pitch\":%d,\"ontime\":%d,\"offtime\":%d}%c", e->Note, e->OnTime, e->OffTime, (notehead-1 == i)?' ' : ',' );
+
 			eLastTime = e->OnTime;
 		}
 	}
+	fprintf( fMXML, "</song>\n" );
 	fclose( fMRaw );
+	fclose( fMXML );
+	fprintf( fMJSON, "]}\n" );
+	fclose( fMJSON );
+
 
 	fprintf( stderr, "Time Range: %d / %d\n", i, highesttime );
 	fprintf( stderr, "Note Range: %d / %d\n", minnote, maxnote );

@@ -1,3 +1,6 @@
+// FAILED ATTEMPT TO PARSE MIDI
+// DISCARD THIS FILE.
+
 #include <stdio.h>
 
 #define FATAL( x... )
