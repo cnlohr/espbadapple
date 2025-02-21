@@ -50,7 +50,7 @@ int SampleValueAt( int x, int y )
 	if( iSampleAddQty == 1 ) return iSampleAdd;
 
 	// I have no rationale for why this looks good.  I tried it randomly and liked it.
-	int r = iSampleAdd - iSampleAddQty - 1;
+	int r = iSampleAdd - iSampleAddQty;
 	if( r > 3 ) r = 3;
 	if( r < 0 ) r = 0;
 	return r;
