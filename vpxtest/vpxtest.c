@@ -21,7 +21,7 @@
 #define VPX_PROB_MULT 257.0
 #define VPX_PROB_SHIFT (-0.0)
 
-#include "vpxtree.h"
+#include "probabilitytree.h"
 
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -614,7 +614,7 @@ int main( int argc, char ** argv )
 	printf( "Prob Backtrack: %d\n", probbacktrack );
 #endif
 
-	int bitsfortileid = VPXTreeBitsForMaxElement( maxtilect_remapped );
+	int bitsfortileid = ProbabilityTreeBitsForMaxElement( maxtilect_remapped );
 
 	// Compute the chances-of-tile table.
 	// This is a triangular structure.
@@ -626,7 +626,7 @@ int main( int argc, char ** argv )
 	// If we have a Power-of-2 number of cells, then we can leave off the last chance in the chancetable.
 	//    I thought you could do this, but it's more unintuitive than I thought, so we just calculate it.
 	//  ((maxtilect_remapped == (1<<bitsfortileid)) ? (maxtilect_remapped-1): maxtilect_remapped); << Doesn't work
-	int chancetable_len = VPXTreeGetSize( maxtilect_remapped, bitsfortileid );
+	int chancetable_len = ProbabilityTreeGetSize( maxtilect_remapped, bitsfortileid );
 
 	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
 	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );
@@ -856,7 +856,7 @@ int main( int argc, char ** argv )
 
 		for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
 		{
-			VPXTreeGenerateProbabilities( ba_chancetable_glyph_dual[bin], chancetable_len, frequencyset[bin], maxtilect_remapped, bitsfortileid );
+			ProbabilityTreeGenerateProbabilities( ba_chancetable_glyph_dual[bin], chancetable_len, frequencyset[bin], maxtilect_remapped, bitsfortileid );
 		}
 
 		printf( "Classes: (Theoretical Space)\n" );
@@ -903,7 +903,7 @@ int main( int argc, char ** argv )
 	uint8_t ba_chancetable_glyph[chancetable_len];
 	memset( ba_chancetable_glyph, 0, sizeof(ba_chancetable_glyph) );
 	{
-		VPXTreeGenerateProbabilities( ba_chancetable_glyph, chancetable_len, tilecounts, maxtilect_remapped, bitsfortileid );
+		ProbabilityTreeGenerateProbabilities( ba_chancetable_glyph, chancetable_len, tilecounts, maxtilect_remapped, bitsfortileid );
 	}
 #endif
 
@@ -1372,22 +1372,22 @@ int main( int argc, char ** argv )
 #endif
 
 #ifdef USE_TILE_CLASSES
-		if( VPXTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid ) < 0 )
+		if( ProbabilityTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid ) < 0 )
 		{
 			fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
 			exit( -9 );
 		}
 #ifndef VPX_USE_HUFFMAN_TILES
-		VPXTreeWriteSym( &w_combined, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
+		ProbabilityTreeWriteSym( &w_combined, ut, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
 #endif
 #else
-		if( VPXTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid ) < 0 )
+		if( ProbabilityTreeWriteSym( &w_glyphs, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid ) < 0 )
 		{
 			fprintf( stderr, "Error: internal fault, chancetable overflowed (%d, %d)\n", probplace, chancetable_len );
 			exit( -9 );
 		}
 #ifndef VPX_USE_HUFFMAN_TILES
-		VPXTreeWriteSym( &w_combined, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid );
+		ProbabilityTreeWriteSym( &w_combined, ut, ba_chancetable_glyph, chancetable_len, bitsfortileid );
 #endif
 
 #endif
@@ -1587,6 +1587,10 @@ int main( int argc, char ** argv )
 		sum += glyphsize;
 	}
 
+	int soundsum = FileLength( "../song/vpxlzss.dat" );
+	printf( "   Sound    :%7d bits / bytes:%6d\n", soundsum * 8, soundsum );
+
+#if 0
 	int sHuffD = FileLength( "../song/huffD_fmraw.dat" );
 	int sHuffTL = FileLength( "../song/huffTL_fmraw.dat" );
 	int sHuffTN = FileLength( "../song/huffTN_fmraw.dat" );
@@ -1606,6 +1610,7 @@ int main( int argc, char ** argv )
 		printf( " + Sound (N):%7d bits / bytes:%6d\n", sHuffTN * 8, sHuffTN );
 		soundsum += sHuffTN;
 	}
+#endif
 
 	printf( "\n" );
 	//printf( " Video: %6d Bytes (%d bits) (%.3f bits/frame) (%d frames)\n", sum, sum*8, sum*8.0/frames, frames );
@@ -1735,9 +1740,9 @@ int main( int argc, char ** argv )
 				{
 
 #ifdef USE_TILE_CLASSES
-					tile = VPXTreeRead( &reader, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
+					tile = ProbabilityTreeRead( &reader, ba_chancetable_glyph_dual[fromclass], chancetable_len, bitsfortileid );
 #else
-					tile = VPXTreeRead( &reader, ba_chancetable_glyph[probplace], chancetable_len, bitsfortileid );
+					tile = ProbabilityTreeRead( &reader, ba_chancetable_glyph[probplace], chancetable_len, bitsfortileid );
 #endif
 					curglyph[y][x] = tile;
 					currun[y][x] = 0;
@@ -1927,12 +1932,6 @@ int main( int argc, char ** argv )
 
 	fprintf( fDataOut, "#define TILE_COUNT %d\n", maxtilect_remapped );
 	fprintf( fDataOut, "#define BITS_FOR_TILE_ID %d\n\n", bitsfortileid );
-
-	fprintf( fDataOut, "// Sound\n\n" );
-
-	WriteOutFile( fDataOut, "sound_huffTL", "../song/huffTL_fmraw.dat" );
-	WriteOutFile( fDataOut, "sound_huffTN", "../song/huffTN_fmraw.dat" );
-	WriteOutFile( fDataOut, "sound_huffD", "../song/huffD_fmraw.dat" );
 
 	fprintf( fDataOut, "// Video\n\n" );
 

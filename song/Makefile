@@ -22,7 +22,7 @@ fmcomp-vpx-lzss : fmcomp-vpx-lzss.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
 test-vpx-lzss : test-vpx-lzss.c
-	gcc $(CFLAGS) -o $@ $^ -lm
+	gcc $(CFLAGS) -o $@ $^ -lm -I../playback
 
 testsynth : testsynth.c
 	gcc $(CFLAGS) -o $@ $^ -lm

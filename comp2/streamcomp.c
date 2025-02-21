@@ -8,7 +8,7 @@
 #define VPXCODING_WRITER
 #define VPXCODING_READER
 #define VPX_32BIT
-#include "../vpxtest/vpxcoding.h"
+#include "vpxcoding.h"
 
 int streamcount;
 uint32_t * streamdata;
