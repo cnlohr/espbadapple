@@ -26,7 +26,7 @@ Curiously for small payloads, it looks like gzip outperforms zstd, in spite of z
 
 There's an issue, all of the good ones in this list these are state of the art algorithms requiring a pretty serious OS to decode.  What if we only wan to run on a microcontroller?
 
-Then when ingesting the data into my algorithms:
+### My algorithms
 
 | Compression | Size |
 | -- | -- |
@@ -43,8 +43,6 @@ I tried doing huffman + LZSS but it got unweildy.
 
 Then I decided to do a 1/2 hour experiment, and hook up VPX (with probability trees) with LZSS, (heatshrink-style).  
 
-Boom.
-
 600 bytes on the first try.
 
 I then also used entropy coding to encode the run lengths and indexes where I assumed the numbers were smaller, so for small jumps, it would use less bits, and it went down to a final amount of **554 bytes**!
@@ -52,6 +50,8 @@ I then also used entropy coding to encode the run lengths and indexes where I as
 So, not only is our decoder only about 50 lines of code, orders of magnitude simpler than any of the big boy compression algorithms... It eeks out just a little more compression than they can muster!
 
 **TODO**: I want to test what happens if I store a probability table for the various bit places for the LZSS values to optimally encode each LZSS entry.  This would likely be a huge boon on large files.
+
+The huffman and other VPX coding mechanisms can be found in the `attic/` folder.
 
 ## Mechanism
 
