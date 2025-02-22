@@ -17,7 +17,7 @@ const char * streamFile;
 struct block * allblocks;
 struct block * allblocks_alloc;
 int numblocks;
-
+int maxblocks;
 
 float ComputeDistance( const struct block * b, const struct block * c, int * inversiontype )
 {
@@ -77,7 +77,7 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 	__m128 diffslo = _mm256_extractf128_ps( diffs, 0 );
 	__m128 diffshi  = _mm256_extractf128_ps( diffs, 1 );
 	__m128 diffssum  = _mm_hadd_ps( diffslo, diffshi );
-	float OutputVal[4];
+	float OutputVal[4] __attribute__((aligned(128)));
 	_mm_store_ps(OutputVal, diffssum);
 	diff = OutputVal[0] + OutputVal[1] + OutputVal[2] + OutputVal[3];
 
@@ -147,6 +147,7 @@ float ComputeDistance( const struct block * b, const struct block * c, int * inv
 		diff += id;
 #endif
 	}
+
 #ifdef ALLOW_GLYPH_INVERSION
 	float invdiff = 0;
 	for( j = 0; j < BLOCKSIZE*BLOCKSIZE; j++ )
@@ -269,8 +270,18 @@ void AppendBlock( struct block * bck )
 	if( check == bend )
 	{
 		numblocks++;
-		allblocks_alloc = realloc( allblocks_alloc, numblocks * sizeof( struct block ) + 32 );
-		allblocks = (struct block*) (((uintptr_t)(((uint8_t*)allblocks_alloc)+31))&(~31)); // force alignment
+		if( numblocks >= maxblocks )
+		{
+			if( maxblocks == 0 ) maxblocks = 65536;
+			maxblocks *= 2;
+			struct block * prevdata = allblocks_alloc;
+			allblocks_alloc = malloc( maxblocks * sizeof( struct block ) + 32 );
+			allblocks = (struct block*) (((uintptr_t)(((uint8_t*)allblocks_alloc)+31))&(~31)); // force alignment
+
+			struct block * prevdata_align = (struct block*) (((uintptr_t)(((uint8_t*)prevdata)+31))&(~31)); // force alignment
+			memcpy( allblocks, prevdata_align, sizeof( struct block ) * (numblocks-1) );
+			free( prevdata );
+		}
 		check = allblocks + (numblocks - 1);
 		memset( check, 0, sizeof( struct block ) );
 		check->count = 0;
@@ -416,7 +427,7 @@ void ComputeKMeans()
 			{
 				if( kmeansdead[km] ) continue;
 				struct block * k = &kmeanses[km];
-				int citemp;
+				int citemp = 0;
 				float fd = ComputeDistance( b, k, &citemp );
 				if( fd < mka )
 				{
@@ -631,7 +642,7 @@ void ComputeKMeans()
 			for( km = 0; km < KMEANS; km++ )
 			{
 				struct block * k = &kmeanses[km];
-				int invtemp;
+				int invtemp = 0;
 				if( kmeansdead[km] ) continue;
 				float fd = ComputeDistance( bb, k, &invtemp );
 				if( fd < mka )
@@ -690,6 +701,14 @@ void ComputeKMeans()
 		lastmink_histused[i] = 0;
 	}
 
+	printf( "Outputting video stream\n" );
+
+	int lastframes[blkh][blkw];
+	int did_setup_lastframes = 0;
+	int changect = 0;
+
+	memset( lastframes, 0, sizeof( lastframes ) );
+
 	for( videoframeno = 0; videoframeno < num_video_frames; videoframeno++ )
 	{
 		int x, y;
@@ -710,7 +729,7 @@ void ComputeKMeans()
 			{
 				struct block * k = &kmeanses[km];
 				if( kmeansdead[km] ) continue;
-				int tinv;
+				int tinv = 0;
 				float fd = ComputeDistance( btemp, k, &tinv );
 				if( fd < mka )
 				{
@@ -745,6 +764,21 @@ void ComputeKMeans()
 			}
 #endif
 
+			if( !did_setup_lastframes )
+			{
+				int ty, tx;
+				for( ty = 0; ty < blkh; ty++ )
+				for( tx = 0; tx < blkw; tx++ )
+					lastframes[ty][tx] = mink;
+				did_setup_lastframes = 1;
+			}
+
+			if( mink != lastframes[y][x] )
+			{
+				changect++;
+				lastframes[y][x] = mink;
+			}
+
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2, btemp, false, false );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 200, &kmeanses[mink], false, invert );
 			DrawBlock( x * BLOCKSIZE*2, y * BLOCKSIZE*2 + 400, &kmeanses[mink], true, invert );
@@ -758,6 +792,8 @@ void ComputeKMeans()
 		}
 		CNFGSwapBuffers();
 	}
+
+	printf( "Change Count: %d\n", changect );
 	fclose( fStream );
 	free( btfree );
 	free( mkd_val );
@@ -800,7 +836,6 @@ int main( int argc, char ** argv )
 		CNFGClearFrame();
 		if( !CNFGHandleInput() ) break;
 		int r = fread( tbuf, video_w*video_h, 1, f );
-
 		if( r < 1 ) break;
 
 		for( y = 0; y < video_h / BLOCKSIZE; y++ )
@@ -822,7 +857,6 @@ int main( int argc, char ** argv )
 
 		frames++;
 		memcpy( &rawVideoData[(frames-1)*video_w*video_h], tbuf, video_w*video_h );
-
 		//usleep(10000);
 	}
 	num_video_frames = frames;

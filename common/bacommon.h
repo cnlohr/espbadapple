@@ -13,7 +13,7 @@
 // Doing MSE flattens out the glyph usage
 // BUT by not MSE'ing it looks the same to me
 // but it "should" be better 
-#define MSE
+//#define MSE
 
 // Target glyphs, and how quickly to try approaching it.
 //#define TARGET_GLYPH_COUNT 256 // defined in Makefile
@@ -33,6 +33,7 @@
 // Completely comment out to disable tile inversion
 // Tile inversion allows glyphs to be either positive or negative, and the huffman tree can choose which way to go.
 // so theoretically you would need half the total tiles.
+// XXX This DOES NOT WORK with later steps of the code, after finding glyph inversion was not the long pole in the tent.
 //#define ALLOW_GLYPH_INVERSION
 
 // Flip only implemented for COMPRESSION_UNIFIED_BY_BLOCK, overall found to be net loss.

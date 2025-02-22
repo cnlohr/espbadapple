@@ -5,7 +5,7 @@ include ../common/make.inc
 LDFLAGS:=-g -lX11 -lm
 
 #  -fsanitize=address -static-libasan
-CFLAGS:=-O2 -g -Wno-unused-result -mavx2 -DBLOCKSIZE=${BLOCKSIZE} -I../common -DTARGET_GLYPH_COUNT=${TARGET_GLYPH_COUNT}
+CFLAGS:=-O2 -g  -Wall -Wno-unused-but-set-variable -Wno-unused-result -Wno-unused-variable -Wno-unused-function -mavx2 -DBLOCKSIZE=${BLOCKSIZE} -I../common -DTARGET_GLYPH_COUNT=${TARGET_GLYPH_COUNT}
 
 hufftreegentest : hufftreegentest.c
 	gcc $(CFLAGS) -o $@ $^

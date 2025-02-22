@@ -10,7 +10,7 @@
 #define BSX (RESX/BLOCKSIZE)
 #define BSY (RESY/BLOCKSIZE)
 
-float fRemoveThreshold = -0.832; // How different can frames be but this gets preserved?
+float fRemoveThreshold = 0.0; // How different can frames be but this gets preserved?
 
 uint8_t videodata[FRAMECT][RESY][RESX];
 float tiles[TARGET_GLYPH_COUNT][BLOCKSIZE][BLOCKSIZE];
@@ -31,7 +31,11 @@ float LossFrom( int tile, int x, int y, int f )
 			float t = tiles[tile][ly][lx];
 			float p = videodata[f+FRAMEOFFSET][ly+y*BLOCKSIZE][lx+x*BLOCKSIZE] / 255.0;
 			float d = t - p;
+#ifdef MSE
+			d = d * d; // If MSE
+#else
 			if( d < 0 ) d *= -1;
+#endif
 			fr += d;
 			//printf( "[%.3f %.3f]", t, p );
 		}
