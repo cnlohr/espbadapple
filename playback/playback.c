@@ -2,6 +2,11 @@
 
 #include "ba_play.h"
 
+#define F_SPS 48000
+
+#include "ba_play_audio.h"
+
+
 #define CNFG_IMPLEMENTATION
 #include "rawdraw_sf.h"
 

@@ -7,8 +7,6 @@
 #define TIMESCALE ((F_SPS*60)/(138*4))
 #define NUM_VOICES 4
 
-// XXX TODO: Can we remove track # from the note #?
-
 int main()
 {
 	FILE * fMRaw = fopen( "fmraw.dat", "rb" );
@@ -69,6 +67,11 @@ int main()
 				fsin[i] = 0;
 			}
 
+			int endurement = ((next_note) & 0x7);
+			if( endurement == 7 ) endurement = 8; // XXX Special case scenario at ending.
+			nexttrel = t + endurement;
+			fprintf( stderr, "NEXT: LEN %d -> %d -> %d (%04x)\n", endurement, t, nexttrel, next_note );
+
 			if( fread( &next_note, 2, 1, fMRaw ) != 1 )
 			{
 				tend = t + 8;
@@ -79,10 +82,6 @@ int main()
 			}
 			else
 			{
-				int endurement = ((next_note) & 0x7);
-				if( endurement == 7 ) endurement = 8; // XXX Special case scenario at ending.
-				nexttrel = t + endurement;
-				fprintf( stderr, "NEXT: LEN %d -> %d -> %d (%04x)\n", endurement, t, nexttrel, next_note );
 			}
 		}
 

@@ -237,7 +237,6 @@ int main( int argc, char ** argv )
 	fprintf( fMXML, "<song>\n" );
 	fprintf( fMJSON, "{\"notes\":[" );
 
-	int eLastTime = 0;
 	for( i = 0; i < notehead; i++ )
 	{
 		struct NoteEvent * e = &AllNoteEvents[i];
@@ -255,7 +254,8 @@ int main( int argc, char ** argv )
 		{
 			uint8_t note_and_track = e->Note - minnote; // | (e->Track<<7);  XXX TODO: IF we want track data, add this back.
 			uint16_t duration = (e->OffTime - e->OnTime + 1);
-			uint16_t deltatime = (e->OnTime - eLastTime + 1);
+			int eNextTime = ( i > 0 ) ? (e+1)->OnTime : 0;
+			uint16_t deltatime = (eNextTime - e->OnTime + 1);
 
 			if( duration/120-1 > 31 )
 			{
@@ -291,8 +291,6 @@ int main( int argc, char ** argv )
 			fprintf( fMXML, "        <offtime>%d</offtime>\n", e->OffTime );
 			fprintf( fMXML, "    </note>\n" );
 			fprintf( fMJSON, "{\"pitch\":%d,\"ontime\":%d,\"offtime\":%d}%c", e->Note, e->OnTime, e->OffTime, (notehead-1 == i)?' ' : ',' );
-
-			eLastTime = e->OnTime;
 		}
 	}
 	fprintf( fMXML, "</song>\n" );
