@@ -82,14 +82,14 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 			int slope = 0;
 			for( k = 0; k < bas_bit_used_for_peekback_length; k++ )
 			{
-				int bprob = 128 + slope;
+				int bprob = bas_peekback_base_for_length + slope;
 				slope += bas_peekback_slope_for_length;
 				runlen |= vpx_read( &player->reader, bprob ) << k;
 			}
 			slope = 0;
 			for( k = 0; k < bas_bit_used_for_peekback_offset; k++ )
 			{
-				int bprob = 128 + slope;
+				int bprob = bas_peekback_base_for_offset + slope;
 				slope += bas_peekback_slope_for_offset;
 				offset |= vpx_read( &player->reader, bprob ) << k;
 			}
@@ -161,7 +161,7 @@ static inline void perform_16th_note( struct ba_audio_player_t * player )
 			{
 				player->playing_freq[i] = frequencies[note >> 8];
 				player->tstop[i] = ((note >> 3) & 0x1f) + player->t + 1;
-				player->phase[i] = 16384; // TODO: Do we want to randomize this to get some variety?  For now, let's try it in the center?  We could randomize by just not setting it.  TODO Try this.
+				//player->phase[i] = 16384; // TODO: Do we want to randomize this to get some variety?  For now, let's try it in the center?  We could randomize by just not setting it.  TODO Try this.
 				int endurement = ((note) & 0x7);
 				if( endurement == 7 ) { endurement = 8; } // XXX Special case scenario at ending.
 				//printf( "%d %d %d STOP: %d  ENDURE: %d\n", ((note >> 3) & 0x1f), note & 7, note>>8, player->tstop[i], endurement );

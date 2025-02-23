@@ -19,6 +19,11 @@ const int MaxRL = (1<<RLBits)-1;
 // I.e. for each message we start at 50/50 chance, but as we move up in bit significant, we reduce the chance it could be a 1.
 const int rl_slope = (128/(RLBits-1));
 const int mr_slope = (128/(MRBits-1));
+const int rl_base = 127;
+const int mr_base = 127;
+//RL_BASE 127
+//#define MR_BASE 127
+
 
 struct DataTree
 {
@@ -154,6 +159,11 @@ int main()
 
 	int highestNoteCnt = 0;
 
+	int Prob1MR[MRBits];
+	int Prob1RL[RLBits];
+	memset( Prob1MR, 0, sizeof(Prob1MR) );
+	memset( Prob1RL, 0, sizeof(Prob1RL) );
+
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
@@ -186,6 +196,32 @@ int main()
 			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
 			i += bestrl-1;
 			numRev++;
+
+			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
+			int offset = i-bestrunstart-bestrl;
+			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
+
+			int emit_best_rl = bestrl - MinRL - 1;
+
+			// Output emit_best_rl, RLBits, Prob1RL
+			// Output offset, MRBits, Prob1MR
+
+			int k;
+			for( k = 0; k < RLBits; k++ )
+			{
+				int is1 = !!(emit_best_rl&1);
+				Prob1RL[k] += is1;
+				emit_best_rl>>=1;
+			}
+			if( emit_best_rl ) fprintf( stderr, "ERROR: Invalid RL Emitted %d remain\n", emit_best_rl );
+
+			for( k = 0; k < MRBits; k++ )
+			{
+				int is1 = !!(offset&1);
+				Prob1MR[k] += is1;
+				offset>>=1;
+			}
+			if( offset ) fprintf( stderr, "ERROR: Invalid offset Emitted %d remain\n", offset );
 		}
 		else
 		{
@@ -198,6 +234,16 @@ int main()
 			numReg++;
 		}
 	}
+
+#if 0
+	// Print out frequencies of peekbacks
+	printf( "MR:\n" );
+	for( i = 0; i < MRBits; i++ )
+	printf( "%d,%d,%d,%d\n", numRev, Prob1MR[i], 255-255 * Prob1MR[i] / numRev, RL_BASE + i*rl_slope );
+	printf( "RL:\n" );
+	for( i = 0; i < RLBits; i++ )
+	printf( "%d,%d,%d,%d\n", numRev, Prob1RL[i], 255-255 * Prob1RL[i] / numRev, MR_BASE+ i*mr_slope );
+#endif
 
 	int bitsForNotes = ProbabilityTreeBitsForMaxElement( highestNoteCnt );
 	int bitsForLenAndRun = ProbabilityTreeBitsForMaxElement( dtLenAndRun.numUnique );
@@ -231,7 +277,7 @@ int main()
 	uint8_t vpxbuffer[1024*16];
 	vpx_start_encode( &writer, vpxbuffer, sizeof(vpxbuffer) );
 
-	printf( "Bits: %d/%d\n", bitsForNotes, bitsForLenAndRun );
+	printf( "Bits: %d (Notes)/%d (LenAndRun)\n", bitsForNotes, bitsForLenAndRun );
 
 	for( i = 0; i < dtNotes.numUnique; i++ )
 	{
@@ -354,7 +400,8 @@ int main()
 			int k;
 			for( k = 0; k < RLBits; k++ )
 			{
-				int bprob = 128 + k*rl_slope;
+				int bprob = rl_base + k*rl_slope;
+				//int bprob = 255-( 255 * Prob1RL[k] ) / (numRev);
 				vpx_write( &writer, !!(emit_best_rl&1), bprob );
 				emit_best_rl>>=1;
 			}
@@ -362,7 +409,8 @@ int main()
 
 			for( k = 0; k < MRBits; k++ )
 			{
-				int bprob = 128 + k*mr_slope;
+				int bprob = mr_base+ k*mr_slope;
+				//int bprob = 255-(255 * Prob1MR[k]) / (numRev);
 				vpx_write( &writer, !!(offset&1), bprob );
 				offset>>=1;
 			}
@@ -426,6 +474,8 @@ int main()
 	fprintf( fData, "const uint8_t bas_probability_of_peekback = %d;\n", probability_of_reverse );
 	fprintf( fData, "const uint8_t bas_peekback_slope_for_length = %d;\n", rl_slope );
 	fprintf( fData, "const uint8_t bas_peekback_slope_for_offset = %d;\n", mr_slope );
+	fprintf( fData, "const uint8_t bas_peekback_base_for_length = %d;\n", rl_base );
+	fprintf( fData, "const uint8_t bas_peekback_base_for_offset = %d;\n", mr_base );
 	fprintf( fData, "const uint8_t bas_bit_used_for_peekback_length = %d;\n", RLBits );
 	fprintf( fData, "const uint8_t bas_bit_used_for_peekback_offset = %d;\n", MRBits );
 	fprintf( fData, "\n" );
