@@ -783,7 +783,8 @@ int main( int argc, char ** argv )
 					for( to = 0; to < maxtilect_remapped; to++ )
 					{
 						//printf( "%d*%d,",frequencyset[b][to], fromtofrequencyremap[from*maxtilect_remapped+to] );
-						binscore[b] += frequencyset[b][to] * fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to];
+						float d = (frequencyset[b][to]*fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to]);
+						binscore[b] += d;
 					}
 				}
 

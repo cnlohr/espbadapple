@@ -27,7 +27,29 @@ extern "C" {
 #define VPXCODING_DECORATOR static
 #endif
 
+#ifdef VPXCODING_AUTOGEN_NORM
 uint8_t vpx_norm[256];
+#else
+VPXCODING_DECORATOR const uint8_t vpx_norm[256] = {
+	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,
+	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+#endif
+
 
 // This is meant to be a large, positive constant that can still be
 // efficiently loaded as an immediate (on platforms like ARM, for example).
@@ -69,6 +91,7 @@ static inline int vpx_read_bit(vpx_reader *r) {
 
 VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size )
 {
+#ifdef VPXCODING_AUTOGEN_NORM
 	if( vpx_norm[1] == 0 )
 	{
 		//	0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,...
@@ -81,7 +104,7 @@ VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, si
 			//printf( "%d=%d\n", n, b );
 		}
 	}
-
+#endif
 	r->buffer_end = buffer + size;
 	r->buffer = buffer;
 	r->value = 0;

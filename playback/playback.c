@@ -3,6 +3,8 @@
 #include "ba_play.h"
 
 #define F_SPS 48000
+#define AUDIO_BUFFER_SIZE 2048
+
 
 #include "ba_play_audio.h"
 
@@ -20,6 +22,7 @@ void HandleDestroy() { }
 
 #define ZOOM 2
 
+uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
 
 int PValueAt( int x, int y )
@@ -72,6 +75,12 @@ int main()
 	ge_GIF * gifout = ge_new_gif( "playback.gif", RESX*ZOOM, RESY*ZOOM, palette, 4, -1, 0 );
 
 	ba_play_setup( &ctx );
+	ba_audio_setup();
+
+	FILE * fAudioDump = fopen( "audio.dump", "wb" );
+
+	int outbuffertail = 0;
+	int lasttail = 0;
 
 	while( CNFGHandleInput() && frame < FRAMECT )
 	{
@@ -104,8 +113,19 @@ int main()
 
 		ge_add_frame(gifout, 2);
 
-		CNFGSwapBuffers();
 		frame++;
+
+		lasttail = outbuffertail;
+		outbuffertail = (F_SPS/30*frame) % AUDIO_BUFFER_SIZE;
+		ba_audio_fill_buffer( out_buffer_data, outbuffertail );
+
+		for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
+		{
+			float fo = out_buffer_data[n] / 128.0 - 1.0;
+			fwrite( &fo, 1, 4, fAudioDump );
+		}
+
+		CNFGSwapBuffers();
 	}
 
 	ge_close_gif( gifout );

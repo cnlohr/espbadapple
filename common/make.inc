@@ -1,3 +1,5 @@
+# For other settings, see bacommon.h
+
 RESX=64
 RESY=48
 BLOCKSIZE=8

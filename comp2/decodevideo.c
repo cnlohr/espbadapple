@@ -24,7 +24,6 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 
 #ifdef FPS_REDUCTION
 	if( (frames % FPS_REDUCTION) != 0 ) goto skipframe;
-#error xxx
 #endif
 
 	uint8_t mono[targh][targw];
@@ -59,7 +58,9 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 	int r = stbi_write_png( st, targw, targh, 1, mono, targw );
 
 	recframes++;
+#ifdef FPS_REDUCTION
 skipframe:
+#endif
 	frames++;	
 }
 

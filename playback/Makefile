@@ -17,7 +17,7 @@ playback.gif : playback
 	./playback
 
 playback.mp4 : playback.gif
-	ffmpeg -loglevel quiet -y -f f32le -ar 48000 -ac 1 -i ../song/track-float-48000.dat -r 30 -i playback.gif -af adelay=1350 -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 30 -crf 15 playback.mp4
+	ffmpeg -loglevel quiet -y -f f32le -ar 48000 -ac 1 -i audio.dump -r 30 -i playback.gif -af adelay=1350 -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 30 -crf 15 playback.mp4
 
 clean :
 	rm -rf playback

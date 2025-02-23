@@ -4,6 +4,10 @@
 #include <libavcodec/avcodec.h>
 #include <libavutil/pixfmt.h>
 #include <libswscale/swscale.h>
+#include <libavutil/buffer.h>
+#include <libavutil/intreadwrite.h>
+#include <libavutil/imgutils.h>
+
 //from decoding_encoding.c
 
 #ifndef PIX_FMT_RGB24
@@ -34,7 +38,7 @@ void got_video_frame( unsigned char * rgbbuffer, int linesize, int width, int he
 static int decode_write_frame( AVCodecContext *avctx,
 							  AVFrame *frame, int *frame_count, AVPacket *pkt, int last, AVFrame* encoderRescaledFrame)
 {
-	int len, got_frame;
+	int len = 0, got_frame = 0;
 
 	do
 	{
@@ -42,7 +46,7 @@ static int decode_write_frame( AVCodecContext *avctx,
 		{
 			int sub = avcodec_send_packet( avctx, pkt );
 		}
-			av_frame_make_writable( frame );
+		av_frame_make_writable( frame );
 
 		len = avcodec_receive_frame(avctx, frame );
 		if( len == -11 ) break;
@@ -72,8 +76,8 @@ static int decode_write_frame( AVCodecContext *avctx,
 			av_frame_make_writable( frame2 );
 			int outlen = av_image_get_buffer_size( PIX_FMT_RGB24, width2, height2, 1 );
 			frame2data = av_malloc(outlen);
-			av_image_fill_arrays( frame2->data, frame2->linesize, frame2data, PIX_FMT_RGB24, width2, height2, 1 );
-			int r2 = sws_scale(resize, frame->data, frame->linesize, 0, avctx->height, frame2->data, frame2->linesize);
+			av_image_fill_arrays( frame2->data, frame2->linesize, (uint8_t*)frame2data, PIX_FMT_RGB24, width2, height2, 1 );
+			int r2 = sws_scale(resize, (const uint8_t * const*)frame->data, frame->linesize, 0, avctx->height, frame2->data, frame2->linesize);
 			int r = av_frame_get_buffer( frame, 1 );
 
 			if( r2 != height2 || r != 0 )
@@ -90,7 +94,7 @@ static int decode_write_frame( AVCodecContext *avctx,
 			av_frame_free( &frame2 );
 
 		}
-skip_frame_got:
+//skip_frame_got:
 		if (pkt->data) {
 			pkt->size -= len;
 			pkt->data += len;
@@ -108,7 +112,7 @@ int video_decode( const char *filename, int reqw, int reqh)
 	AVFrame* encoderRescaledFrame;
 	AVFormatContext *fmt_ctx = 0;
 	AVCodecContext *dec_ctx = 0;
-	int video_stream_index;
+	int video_stream_index = 0;
 	int frame_count = 0;
 	AVFrame *frame;
 	uint8_t inbuf[INBUF_SIZE + AV_INPUT_BUFFER_PADDING_SIZE];
@@ -151,9 +155,6 @@ int video_decode( const char *filename, int reqw, int reqh)
 		}
 
 	}
-
-
-
 
     AVCodecParameters* inputCodecParameters = fmt_ctx->streams[video_stream_index]->codecpar;
     dec = avcodec_find_decoder(inputCodecParameters->codec_id);
@@ -216,8 +217,8 @@ int video_decode( const char *filename, int reqw, int reqh)
 		avcodec_close(dec_ctx);
 	avformat_close_input(&fmt_ctx);
 	av_frame_free(&frame);
-	printf( "Done?\n" );
-	printf("\n");
+	printf( "Done.\n" );
+	return 0;
 }
 
 
