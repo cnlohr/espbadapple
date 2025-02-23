@@ -245,7 +245,7 @@ struct block
 void HandleKey( int keycode, int bDown ) { }
 void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
-void HandleDestroy() { }
+int HandleDestroy() { return 0; }
 
 void UpdateBlockDataFromIntensity( struct block * k );
 void DrawBlockBasic( int xofs, int yofs, blocktype bb, int original_glyph_id  );
