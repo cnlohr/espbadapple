@@ -24,6 +24,14 @@ from blocksettings import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+import torch
+
+def soft_clamp(x, min, max, hardness=10.0):
+    """
+    Like torch.clamp, but with soft edges (using softplus)
+    Increase hardness for sharper corners.
+    """
+    return min + F.softplus(x - min, beta=hardness) - F.softplus(x - max, beta=hardness)
 
 class ImageReconstruction(nn.Module):
     def __init__(self, n_sequence):
@@ -44,6 +52,7 @@ class ImageReconstruction(nn.Module):
         # Sequence (one hot per image tile per frame)
         # Note this parameter will be large
         self.sequence = None
+        self.train_sequence = False  # DISABLED: Not training sequence
 
     def init_blocks_tiledata(self, tiles_path):
         tiles = np.fromfile(tiles_path, dtype=np.float32)
@@ -88,10 +97,63 @@ class ImageReconstruction(nn.Module):
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
         logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...], dim=-1)
 
-        kl_div_elementwise = F.kl_div(logprob_a, logprob_b, reduction='none', log_target=True)
+        # symmetrized kl divergence
+        kl_div_elementwise_1 = F.kl_div(logprob_a, logprob_b, reduction='none', log_target=True)
+        kl_div_elementwise_2 = F.kl_div(logprob_b, logprob_a, reduction='none', log_target=True)
+        kl_div_elementwise = ( kl_div_elementwise_1 + kl_div_elementwise_2 ) / 2
         kl_div = kl_div_elementwise.sum(-1)  # Sum over categorical dim to yield per-frame/per-tile KL divergence
 
         return kl_div.mean()
+
+    def deblocking_filter(self, img_raw):
+        """
+        Runs Charles' custom deblocking filter on inputs, with some modifications:
+         - Our inputs are float 0-1; we scale these up to 0-3 to match the int range, but otherwise stay floating point
+         - Soft clamping function to keep this filter differentiable
+        """
+
+        # Range scaling
+        img = img_raw * 3
+
+        B, C, H, W = img.shape
+
+        # Create 1D masks for input coordinates, marking where the block filter would apply
+        x_indices = torch.arange(W, device=img.device)
+        y_indices = torch.arange(H, device=img.device)
+        mask_x = ((x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))).to(img.dtype)
+        mask_y = ((y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))).to(img.dtype)
+
+        # Reshape for broadcasting
+        mask_x = mask_x.view(1, 1, 1, W)
+        mask_y = mask_y.view(1, 1, H, 1)
+
+        # Number of samples considered per pixel
+        qty = 1 + 2 * mask_x + 2 * mask_y  # shape (B, 1, H, W)
+
+        # Pad with replication (equivalent to clamps in c pixel-sampling function)
+        padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
+
+        # Extract the center region (same as input) and neighbors
+        center = padded[:, :, 1:-1, 1:-1]
+        left = padded[:, :, 1:-1, :-2]
+        right = padded[:, :, 1:-1, 2:]
+        up = padded[:, :, :-2, 1:-1]
+        down = padded[:, :, 2:, 1:-1]
+
+        # Sampled sum
+        neighbor_sum = center + (left + right) * mask_x + (up + down) * mask_y
+        total_sum = center + neighbor_sum
+
+        # Apply clamping
+        filtered = soft_clamp(total_sum - qty - 1, min=0, max=3)
+
+        # Pass through non-filtered pixels as-is
+        result = torch.where(qty == 1, center, filtered)
+
+        # Undo scaling
+        result /= 3
+
+        return result
 
     def forward(self, frame_idxs):
         """
@@ -103,10 +165,10 @@ class ImageReconstruction(nn.Module):
         block_len = math.prod(block_size)
 
         # Pluck out selected block weights (one hot per image tile)
-        if self.training:
+        if self.training and self.train_sequence:
             # Use the gumbel-softmax trick to sample our tiles
             block_weights = F.gumbel_softmax(logits=self.sequence[frame_idxs, ...],
-                                             tau=0.00001,  # TODO tune me
+                                             tau=0.1,  # TODO tune me
                                              hard=False)
         else:
             # Use argmax
@@ -119,6 +181,9 @@ class ImageReconstruction(nn.Module):
 
         # fold back into expected image shape
         reconstructed = self.fold(uf_reconstructed)
+
+        # Apply deblocking filter.
+        reconstructed = self.deblocking_filter(reconstructed)
 
         return reconstructed
 
@@ -154,8 +219,8 @@ class BlockTrainer:
 
         self.recr = ImageReconstruction(n_sequence=len(self.dataset))
 
-        self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
-        self.recr.init_sequence("stream-kmeans_256_ni.dat")
+        self.recr.init_blocks_tiledata("start_20250223/tiles-64x48x8.dat")
+        self.recr.init_sequence("start_20250223/stream_stripped.dat")
         self.recr.to(device)
 
         self.data_loader = DataLoader(self.dataset,
@@ -165,14 +230,14 @@ class BlockTrainer:
         self.optim = torch.optim.Adam(
             [
                 {"params": self.recr.blocks, "lr": 0.002},
-                {"params": self.recr.sequence, "lr": 0.02}
+                # {"params": self.recr.sequence, "lr": 0.01}  # DISABLED: Not training sequence
             ]
         )
 
         self.perceptual_loss = LPIPS().to(device)
 
         tstr = time.strftime("%Y-%m-%d_%H-%M-%S")
-        self.out_dir = os.path.join("outputs", "ts256_ni_" + tstr)
+        self.out_dir = os.path.join("outputs", "ts192_deblocked_" + tstr)
         self.out_blocks_dir = os.path.join(self.out_dir, "blocks")
         self.out_img_dir = os.path.join(self.out_dir, "imgs")
         self.out_probs_dir = os.path.join(self.out_dir, "probs")
@@ -182,7 +247,7 @@ class BlockTrainer:
         self.out_data_dir = os.path.join(self.out_dir, "data")
 
         # Weighting factor for the tile-change regularization
-        self.change_lambda = 0.25
+        self.change_lambda = 0.01
 
         os.makedirs(self.out_data_dir, exist_ok=False)
         os.makedirs(self.out_blocks_dir, exist_ok=False)
@@ -201,10 +266,14 @@ class BlockTrainer:
 
     def train(self):
         self.recr.eval()
-        self.recr.dump_grid(os.path.join(self.out_blocks_dir, "000_init_blocks.png"))
+        self.recr.dump_grid(os.path.join(self.out_blocks_dir, "0000_init_blocks.png"))
         for vi, vd in zip(self.viz_frames, self.viz_dirs):
-            self.dump_reconstructed_frame(os.path.join(vd, "000_init_img_%04d.png" % vi), vi)
-        self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "000_init_probs.png" ))
+            self.dump_reconstructed_frame(os.path.join(vd, "0000_init_img_%04d.png" % vi), vi)
+        # self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "0000_init_probs.png" ))
+
+        # Not training sequence
+        self.recr.train_sequence = False
+        self.recr.sequence.requires_grad = False
 
         for epoch in range(1000000):
             self.recr.train()
@@ -225,7 +294,8 @@ class BlockTrainer:
                 rcd_us = nn.functional.interpolate(reconstructed_img, size=(192, 256), mode='nearest')
 
                 loss_percep = self.perceptual_loss(rcd_us, tgt_us)
-                loss_change = self.recr.tile_f2f_penalty(idx)
+                #loss_change = self.recr.tile_f2f_penalty(idx)  # DISABLED: Not training w/ frame2frame penalty
+                loss_change = torch.tensor(0.0)
 
                 loss = loss_percep + self.change_lambda * loss_change
 
@@ -258,9 +328,10 @@ class BlockTrainer:
             self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
             for vi, vd in zip(self.viz_frames, self.viz_dirs):
-                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_1141.png" % (epoch, epoch_loss)), vi)
+                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
 
-            self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+            # DISABLED: Not training sequence
+            # self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
 
             print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
 
