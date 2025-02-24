@@ -81,7 +81,8 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 14 // TUNE ME!!!
+#define USE_TILE_CLASSES 19 // TUNE ME!!!
+#define DEDICATE_TILE_CLASS01 1
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
@@ -124,7 +125,14 @@
 #error configuraiton invalid, VPX_CODING_ALLOW_BACKTRACK was invented before INVERT_RUNCODE_COMPRESSION.
 #endif 
 
-//////////////// HUFFMAN ONLY BELOW THIS LINE /////////////////////
+//////////////// HUFFMAN + K-MEANS ONLY BELOW THIS LINE /////////////////////
+
+#define K_MEANS_HERO_FRAME  1688
+#define K_MEANS_HERO_CELLX   3
+#define K_MEANS_HERO_CELLY   2
+#define K_MEANS_HERO_FRAME_START 1686
+#define K_MEANS_HERO_FRAME_END   1702
+
 
 // THINGS TO NOTE:
 

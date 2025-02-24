@@ -219,8 +219,12 @@ class BlockTrainer:
 
         self.recr = ImageReconstruction(n_sequence=len(self.dataset))
 
-        self.recr.init_blocks_tiledata("start_20250223/tiles-64x48x8.dat")
-        self.recr.init_sequence("start_20250223/stream_stripped.dat")
+        #self.recr.init_blocks_tiledata("start_20250223/tiles-64x48x8.dat")
+        #self.recr.init_sequence("start_20250223/stream_stripped.dat")
+
+        self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
+        self.recr.init_sequence("stream-kmeans_256_ni.dat")
+
         self.recr.to(device)
 
         self.data_loader = DataLoader(self.dataset,

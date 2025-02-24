@@ -139,7 +139,11 @@ static int kk;
 		int fromglyph = ctx->curmap[n];
 		int run = ctx->currun[n];
 #ifdef USE_TILE_CLASSES
+#if USE_TILE_CLASSES > 16
+		int fromclass = (ba_exportbinclass[fromglyph]);
+#else
 		int fromclass = (ba_exportbinclass[fromglyph>>1]>>((fromglyph&1)<<2))&0xf;
+#endif
 		int probability = ba_vpx_probs_by_tile_run_continuous[fromclass][run];
 #else
 		int probability = ba_vpx_probs_by_tile_run_continuous[run];

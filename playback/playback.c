@@ -18,20 +18,20 @@
 void HandleKey( int keycode, int bDown ) { }
 void HandleButton( int x, int y, int button, int bDown ) { }
 void HandleMotion( int x, int y, int mask ) { }
-void HandleDestroy() { }
+int HandleDestroy() { return 0; }
 
 #define ZOOM 2
 
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
 
-int PValueAt( int x, int y )
+int PValueAt( int x, int y, int * edge )
 {
 	graphictype * framebuffer = (graphictype*)ctx.framebuffer;
-	if( x < 0 ) x = 0;
-	if( x >= RESX ) x = RESX-1;
-	if( y < 0 ) y = 0;
-	if( y >= RESY ) y = RESY-1;
+	if( x < 0 ) { x = 0; *edge = 1; }
+	if( x >= RESX ) { x = RESX-1; *edge = 1; }
+	if( y < 0 ) { y = 0; *edge = 1; }
+	if( y >= RESY ) { y = RESY-1; *edge = 1; }
 
 	graphictype fbv = framebuffer[(x + y*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
 	int ofs = ((x + y*RESX)*BITSETS_TILECOMP)%(GRAPHICSIZE_WORDS*8);
@@ -41,26 +41,36 @@ int PValueAt( int x, int y )
 
 int SampleValueAt( int x, int y )
 {
-	int iSampleAdd = PValueAt( x, y );
+	int edge = 0;
+	int iSampleAdd = PValueAt( x, y, &edge );
 	int iSampleAddQty = 1;
 	if( (x & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (x & (BLOCKSIZE-1)) == 0 )
 	{
 		iSampleAddQty += 2;
-		iSampleAdd += PValueAt( x-1, y );
-		iSampleAdd += PValueAt( x+1, y );
+		iSampleAdd += PValueAt( x-1, y, &edge );
+		iSampleAdd += PValueAt( x+1, y, &edge );
 	}
 	if( (y & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (y & (BLOCKSIZE-1)) == 0 )
 	{
 		iSampleAddQty += 2;
-		iSampleAdd += PValueAt( x, y-1 );
-		iSampleAdd += PValueAt( x, y+1 );
+		iSampleAdd += PValueAt( x, y-1, &edge );
+		iSampleAdd += PValueAt( x, y+1, &edge );
 	}
 	if( iSampleAddQty == 1 ) return iSampleAdd;
 
 	// I have no rationale for why this looks good.  I tried it randomly and liked it.
 	int r = iSampleAdd - iSampleAddQty;
-	if( r > 3 ) r = 3;
-	if( r < 0 ) r = 0;
+	if( edge )
+	{
+		if( r > 1 ) r = 3;
+		if( r < 2 ) r = 0;
+	}
+	else
+	{
+		if( r > 3 ) r = 3;
+		if( r < 0 ) r = 0;
+	}
+
 	return r;
 }
 

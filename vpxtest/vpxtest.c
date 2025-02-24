@@ -292,6 +292,17 @@ int main( int argc, char ** argv )
 	}
 	fclose( f );
 
+	// Force hero cells.
+	#ifdef K_MEANS_HERO_FRAME
+	{
+		int i;
+		for( i = K_MEANS_HERO_FRAME_START; i <= K_MEANS_HERO_FRAME_END; i++ )
+		{
+			tiles[i*BLKX*BLKY + K_MEANS_HERO_CELLX + K_MEANS_HERO_CELLY*BLKX] = 0;
+		}
+	}
+	#endif
+
 	// Select default cell to start with.
 	startcell = tiles[0];
 	int startcellremap;
@@ -631,7 +642,12 @@ int main( int argc, char ** argv )
 	uint8_t ba_chancetable_glyph_dual[USE_TILE_CLASSES][chancetable_len];
 	memset( ba_chancetable_glyph_dual, 0, sizeof(ba_chancetable_glyph_dual) );
 	uint8_t selectchancebin[maxtilect_remapped];
+#if USE_TILE_CLASSES > 16
+	uint8_t ba_exportbinclass[maxtilect_remapped];
+#else
 	uint8_t ba_exportbinclass[(maxtilect_remapped+1)/2];
+#endif
+
 	{
 		// i = to
 		// j = from
@@ -696,6 +712,13 @@ int main( int argc, char ** argv )
 			}
 		}
 
+#if DEDICATE_TILE_CLASS01
+		const int startclass = 2;
+#else
+		const int startclass = 0;
+#endif
+		int btcount[USE_TILE_CLASSES] = { 0 };
+
 		// Perform some k-means iterations on the dataset to anneal the data set.
 		int kmeansiter = 20;
 		int least_matching_glyph = -1;  // What is the most poorly matching glyph, so if we need to fill in a bin, we can use this one.
@@ -716,21 +739,22 @@ int main( int argc, char ** argv )
 		{
 			int to, b;
 			for( to = 0; to < maxtilect_remapped; to++ )
-				for( b = 0; b < USE_TILE_CLASSES; b++ )
+				for( b = startclass; b < USE_TILE_CLASSES; b++ )
 					frequencyset[b][to] = 0;
 
 			int mapped_bins[USE_TILE_CLASSES] = { 0 };
-			for( from = 0; from < maxtilect_remapped; from++ )
+			for( from = startclass; from < maxtilect_remapped; from++ )
 			{
 				int bin = selectchancebin[from];
 				mapped_bins[bin]++;
+				if( bin < startclass ) continue;
 				for( to = 0; to < maxtilect_remapped; to++ )
 				{
 					frequencyset[bin][to] += fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to];
 				}
 			}
 
-			for( b = 0; b < USE_TILE_CLASSES; b++ )
+			for( b = startclass; b < USE_TILE_CLASSES; b++ )
 			{
 				if( mapped_bins[b] == 0 && least_matching_glyph != -1 )
 				{
@@ -768,8 +792,14 @@ int main( int argc, char ** argv )
 				}
 			}
 
+			int bin;
+			for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+			{
+				btcount[bin] = 0;
+			}
+
 			float weakestscore = 1e20;
-			for( from = 0; from < maxtilect_remapped; from++ )
+			for( from = startclass; from < maxtilect_remapped; from++ )
 			{
 				int bin = 0;
 
@@ -777,14 +807,14 @@ int main( int argc, char ** argv )
 				// NOTE: I tried randomly assigning and that does really poorly.
 				float binscore[USE_TILE_CLASSES] = { 0 };
 				int b;
-				for( b = 0; b < USE_TILE_CLASSES; b++ )
+				for( b = startclass; b < USE_TILE_CLASSES; b++ )
 				{
 					int to;
 					for( to = 0; to < maxtilect_remapped; to++ )
 					{
 						//printf( "%d*%d,",frequencyset[b][to], fromtofrequencyremap[from*maxtilect_remapped+to] );
 						float d = (frequencyset[b][to]*fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to]);
-						binscore[b] += d;
+						binscore[b] += d;// / (btcount[b]+1); // Why doesn't this divide help???
 					}
 				}
 
@@ -803,6 +833,8 @@ int main( int argc, char ** argv )
 				bin = bestbin;
 
 				selectchancebin[from] = bin;
+				btcount[bin] += tilecounts[from];
+
 				if( bestbinscore < weakestscore )
 					least_matching_glyph = from;
 			}
@@ -813,7 +845,11 @@ int main( int argc, char ** argv )
 		{
 			int bin = selectchancebin[from];
 			count_in_group[bin]++;
+#if USE_TILE_CLASSES > 16
+			ba_exportbinclass[from] |= bin;
+#else
 			ba_exportbinclass[from/2] |= bin<<((from&1)*4);
+#endif
 		}
 
 #if 0
@@ -1723,7 +1759,11 @@ int main( int argc, char ** argv )
 			{
 #ifdef INVERT_RUNCODE_COMPRESSION
 				int fromglyph = curglyph[y][x];
+#if USE_TILE_CLASSES > 16
+				int fromclass = ba_exportbinclass[fromglyph];
+#else
 				int fromclass = (ba_exportbinclass[fromglyph/2] >> ((fromglyph&1)*4))&0xf;
+#endif
 				int run = currun[y][x];
 				int probability = ba_vpx_probs_by_tile_run_continuous[fromclass][(run < RUNCODES_CONTINUOUS - 1)?run:(RUNCODES_CONTINUOUS - 1)];
 				int level;

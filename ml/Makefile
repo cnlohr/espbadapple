@@ -28,7 +28,7 @@ reconstruct :
 
 squeeze :
 	cp $(SOURCETILES) kmeans_256_ni_mse.dat
-	cp $(STREAM) stream-kmeans_256_ni.dat
+	cp ../streamrecomp/stream_stripped.dat stream-kmeans_256_ni.dat
 	python3 train_patches_sequence.py
 
 MOST_RECENT_STREAMOUT:=$(lastword $(shell ls outputs/$(MOST_RECENT_RUN)/data/*stream.dat))
@@ -36,5 +36,7 @@ MOST_RECENT_BLOCKSOUT:=$(lastword $(shell ls outputs/$(MOST_RECENT_RUN)/data/*bl
 
 squeezepull :
 	cp $(MOST_RECENT_STREAMOUT) $(STREAM)
+	cp $(MOST_RECENT_STREAMOUT) ../streamrecomp/stream_stripped.dat
 	cp $(MOST_RECENT_BLOCKSOUT) $(SOURCETILES)
+
 

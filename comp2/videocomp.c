@@ -19,6 +19,10 @@ struct block * allblocks_alloc;
 int numblocks;
 int maxblocks;
 
+#ifdef K_MEANS_HERO_FRAME
+struct block heroblock;
+#endif
+
 float ComputeDistance( const struct block * b, const struct block * c, int * inversiontype )
 {
 	int j;
@@ -416,6 +420,8 @@ void ComputeKMeans()
 		memset( mkd_val, 0, KMEANS * BLOCKSIZE * BLOCKSIZE * sizeof(float) );
 		memset( mkd_cnt, 0, KMEANS * sizeof(float) );
 
+
+
 		struct block * b = allblocks;
 		struct block * bend = b + numblocks;
 		for( ; b != bend; b++ )
@@ -464,7 +470,6 @@ void ComputeKMeans()
 			}
 		}
 
-
 		// Find new k's optimal intensities.
 		for( km = 0; km < KMEANS; km++ )
 		{
@@ -501,6 +506,31 @@ void ComputeKMeans()
 			}
 			k->count = count;
 		}
+
+		#ifdef K_MEANS_HERO_FRAME
+		{
+			uint8_t * tbufhero = &rawVideoData[K_MEANS_HERO_FRAME*video_w*video_h];
+			ExtractBlock( tbufhero, video_w, video_h, K_MEANS_HERO_CELLX, K_MEANS_HERO_CELLY, &heroblock );
+
+			int km = 0;
+			kmeansdead[km] = 0;
+			int itx;
+			struct block * k = &kmeanses[km];
+			memcpy( k->intensity, heroblock.intensity, sizeof( k->intensity ) );
+			memcpy( &k->blockdata, &heroblock.blockdata, sizeof( k->blockdata ) );
+
+			int x, y;
+			for( x = 4; x < 8; x++)
+			for( y = 0; y < 4; y++ )
+			{
+				if( k->intensity[x+y*8]>0.1 ) k->intensity[x+y*8] = 1;
+			}
+		}
+		int kmeans_offset = 1;
+		#else
+		int kmeans_offset = 0;
+		#endif
+
 
 		int x, y;
 		const int draww = BLOCKSIZE * 6;
@@ -584,7 +614,7 @@ void ComputeKMeans()
 			{
 				minct = 100000000;
 				whichmink = 0;
-				for( km = 0; km < KMEANS; km++ )
+				for( km = kmeans_offset; km < KMEANS; km++ )
 				{
 					if( kmeansdead[km] ) continue;
 					struct block * k = &kmeanses[km];
@@ -606,13 +636,14 @@ void ComputeKMeans()
 			}
 
 			int goodglyphs = 0;
-			for( km = 0; km < KMEANS; km++ )
+			for( km = kmeans_offset; km < KMEANS; km++ )
 			{
 				if( !kmeansdead[km] )
 				{
 					goodglyphs++;
 				}
 			}
+			goodglyphs += kmeans_offset;
 
 			CNFGPenX = 0;
 			CNFGPenY = 600;
@@ -639,7 +670,7 @@ void ComputeKMeans()
 			int mink = 0;
 			float mka = 1e20;
 			int inv = 0;
-			for( km = 0; km < KMEANS; km++ )
+			for( km = kmeans_offset; km < KMEANS; km++ )
 			{
 				struct block * k = &kmeanses[km];
 				int invtemp = 0;
