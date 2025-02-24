@@ -4,7 +4,9 @@
 #include <stdint.h>
 #include <math.h>
 
+#ifndef BAS_DECORATOR
 #define BAS_DECORATOR
+#endif
 #include "badapple_song.h"
 #include "vpxcoding_tinyread.h"
 

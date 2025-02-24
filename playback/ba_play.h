@@ -12,7 +12,9 @@
 #define BA_CONFIG_ONLY
 #include "bacommon.h"
 
+#ifndef BADATA_DECORATOR
 #define BADATA_DECORATOR const static
+#endif
 #include "badapple_data.h"
 
 #if defined( VPX_GREY4 )

@@ -1,0 +1,3 @@
+[submodule "playback/ch32v003fun"]
+	path = playback/ch32v003fun
+	url = https://github.com/cnlohr/ch32v003fun
