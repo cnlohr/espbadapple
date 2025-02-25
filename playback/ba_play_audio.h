@@ -108,7 +108,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 			}
 			do
 			{
-				int n = player->decomp_buffer[ nindex & song_index_mask ] = player->decomp_buffer[ startoffset & song_index_mask ];
+				player->decomp_buffer[ nindex & song_index_mask ] = player->decomp_buffer[ startoffset & song_index_mask ];
 				nindex++; startoffset++;
 				//printf( "%d %d %d\n", startoffset, player
 			} while( nindex != endoffset );
@@ -121,7 +121,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 			int coded_len_and_run = vpx_tree_read( &player->reader, bas_lenandrun_probabilities, bas_lenandrun_probsize, bas_lenandrun_bits );
 			int lenandrun = bas_lenandrun_codes[coded_len_and_run];
 			player->gotnotes++;
-			int n = player->decomp_buffer[(player->nindex++)&song_index_mask] = lenandrun | (note<<8);
+			player->decomp_buffer[(player->nindex++)&song_index_mask] = lenandrun | (note<<8);
 		}
 	}
 	if( player->gotnotes >= bas_songlen_notes )
@@ -175,7 +175,7 @@ static inline void perform_16th_note( struct ba_audio_player_t * player )
 	}
 }
 
-static int ba_audio_fill_buffer( int8_t * outbuffer, int outbuffertail )
+static int ba_audio_fill_buffer( uint8_t * outbuffer, int outbuffertail )
 {
 	int i;
 	struct ba_audio_player_t * player = &ba_player;
@@ -203,7 +203,7 @@ static int ba_audio_fill_buffer( int8_t * outbuffer, int outbuffertail )
 			}
 			else
 			{
-				int pitch = pn;
+				//int pitch = pn;
 				int phase = player->phase[i];
 				phase += pn;
 				player->phase[i] = phase;

@@ -116,6 +116,28 @@ PROBABILITY_TREE_DECORATOR int ProbabilityTreeGetSize( unsigned elements, unsign
 	return chancetable_len;
 }
 
+float ProbabilityTreeComputeExpectedCost( float * fCounts, int nElements )
+{
+	int n;
+	float fRet = 0.0;
+	float fSum = 0.0;
+
+	for( n = 0; n < nElements; n++ )
+	{
+		fSum += fCounts[n];
+	}
+
+	for( n = 0; n < nElements; n++ )
+	{
+		float fC = fCounts[n];
+		if( fC > 0 )
+		{
+			fRet += -log(fC / fSum)/log(2.0) * fC;
+		}
+	}
+	return fRet;
+}
+
 // OUTPUTS probabilities
 PROBABILITY_TREE_DECORATOR void ProbabilityTreeGenerateProbabilities( uint8_t * probabilities, unsigned nr_probabilities,
 	const float * frequencies, unsigned elements, unsigned needed_bits )

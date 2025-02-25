@@ -61,10 +61,9 @@ int ba_play_setup( ba_play_context * ctx )
 #else
 		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata), 0, 0 );
 #endif
-		int g, p;
+		int g = 0;
 		int runsofar = 0;
 		int is0or1 = 0;
-		int crun = 0;
 		graphictype * gd = &ctx->glyphdata[0][0];
 		int cpixel = 0;
 		int writeg = 0;
@@ -120,6 +119,7 @@ int ba_play_setup( ba_play_context * ctx )
 #else
 	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload), 0, 0 );
 #endif
+	return 0;
 }
 
 int ba_play_frame( ba_play_context * ctx )
@@ -132,8 +132,6 @@ int ba_play_frame( ba_play_context * ctx )
 
 	int bx = 0, by = 0;
 	int n;
-
-static int kk;
 
 	for( n = 0; n < BLKY*BLKX; n++ )
 	{
@@ -190,7 +188,7 @@ static int kk;
 			graphictype * glyph = (graphictype*)ctx->glyphdata[tile];
 			graphictype * fbo = (graphictype*)&ctx->framebuffer[(bx*BLOCKSIZE + by*BLOCKSIZE*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
 			//printf( "%d / %d\n", (bx + by*BLOCKSIZE)*BLOCKSIZE*BITSETS_TILECOMP/32, sizeof( ctx->framebuffer ) / 4 );
-			int lx, ly;
+			int ly;
 			for( ly = 0; ly < BLOCKSIZE; ly++ )
 			{
 				fbo[0] = *(glyph++);

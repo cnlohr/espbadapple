@@ -654,12 +654,129 @@ int main( int argc, char ** argv )
 		// fromtofrequencyremap[j*maxtilect_remapped+i] = n;
 		// Figure out how to sort each of the "froms" into "tos"
 
+		int count_in_group[USE_TILE_CLASSES] = { 0 };
+
+		int from;
+		int to;
+		int bin;
+
 		float frequencyset[USE_TILE_CLASSES][maxtilect_remapped];
+
+#if EXPECTED_VALUE_GREEDY_OPTIMIZATION	// Whatever the other thing I was thinking of is.
+
+		for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+		{
+			for( to = 0; to < maxtilect_remapped; to++ )
+			{
+				frequencyset[bin][to] = 0.0;
+			}
+		}
+		
+
+		// Use this
+		//fromtofrequencyremap[from*maxtilect_remapped+to];
+		int tfrom;
+		int claimed[maxtilect_remapped];
+		memset( claimed, 0, sizeof(claimed));
+		for( tfrom = 0; tfrom < maxtilect_remapped; tfrom++ )
+		{
+			// TODO: Find the least-like-the-others set first.
+			float average_tile_in_pile[maxtilect_remapped];
+			memset( average_tile_in_pile, 0, sizeof(average_tile_in_pile) );
+			for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+			{
+				for( to = 0; to < maxtilect_remapped; to++ )
+				{
+					average_tile_in_pile[to] += frequencyset[bin][to];
+				}
+			}
+
+			from = tfrom;
+
+			// The following segment of code makes no sense. It should always be trying to find the least like the others element it can find, but that seems to be bad.
+			// Finds the most like the others and that works better????
+			//if( tfrom < USE_TILE_CLASSES )  //60662 / 61200 // Least: 61075
+			//if( 1 )  // 60435 / 60525 / // Least: 61992
+			if( 0 ) // 60590 / 60443  // No least (Least = If we flip the comparison)
+			// For now, I am going to disable this code.
+			{
+				int n;
+				float compareSimilarity = 1e20;
+				for( n = 0; n < maxtilect_remapped; n++ )
+				{
+					if( claimed[n] ) continue;
+					float similarity = 0;
+					float count = 0;
+					for( to = 0; to < maxtilect_remapped; to++ )
+					{
+						float f = fromtofrequencyremap[n*maxtilect_remapped+to];
+						similarity += average_tile_in_pile[to] * f;
+						count += f;
+					}
+					//similarity /= count;
+					//printf( "Compare: %d %f / %f\n", n, similarity, worstSimilarity );
+					if( similarity < compareSimilarity )
+					{
+						//printf( "Hit\n" );
+						compareSimilarity = similarity;
+						from = n;
+					}
+				}
+			}
+
+			if( claimed[from] )
+			{
+				int n;
+				for( n = 0; n < maxtilect_remapped; n++ )
+				{
+					if( !claimed[n] )
+					{
+						from = n;
+						break;
+					}
+				}
+				if( n == maxtilect_remapped )
+				{
+					fprintf( stderr, "Internal error, check the maxtilect remapped claimer\n" );
+					exit( -5 );
+				}
+			}
+
+			claimed[from] = 1;
+
+
+			int * fromtofrequencyremap_this = &fromtofrequencyremap[from*maxtilect_remapped];
+			int bestbin = 0;
+			float bestCost = 1e20;
+			//printf( "Adding %d\n", from );
+
+			for( bin = 0; bin < USE_TILE_CLASSES; bin++ )
+			{
+				float temp_bin_counts[maxtilect_remapped];
+				for( to = 0; to < maxtilect_remapped; to++ )
+					temp_bin_counts[to] = fromtofrequencyremap_this[to] + frequencyset[bin][to];
+				float baseCost = ProbabilityTreeComputeExpectedCost( frequencyset[bin], maxtilect_remapped );
+				float thisCost = ProbabilityTreeComputeExpectedCost( temp_bin_counts, maxtilect_remapped );
+				//printf( "Cost: %d %f %f %f\n", bin, thisCost, baseCost, thisCost - baseCost );
+				if( thisCost - baseCost < bestCost )
+				{
+					bestCost = thisCost - baseCost;
+					bestbin = bin;
+				}
+			}
+
+			for( to = 0; to < maxtilect_remapped; to++ )
+			{
+				frequencyset[bestbin][to] += fromtofrequencyremap_this[to];
+				selectchancebin[from] = bestbin;
+			}
+		}
+
+#else // !EXPECTED_VALUE_GREEDY_OPTIMIZATION
 		memset( frequencyset, 0, sizeof(frequencyset) );
 
-		int count_in_group[USE_TILE_CLASSES] = { 0 };
+
 		// Use the two most common cells as the architypes of the frequencies.
-		int from;
 		for( from = 0; from < maxtilect_remapped; from++ )
 		{
 			int bin = 0;
@@ -712,15 +829,15 @@ int main( int argc, char ** argv )
 			}
 		}
 
+		int btcount[USE_TILE_CLASSES] = { 0 };
+
 #if DEDICATE_TILE_CLASS01
 		const int startclass = 2;
 #else
 		const int startclass = 0;
 #endif
-		int btcount[USE_TILE_CLASSES] = { 0 };
-
 		// Perform some k-means iterations on the dataset to anneal the data set.
-		int kmeansiter = 20;
+		int kmeansiter = 200;
 		int least_matching_glyph = -1;  // What is the most poorly matching glyph, so if we need to fill in a bin, we can use this one.
 		float * fromtofrequencyremap_from_normalized = calloc( 4, maxtilect_remapped*maxtilect_remapped );
 		for( from = 0; from < maxtilect_remapped; from++ )
@@ -733,7 +850,6 @@ int main( int argc, char ** argv )
 			for( to = 0; to < maxtilect_remapped; to++ )
 				fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to] = fromtofrequencyremap[from*maxtilect_remapped+to] / tfc;
 		}
-
 
 		for( i = 0; i < kmeansiter; i++ )
 		{
@@ -839,6 +955,9 @@ int main( int argc, char ** argv )
 					least_matching_glyph = from;
 			}
 		}
+#endif // End EXPECTED_VALUE_GREEDY_OPTIMIZATION
+		
+
 
 		memset( ba_exportbinclass, 0, sizeof( ba_exportbinclass ) );
 		for( from = 0; from < maxtilect_remapped; from++ )
@@ -860,8 +979,6 @@ int main( int argc, char ** argv )
 		}
 #endif
 
-		int bin;
-		int to;
 		{
 			FILE * fk = fopen( "paired.csv", "w" );
 			for( to = 0; to < maxtilect_remapped; to++ )
@@ -1595,7 +1712,7 @@ int main( int argc, char ** argv )
 
 #ifdef RUNCODES_CONTINUOUS
 	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_probs_by_tile_run_continuous) * 8, (int)sizeof(ba_vpx_probs_by_tile_run_continuous) );
-	sum += (int)RUNCODES_CONTINUOUS;
+	sum += (int)sizeof(ba_vpx_probs_by_tile_run_continuous);
 #else
 	printf( " +  Run Prob:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_probs_by_tile_run) * 8, (int)sizeof(ba_vpx_probs_by_tile_run) );
 	sum += (int)sizeof(ba_vpx_probs_by_tile_run);
@@ -1613,10 +1730,11 @@ int main( int argc, char ** argv )
 
 	if( vpx_glyph_tiles_buffer_len )
 	{
-		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) * 8, (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) );
+		int size_comp_glyphs = (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1));
+		printf( " +COMPGlyphs:%7d bits / bytes:%6d\n", (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1)) * 8, size_comp_glyphs );
 		//printf( " N/A  Glyphs:%7d bits / bytes:%6d\n", glyphsize * 8, glyphsize );
 		//printf( " N/A   CDATA:%7d bits / bytes:%6d\n", (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) * 8, (int)sizeof(ba_vpx_glyph_probability_run_0_or_1) );
-		sum += (vpx_glyph_tiles_buffer_len + (int)sizeof(ba_vpx_glyph_probability_run_0_or_1));
+		sum += size_comp_glyphs;
 	}
 	else
 	{
