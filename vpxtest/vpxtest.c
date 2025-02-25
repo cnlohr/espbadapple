@@ -837,7 +837,7 @@ int main( int argc, char ** argv )
 		const int startclass = 0;
 #endif
 		// Perform some k-means iterations on the dataset to anneal the data set.
-		int kmeansiter = 20;
+		int kmeansiter = 200;
 		int least_matching_glyph = -1;  // What is the most poorly matching glyph, so if we need to fill in a bin, we can use this one.
 		float * fromtofrequencyremap_from_normalized = calloc( 4, maxtilect_remapped*maxtilect_remapped );
 		for( from = 0; from < maxtilect_remapped; from++ )

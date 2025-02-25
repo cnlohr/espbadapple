@@ -1,13 +1,10 @@
-/* Small example showing how to use the SWIO programming pin to 
-   do printf through the debug interface */
-
 #include "ch32fun.h"
 #include <stdio.h>
 
 #define WARNING(x...)
 
 #define BADATA_DECORATOR const __attribute__((section(".fixedflash")))
-#define BAS_DECORATOR const __attribute__((section(".fixedflash")))
+#define BAS_DECORATOR    const __attribute__((section(".fixedflash")))
 
 #include "ba_play.h"
 #include "ba_play_audio.h"
