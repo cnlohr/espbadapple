@@ -81,8 +81,9 @@
 // A more sophisticated algorithm for figuring out probabilities of glyph transitions.
 // WARNING: This cannot be more than 16 because of the classificaiton output.
 // DEEP QUESTION: Why is 15 sometimes a magic number here, regardless of number of tiles?
-#define USE_TILE_CLASSES 19 // TUNE ME!!!
-#define DEDICATE_TILE_CLASS01 1
+#define USE_TILE_CLASSES 13 // TUNE ME!!!
+#define DEDICATE_TILE_CLASS01 1 // Only used for K-Means
+//#define EXPECTED_VALUE_GREEDY_OPTIMIZATION 1 // Disable k-means VPX, and instead use a greedy algorithm
 
 #define VPX_GREY4 1
 //#define VPX_GREY16 1 
