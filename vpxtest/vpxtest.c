@@ -712,13 +712,46 @@ int main( int argc, char ** argv )
 			}
 		}
 
+		int btcount[USE_TILE_CLASSES] = { 0 };
+
+#if 1	// Whatever the other thing I was thinking of is.
+
+		int bintocounts[USE_TILE_CLASSES][maxtilect_remapped];
+		memset( bintocounts, 0, sizeof( bintocounts ) );
+
+		// Use this
+		//fromtofrequencyremap[from*maxtilect_remapped+to];
+
+		// Initially seed first 16.
+		for( from = 0; from < USE_TILE_CLASSES; from++ )
+		{
+			int bin = from % USE_TILE_CLASSES;
+			selectchancebin[from] = bin;
+			btcount[bin] += tilecounts[from];
+			int to;
+			for( to = 0; to < maxtilect_remapped; to++ )
+			{
+				bintocounts[bin][to] = fromtofrequencyremap[from*maxtilect_remapped+to];
+			}
+		}
+
+		for( from = USE_TILE_CLASSES; from < maxtilect_remapped; from++ )
+		{
+			for( to = 0; to < maxtilect_remapped; to++ )
+				fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to] = fromtofrequencyremap[from*maxtilect_remapped+to] / tfc;
+
+			int bin = from % USE_TILE_CLASSES;
+			selectchancebin[from] = bin;
+			btcount[bin] += tilecounts[from];
+		}
+
+#else
+
 #if DEDICATE_TILE_CLASS01
 		const int startclass = 2;
 #else
 		const int startclass = 0;
 #endif
-		int btcount[USE_TILE_CLASSES] = { 0 };
-
 		// Perform some k-means iterations on the dataset to anneal the data set.
 		int kmeansiter = 20;
 		int least_matching_glyph = -1;  // What is the most poorly matching glyph, so if we need to fill in a bin, we can use this one.
@@ -733,7 +766,6 @@ int main( int argc, char ** argv )
 			for( to = 0; to < maxtilect_remapped; to++ )
 				fromtofrequencyremap_from_normalized[from*maxtilect_remapped+to] = fromtofrequencyremap[from*maxtilect_remapped+to] / tfc;
 		}
-
 
 		for( i = 0; i < kmeansiter; i++ )
 		{
@@ -839,6 +871,9 @@ int main( int argc, char ** argv )
 					least_matching_glyph = from;
 			}
 		}
+#endif
+		
+
 
 		memset( ba_exportbinclass, 0, sizeof( ba_exportbinclass ) );
 		for( from = 0; from < maxtilect_remapped; from++ )
