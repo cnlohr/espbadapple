@@ -28,6 +28,14 @@ testsynth : testsynth.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
 
+# Another try with huffman
+
+fmcomp-huffman-reverselzss : fmcomp-huffman-reverselzss.c
+	gcc $(CFLAGS) -o $@ $^ -lm
+
+../playback/badapple_song_huffman.h : fmcomp-huffman-reverselzss fmraw.dat
+	./fmcomp-huffman-reverselzss
+
 COMPLIST:=fmraw.dat.json.jq fmraw.dat.json fmraw.dat.xml fmraw.dat BadApple-mod.mid
 
 sizecomp : fmraw.dat heatshrink

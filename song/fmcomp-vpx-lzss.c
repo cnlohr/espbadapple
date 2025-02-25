@@ -10,7 +10,7 @@
 
 // Allow referencing things in the past.
 // Kind of arbitrary tuning.
-const int MinRL = 2;
+const int MinRL = 200000;
 const int MRBits = 10;
 const int RLBits = 8;
 const int MaxREV = (1<<MRBits)-1;

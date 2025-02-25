@@ -17,10 +17,10 @@ To do sanity checks, I decided to compare the compression a few steps along the 
 | Compression | .xml | .json (jq formatting) | .json.min | .mid | .dat | 
 | -- | -- | -- | -- | -- | -- |
 | uncompressed | 160952 | 111498 | 63483 | 12755 | 2824 |
-| [heatshrink](https://github.com/atomicobject/heatshrink) | 23926 | 17599 | 11255 | 2345 | 881
-| gzip -9      | 9145 | 8662 | 7986 | 1042 | 568 |
-| zstd -9      | 7245 | 6828 | 6429 | 1042 | 594 |
-| bzip2 -9     | 6818 | 6692 | 6518 | 1105 | 720 |
+| [heatshrink](https://github.com/atomicobject/heatshrink) | 23926 | 17599 | 11255 | 2345 | 889
+| gzip -9      | 9145 | 8662 | 7986 | 1042 | 577 |
+| zstd -9      | 7245 | 6828 | 6429 | 1042 | 611 |
+| bzip2 -9     | 6818 | 6692 | 6518 | 1105 | 725 |
 
 Curiously for small payloads, it looks like gzip outperforms zstd, in spite of zstd having 40 years to improve over it.
 
@@ -31,12 +31,12 @@ There's an issue, all of the good ones in this list these are state of the art a
 | Compression | Size |
 | -- | -- |
 | Raw .dat | 2824 |
-| Huffman (1 table) | 1465 |
-| Huffman (2 table) | 1336 |
+| Huffman (1 table) | 1378 |
+| Huffman (2 table) | 1312 |
 | Huffman (3 table) | 1245 |
-| VPX (no LZSS) | 1269 |
-| VPX (non-entropy LZSS) | 600 |
-| VPX (entropy LZSS) | 554 |
+| VPX (no LZSS) | 1209 |
+| VPX (non-entropy LZSS) | 602 |
+| VPX (entropy LZSS) | 547 |
 
 Note the uptick in size because to use VPX, you have to have a probability table, and huffman tables can be used in lower compression arenas to more effectivity. 
 
