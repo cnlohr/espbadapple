@@ -28,9 +28,9 @@ void EmitBit( int ib )
 
 	if( runbyteplace == 8 )
 	{
-		fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
+		if( fData ) fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
 		total_bytes++;
-		fwrite( &runbyte, 1, 1, fD );
+		if( fD ) fwrite( &runbyte, 1, 1, fD );
 		runbyte = 0;
 		runbyteplace = 0;
 	}
@@ -58,24 +58,25 @@ static inline int BitsForNumber( unsigned number )
 }
 
 
-int EmitGolomb( int ib )
+int EmitExpGolomb( int ib )
 {
 	int bitsemit = 0;
-	int bits = BitsForNumber( ib );
+	int bits = (ib == 0) ? 1 : BitsForNumber( ib+2 );
 	int i;
 	for( i = 1; i < bits; i++ )
 	{
-		EmitBit( 1 );
+		EmitBit( 0 );
 		bitsemit++;
 	}
 
-	EmitBit( 0 );
-	bitsemit++;
-
-	for( i = 0; i < bits; i++ )
+	if( bits )
 	{
-		EmitBit( (ib>>(bits-i-1)) & 1 );
-		bitsemit++;
+		ib++;
+		for( i = 0; i < bits; i++ )
+		{
+			EmitBit( ((ib)>>(bits-i-1)) & 1 );
+			bitsemit++;
+		}
 	}
 
 	return bitsemit;
@@ -95,7 +96,6 @@ int main()
 	hufftype * lenss = 0;
 	hufffreq * lencountss = 0;
 	int numlens = 0;
-
 
 	uint16_t usedmask = 0;
 	int numNotes = 0;
@@ -199,8 +199,6 @@ int main()
 
 
 
-	printf( "Rev/Reg: %d %d\n", numRev, numReg );
-
 	// this is only a rough approximation of the distribution that will be used.
 	for( int r = 0; r < numReg; r++ )
 	{
@@ -292,7 +290,7 @@ int main()
 	fprintf( fData, "#define ESPBADAPPLE_SONG_H\n\n" );
 	fprintf( fData, "#include <stdint.h>\n\n" );
 
-	fprintf( fData, "static uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen );
+	fprintf( fData, "static uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen - numsym );
 	int maxpdA = 0;
 	int maxpdB = 0;
 	int htnlen = 0;
@@ -301,15 +299,19 @@ int main()
 		huffelement * h = he + i;
 		if( h->is_term )
 		{
-			uint32_t sym = h->value;
-			fwrite( &sym, 1, 2, fTN );
-			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
-			htnlen += 2;
+			//uint32_t sym = h->value;
+			//fwrite( &sym, 1, 2, fTN );
+			//fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
+			//htnlen += 2;
 		}
 		else
 		{
 			int pd0 = h->pair0 - i - 1;
 			int pd1 = h->pair1 - i - 1;
+
+			huffelement * h0 = he + h->pair0;
+			huffelement * h1 = he + h->pair1;
+
 			if( pd0 < 0 || pd1 < 0 )
 			{
 				fprintf( stderr, "Error: Illegal pd\n" );
@@ -317,7 +319,15 @@ int main()
 			}
 			if( pd0 > maxpdA ) maxpdA = pd0;
 			if( pd1 > maxpdB ) maxpdB = pd1;
-			uint32_t sym = 0x8000 | (pd0) | (pd1<<8);
+
+
+			if( h0->is_term )
+				pd0 = h0->value | 0x80;
+			if( h1->is_term )
+				pd1 = h1->value | 0x80;
+
+
+			uint32_t sym = (pd0) | (pd1<<8);
 			fwrite( &sym, 1, 2, fTN );
 			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
 			htnlen += 2;
@@ -330,7 +340,7 @@ int main()
 	int htnlen2 = 0;
 
 #ifndef SINGLETABLE
-	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl );
+	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl - numlens );
 
 	maxpdA = 0;
 	maxpdB = 0;
@@ -339,15 +349,19 @@ int main()
 		huffelement * h = hel + i;
 		if( h->is_term )
 		{
-			uint32_t sym = h->value;
-			fwrite( &sym, 1, 1, fTL );
-			htnlen2 += 1;
-			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
+			//uint32_t sym = h->value;
+			//fwrite( &sym, 1, 1, fTL );
+			//htnlen2 += 1;
+			//fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
 		}
 		else
 		{
-			int pd0 = h->pair0 - i - 1;
-			int pd1 = h->pair1 - i - 1;
+			int pd0 = h->pair0 - i;
+			int pd1 = h->pair1 - i;
+
+			huffelement * h0 = hel + h->pair0;
+			huffelement * h1 = hel + h->pair1;
+
 			if( pd0 < 0 || pd1 < 0 )
 			{
 				fprintf( stderr, "Error: Illegal pd\n" );
@@ -355,10 +369,18 @@ int main()
 			}
 			if( pd0 > maxpdA ) maxpdA = pd0;
 			if( pd1 > maxpdB ) maxpdB = pd1;
-			uint32_t sym = 0x8000 | (pd0) | (pd1<<8);
+
+printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0->value, h1->value );
+
+			if( h0->is_term )
+				pd0 = h0->value | 0x80;
+			if( h1->is_term )
+				pd1 = h1->value | 0x80;
+
+			uint32_t sym = (pd0) | (pd1<<8);
 			fwrite( &sym, 1, 2, fTL );
 			htnlen2 += 2;
-			fprintf( fData, "0x%02x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
+			fprintf( fData, "0x%04x%s", sym, ((i%12)!=11)?", " : ",\n\t" );
 		}
 	}
 
@@ -368,6 +390,8 @@ int main()
 	fprintf( fData, "static uint8_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
+
+	printf( "Rev/Reg: %d %d\n", numRev, numReg );
 
 	printf( "NOTES: %d\n", numNotes );
 
@@ -499,8 +523,8 @@ int main()
 			// Output offset, MRBits, Prob1MR
 			// Output emit_best_rl
 			// Output offset
-			emit_bits_backtrack += EmitGolomb( emit_best_rl );
-			emit_bits_backtrack += EmitGolomb( offset );
+			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
+			emit_bits_backtrack += EmitExpGolomb( offset );
 
 			//printf( "EMITT  %d %d at %d from %d(%d) BL:%d\n", emit_best_rl, offset, bitcount, sourcebplace, bestrunstart, bitcount - bcstart );
 		}
