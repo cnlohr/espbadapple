@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define HUFFER_IMPLEMENTATION
 #include "hufftreegen.h"
@@ -11,6 +12,9 @@ const int MaxREV = (1<<MRBits)-1;
 const int MaxRL = (1<<RLBits)-1;
 
 FILE * fData, *fD;
+
+// Combine run + note + length
+//#define SINGLETABLE
 
 uint8_t runbyte = 0;
 uint8_t runbyteplace = 0;
@@ -54,15 +58,27 @@ static inline int BitsForNumber( unsigned number )
 }
 
 
-void EmitGolomb( int ib )
+int EmitGolomb( int ib )
 {
+	int bitsemit = 0;
 	int bits = BitsForNumber( ib );
 	int i;
 	for( i = 1; i < bits; i++ )
+	{
 		EmitBit( 1 );
+		bitsemit++;
+	}
+
 	EmitBit( 0 );
+	bitsemit++;
+
 	for( i = 0; i < bits; i++ )
+	{
 		EmitBit( (ib>>(bits-i-1)) & 1 );
+		bitsemit++;
+	}
+
+	return bitsemit;
 }
 
 int main()
@@ -182,6 +198,7 @@ int main()
 	}
 
 
+
 	printf( "Rev/Reg: %d %d\n", numRev, numReg );
 
 	// this is only a rough approximation of the distribution that will be used.
@@ -189,13 +206,17 @@ int main()
 	{
 		int nv = regNoteList[r];
 
+#ifdef SINGLETABLE
+		int note = nv;
+#else
 		int note = nv>>8;
 		int len = nv&0xff;
-
+#endif
 		if( note >= highestNoteCnt ) highestNoteCnt = note+1;
-
 		numsym = HuffmanAppendHelper( &symbols, &symcounts, numsym, note );
+#ifndef SINGLETABLE
 		numlens = HuffmanAppendHelper( &lenss, &lencountss, numlens, len );
+#endif
 	}
 
 
@@ -206,14 +227,22 @@ int main()
 	int htlen = 0;
 	huffup * hu = GenPairTable( he, &htlen );
 
+#ifndef SINGLETABLE
 	int hufflenl;
 	huffelement * hel = GenerateHuffmanTree( lenss, lencountss, numlens, &hufflenl );
 
 	int htlenl = 0;
 	huffup * hul = GenPairTable( hel, &htlenl );
+#endif
 
+	float principal_length_note = 0;
+	float huffman_length_note = 0;
+	float principal_length_rl = 0;
+	float huffman_length_rl = 0;
 
+	// Total notes = numReg
 	printf( "NOTES:\n" );
+
 	for( i = 0; i < htlen; i++ )
 	{
 		huffup * thu = hu + i;
@@ -221,8 +250,13 @@ int main()
 
 		for( k = 0; k < thu->bitlen; k++ )
 			printf( "%c", thu->bitstream[k]+'0' );
+
+		huffman_length_note += thu->freq * thu->bitlen;
+		principal_length_note += thu->freq * -log( thu->freq / (float)numReg ) / log(2);
+
 		printf( "\n" );
 	}
+#ifndef SINGLETABLE
 	printf( "LENS:\n" );
 	for( i = 0; i < htlenl; i++ )
 	{
@@ -231,8 +265,21 @@ int main()
 
 		for( k = 0; k < thu->bitlen; k++ )
 			printf( "%c", thu->bitstream[k]+'0' );
+
+		huffman_length_rl += thu->freq * thu->bitlen;
+		principal_length_rl += thu->freq * -log( thu->freq / (float)numReg ) / log(2);
+
 		printf( "\n" );
 	}
+#endif
+
+	printf( "Expected Huffman Length Note: %.0f bits\n", huffman_length_note );
+	printf( "Principal Length Note: %.0f bits\n", principal_length_note );
+	printf( "Expected Huffman Length RL: %.0f bits\n", huffman_length_rl );
+	printf( "Principal Length RL: %.0f bits\n", principal_length_rl );
+
+	printf( "Expected Huffman Length: %.0f bits / %.0f bytes\n", (huffman_length_note+huffman_length_rl),(huffman_length_note+huffman_length_rl)/8.0 );
+	printf( "Principal Length: %.0f bits / %.0f bytes\n", (principal_length_note+principal_length_rl),(principal_length_note+principal_length_rl)/8.0 );
 
 
 	FILE * fTN = fopen( "huffTN_fmraw.dat", "wb" );
@@ -261,8 +308,8 @@ int main()
 		}
 		else
 		{
-			int pd0 = h->pair0 - i;
-			int pd1 = h->pair1 - i;
+			int pd0 = h->pair0 - i - 1;
+			int pd1 = h->pair1 - i - 1;
 			if( pd0 < 0 || pd1 < 0 )
 			{
 				fprintf( stderr, "Error: Illegal pd\n" );
@@ -277,13 +324,16 @@ int main()
 		}
 	}
 	fprintf( fData, "};\n\n" );
-	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 
+	int htnlen2 = 0;
+
+#ifndef SINGLETABLE
+	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl );
+
 	maxpdA = 0;
 	maxpdB = 0;
-	int htnlen2 = 0;
 	for( i = 0; i < hufflenl; i++ )
 	{
 		huffelement * h = hel + i;
@@ -296,8 +346,8 @@ int main()
 		}
 		else
 		{
-			int pd0 = h->pair0 - i;
-			int pd1 = h->pair1 - i;
+			int pd0 = h->pair0 - i - 1;
+			int pd1 = h->pair1 - i - 1;
 			if( pd0 < 0 || pd1 < 0 )
 			{
 				fprintf( stderr, "Error: Illegal pd\n" );
@@ -313,12 +363,13 @@ int main()
 	}
 
 	fprintf( fData, "};\n\n" );
+#endif
+
 	fprintf( fData, "static uint8_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 
 	printf( "NOTES: %d\n", numNotes );
-
 
 	for( i = 0; i < numNotes; i++ )
 	{
@@ -383,6 +434,11 @@ int main()
 	int bitmaplocation[numNotes];
 
 
+
+	int emit_bits_data = 0;
+	int emit_bits_backtrack = 0;
+	int emit_bits_class = 0;
+
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
@@ -416,6 +472,7 @@ int main()
 		}
 		if( bestrl > MinRL )
 		{
+			emit_bits_class++;
 			EmitBit( 1 );
 			int bcstart = bitcount;
 			bitmaplocation[i] = bitcount;
@@ -442,15 +499,20 @@ int main()
 			// Output offset, MRBits, Prob1MR
 			// Output emit_best_rl
 			// Output offset
-			EmitGolomb( emit_best_rl );
-			EmitGolomb( offset );
+			emit_bits_backtrack += EmitGolomb( emit_best_rl );
+			emit_bits_backtrack += EmitGolomb( offset );
 
 			//printf( "EMITT  %d %d at %d from %d(%d) BL:%d\n", emit_best_rl, offset, bitcount, sourcebplace, bestrunstart, bitcount - bcstart );
 		}
 		else
 		{
+			emit_bits_class++;
 			EmitBit( 0 );
+#ifndef SINGLETABLE
 			int n = completeNoteList[i] >> 8;
+#else
+			int n = completeNoteList[i];
+#endif
 			int bitcountatstart = bitcount;
 			bitmaplocation[i] = bitcount;
 
@@ -460,6 +522,7 @@ int main()
 				if( thu->value == n )
 				{
 					int ll;
+					emit_bits_data += thu->bitlen;
 					for( ll = 0; ll < thu->bitlen; ll++ )
 					{
 						EmitBit( thu->bitstream[ll] );
@@ -472,6 +535,8 @@ int main()
 				fprintf( stderr, "Fault: Internal Error (%04x not in map)\n", n );
 				return -4;
 			}
+#ifndef SINGLETABLE
+
 			int lev =  completeNoteList[i] & 0xff;
 			for( k = 0; k < htlenl; k++ )
 			{
@@ -479,6 +544,7 @@ int main()
 				if( thul->value == lev )
 				{
 					int ll;
+					emit_bits_data += thul->bitlen;
 					for( ll = 0; ll < thul->bitlen; ll++ )
 					{
 						EmitBit( ll );
@@ -492,10 +558,16 @@ int main()
 				return -4;
 			}
 			//printf( "Write: %d\n", bitcount, bitcountatstart );
+#endif
 		}
 	}
 
-	printf( "Bitcount: %d\n", bitcount );
+	printf( "Data Usage: %d bits / %d bytes\n", emit_bits_data, emit_bits_data/8 );
+	printf( "Backtrack Usage: %d bits / %d bytes\n", emit_bits_backtrack, emit_bits_backtrack/8 );
+#ifndef SINGLETABLE
+	printf( "Class Usage: %d bits / %d bytes\n", emit_bits_class, emit_bits_class/8 );
+#endif
+	printf( "Total: %d bits / %d bytes\n", bitcount, (bitcount+7)/8  );
 
 	if( runbyteplace )
 	{
@@ -509,8 +581,10 @@ int main()
 	fclose( fData );
 	printf( "Used mask: %04x\n", usedmask );
 	printf( "Huff Tree (N): %d bytes\n", htnlen );
+#ifndef SINGLETABLE
 	printf( "Huff Tree (D): %d bytes\n", htnlen2 );
-	printf( "Data len: %d bytes (%d -> %d)\n", total_bytes, bitcount, (bitcount+7)/8 );
+#endif
+	printf( "Written Data: %d bytes\n", total_bytes );
 	printf( "TOTAL: %d bytes\n", htnlen + htnlen2 + total_bytes );
 	return 0;
 }
