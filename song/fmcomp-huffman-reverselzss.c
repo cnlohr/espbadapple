@@ -6,6 +6,8 @@
 #include "hufftreegen.h"
 
 const int MinRL = 2;
+#define OFFSET_MINIMUM 6
+#define MAX_BACK_DEPTH 20
 
 FILE * fData, *fD;
 
@@ -23,7 +25,6 @@ FILE * fData, *fD;
 // Combine run + note + length
 //#define SINGLETABLE
 
-#define MAX_BACK_DEPTH 8
 
 // Huffman generation trees.
 huffup * hu;
@@ -143,7 +144,7 @@ int PullHuff( int * bp, huffelement * he )
 //printf( "%d (%d)", b, *bp );
 
 		//  ofs + 1 + if encoded in table
-		ofs = (b ? (e->pair0) : (e->pair1) );
+		ofs = (b ? (e->pair1) : (e->pair0) );
 		e = he + ofs;
 	} while( 1 );
 }
@@ -155,23 +156,28 @@ int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_matc
 	// Read from char * bitlist = 0; // size = bitcount
 	int matchno = 0;
 	int bp = startbit;
-//	printf( "Decode Match Check At %d\n", startbit );
+	//printf( "Decode Match Check At %d\n", startbit );
 	do
 	{
-		printf( "CHECKP @ bp = %d\n", bp );
+		//printf( "CHECKP @ bp = %d\n", bp );
 		int bpstart = bp;
 		int class = PullBit( &bp );
-		if( class < 0 ) return matchno;
-//		printf( "   Class %d @ %d\n", class, bp-1 );
+		if( class < 0 )
+		{
+			//printf( "Class fail at %d\n", bp );
+			return matchno;
+		}
+		//printf( "   Class %d @ %d\n", class, bp-1 );
 		if( class == 0 )
 		{
 			// Note + Len
 			int note = PullHuff( &bp, he );
 			int lenandrun = PullHuff( &bp, hel );
 			int cv = (note<<8) | lenandrun;
-			printf( "   CV %04x == %04x (matchno = %d)  (Values: %d %d)\n", cv, notes_to_match[matchno], matchno, note, lenandrun );
+			//printf( "   CV %04x == %04x (matchno = %d)  (Values: %d %d)\n", cv, notes_to_match[matchno], matchno, note, lenandrun );
 			if( cv != notes_to_match[matchno] || note < 0 || lenandrun < 0 )
 			{
+				//printf( "Breakout A %d != %d  (%d %d)\n", cv, notes_to_match[matchno], note, lenandrun );
 				return matchno;
 			}
 			// Otherwise we're good!
@@ -185,19 +191,28 @@ int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_matc
 			int offset = PullExpGolomb( &bp );
 
 			if( runlen < 0 || offset < 0 ) return matchno;
-			printf( "DEGOL %d %d BPIN: %d\n", runlen, offset, bp );
-			runlen = runlen + 1 + MinRL;
-			offset = offset - 1 - runlen;
-			bp = bpstart - offset;
+			//printf( "DEGOL %d %d BPIN: %d\n", runlen, offset, bp );
+			runlen = runlen + MinRL + 1;
+			offset = offset + OFFSET_MINIMUM + runlen;
+			int bpjump = bpstart - offset;
 			// Check for end of sequence or if bp points to something in the past.
-			if( bp < 0 || bp >= bitcount-1 ) return matchno;
-			printf( "   OFFSET %d, %d (BP: %d)\n", runlen, offset, bp );
+			if( bpjump < 0 || bpjump >= bitcount-1 ) return matchno;
+			//printf( "   OFFSET %d, %d (BP: %d)\n", runlen, offset, bp );
 			int dmtm = length_max_to_match - matchno;
 			if( dmtm > runlen ) dmtm = runlen;
-			int dm = DecodeMatch( bp, notes_to_match + matchno, dmtm, depth );
+			int dm = DecodeMatch( bpjump, notes_to_match + matchno, dmtm, depth );
+			//printf( "DMCHECK %d %d @ BP = %d\n", dm, dmtm, bp );
+			if( dm != dmtm )
+			{
+				//printf( "DM Disagree: %d != %d\n", dm, dmtm );
+				return matchno + dm;
+			}
+
 			matchno += dm;
 		}
 	} while( matchno < length_max_to_match );
+	//printf( "Match End: %d >= %d\n", matchno, length_max_to_match );
+	return matchno;
 }
 
 int main()
@@ -289,18 +304,6 @@ int main()
 			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
 			i += bestrl-1;
 			numRev++;
-
-			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
-			int offset = i-bestrunstart-bestrl;
-			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
-
-			int emit_best_rl = bestrl - MinRL - 1;
-
-			// Output emit_best_rl, RLBits, Prob1RL
-			// Output offset, MRBits, Prob1MR
-
-			// Output emit_best_rl
-			// Output offset
 		}
 		else
 		{
@@ -474,8 +477,8 @@ int main()
 		}
 		else
 		{
-			int pd0 = h->pair0 - i;
-			int pd1 = h->pair1 - i;
+			int pd0 = h->pair0 - i - 1;
+			int pd1 = h->pair1 - i - 1;
 
 			huffelement * h0 = hel + h->pair0;
 			huffelement * h1 = hel + h->pair1;
@@ -582,6 +585,7 @@ int main()
 	int emit_bits_backtrack = 0;
 	int emit_bits_class = 0;
 
+	int actualReg = 0, actualRev = 0;
 	for( i = 0; i < numNotes; i++ )
 	{
 		int bestrl = -1;
@@ -591,7 +595,7 @@ int main()
 		{
 			int depth = 0;
 			int dm = DecodeMatch( s, completeNoteList + i, numNotes - i, &depth );
-			printf( "Check [at byte %d]: %d -> %d -> %d\n", i, s, dm, depth );
+			//printf( "Check [at byte %d]: %d -> %d -> %d\n", i, s, dm, depth );
 			if( dm > bestrl )
 			{
 				bestrl = dm;
@@ -601,14 +605,21 @@ int main()
 		if( bestrl > MinRL )
 		{
 			emit_bits_class++;
+			int startplace = bitcount;
 			printf( "OUTPUT CB @ bp = %d   bestrl=%d  bests=%d\n", bitcount, bestrl, bests );
 			EmitBit( 1 );
 			i += bestrl - 1;
-			int offset = bitcount - bests - 1;
+			int offset = startplace - bests - bestrl - OFFSET_MINIMUM;
+			if( offset < 0 )
+			{
+				fprintf( stderr, "Error: OFFSET_MINIMUM is too large\n" );
+				exit ( -5 );
+			}
 			int emit_best_rl = bestrl - MinRL - 1;
 			printf( "WRITE %d %d\n", emit_best_rl, offset );
 			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( offset );
+			actualRev++;
 		}
 		else
 		{
@@ -628,6 +639,7 @@ int main()
 				huffup * thu = hu + k;
 				if( thu->value == n )
 				{
+					printf( "Emitting NOTE %04x at %d\n", n, bitcount );
 					int ll;
 					emit_bits_data += thu->bitlen;
 					for( ll = 0; ll < thu->bitlen; ll++ )
@@ -651,6 +663,7 @@ int main()
 				if( thul->value == lev )
 				{
 					int ll;
+					printf( "Emitting LEN %04x at %d\n", lev, bitcount );
 					emit_bits_data += thul->bitlen;
 					for( ll = 0; ll < thul->bitlen; ll++ )
 					{
@@ -666,9 +679,11 @@ int main()
 			}
 			//printf( "Write: %d\n", bitcount, bitcountatstart );
 #endif
+			actualReg ++;
 		}
 	}
 
+	printf( "Actual Rev/Reg: %d/%d\n", actualRev, actualReg );
 	printf( "Data Usage: %d bits / %d bytes\n", emit_bits_data, emit_bits_data/8 );
 	printf( "Backtrack Usage: %d bits / %d bytes\n", emit_bits_backtrack, emit_bits_backtrack/8 );
 #ifndef SINGLETABLE
