@@ -6,20 +6,39 @@
 #include "hufftreegen.h"
 
 const int MinRL = 2;
-const int MRBits = 16;
-const int RLBits = 16;
-const int MaxREV = (1<<MRBits)-1;
-const int MaxRL = (1<<RLBits)-1;
 
 FILE * fData, *fD;
 
 // Combine run + note + length
 //#define SINGLETABLE
 
+// TODO: NOTE:
+//   There are some serious optimizations that are possible even from here.
+//      1. Instead of outputting a 1 or a 0 bit for every symbol or reverse pull.
+//         This is tricky though, because, you would need to "cork" the output and
+//         rewrite it once you know the proper length.  When we tested it, it only
+//         saved about 10 bytes, so we decided it was not worth it.
+
+
+// Combine run + note + length
+//#define SINGLETABLE
+
+#define MAX_BACK_DEPTH 8
+
+// Huffman generation trees.
+huffup * hu;
+huffup * hul;
+
+// Huffman decoding trees.
+huffelement * he;
+huffelement * hel;
+
 uint8_t runbyte = 0;
 uint8_t runbyteplace = 0;
 int total_bytes = 0;
 int bitcount = 0;
+
+char * bitlist = 0; // size = bitcount
 
 void EmitBit( int ib )
 {
@@ -34,10 +53,10 @@ void EmitBit( int ib )
 		runbyte = 0;
 		runbyteplace = 0;
 	}
+	bitlist = realloc( bitlist, bitcount+1 );
+	bitlist[bitcount] = ib;
 	bitcount++;
 }
-
-
 
 static inline int BitsForNumber( unsigned number )
 {
@@ -80,6 +99,104 @@ int EmitExpGolomb( int ib )
 	}
 
 	return bitsemit;
+}
+
+int PullBit( int * bp )
+{
+	if( *bp >= bitcount ) return -2;
+	return bitlist[(*bp)++];
+}
+
+int PullExpGolomb( int * bp )
+{
+	int exp = 0;
+	do
+	{
+		int b = PullBit( bp );
+		if( b < 0 ) return b;
+		if( b != 0 ) break;
+		exp++;
+	} while( 1 );
+
+	int br;
+	int v = 1;
+	for( br = 0; br < exp; br++ )
+	{
+		v = v << 1;
+		int b = PullBit( bp );
+		if( b < 0 ) return b;
+		v |= b;
+	}
+	return v-1;
+}
+
+int PullHuff( int * bp, huffelement * he )
+{
+	int ofs = 0;
+	huffelement * e = he + ofs;
+	do
+	{
+		if( e->is_term ) return e->value;
+
+		int b = PullBit( bp );
+		if( b < 0 ) return b;
+//printf( "%d (%d)", b, *bp );
+
+		//  ofs + 1 + if encoded in table
+		ofs = (b ? (e->pair0) : (e->pair1) );
+		e = he + ofs;
+	} while( 1 );
+}
+
+int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_match, int * depth )
+{
+//	printf( "RMRS: %d\n", startbit );
+	// First, pull off 
+	// Read from char * bitlist = 0; // size = bitcount
+	int matchno = 0;
+	int bp = startbit;
+//	printf( "Decode Match Check At %d\n", startbit );
+	do
+	{
+		printf( "CHECKP @ bp = %d\n", bp );
+		int class = PullBit( &bp );
+		if( class < 0 ) return matchno;
+//		printf( "   Class %d @ %d\n", class, bp-1 );
+		if( class == 0 )
+		{
+			// Note + Len
+			int note = PullHuff( &bp, he );
+			int lenandrun = PullHuff( &bp, hel );
+			int cv = (note<<8) | lenandrun;
+			printf( "   CV %04x == %04x (matchno = %d)  (Values: %d %d)\n", cv, notes_to_match[matchno], matchno, note, lenandrun );
+			if( cv != notes_to_match[matchno] || note < 0 || lenandrun < 0 )
+			{
+				return matchno;
+			}
+			// Otherwise we're good!
+			matchno++;
+		}
+		else
+		{
+			// Rewind
+			if( (*depth)++ > MAX_BACK_DEPTH ) return matchno;
+			int runlen = PullExpGolomb( &bp );
+			int offset = PullExpGolomb( &bp );
+
+			if( runlen < 0 || offset < 0 ) return matchno;
+			printf( "DEGOL %d %d\n", runlen, offset );
+			runlen = runlen + 1 + MinRL;
+			offset = offset + 1 - runlen;
+			bp = bp - offset;
+			// Check for end of sequence or if bp points to something in the past.
+			if( bp < 0 || bp >= bitcount-1 ) return matchno;
+			printf( "   OFFSET %d, %d (%d)\n", runlen, offset, bp );
+			int dmtm = length_max_to_match - matchno;
+			if( dmtm > runlen ) dmtm = runlen;
+			int dm = DecodeMatch( bp, notes_to_match + matchno, dmtm, depth );
+			matchno += dm;
+		}
+	} while( matchno < length_max_to_match );
 }
 
 int main()
@@ -138,7 +255,7 @@ int main()
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL - MinRL;
+		int searchStart = 0; //i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int bestrl = 0, bestrunstart = 0;
@@ -154,7 +271,7 @@ int main()
 
 			for( 
 				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
+				ml < i && mlc < numNotes; //&& rl < MaxRL;
 				ml++, mlc++, rl++ )
 			{
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
@@ -220,17 +337,17 @@ int main()
 
 	
 	int hufflen;
-	huffelement * he = GenerateHuffmanTree( symbols, symcounts, numsym, &hufflen );
+	he = GenerateHuffmanTree( symbols, symcounts, numsym, &hufflen );
 
 	int htlen = 0;
-	huffup * hu = GenPairTable( he, &htlen );
+	hu = GenPairTable( he, &htlen );
 
 #ifndef SINGLETABLE
 	int hufflenl;
-	huffelement * hel = GenerateHuffmanTree( lenss, lencountss, numlens, &hufflenl );
+	hel = GenerateHuffmanTree( lenss, lencountss, numlens, &hufflenl );
 
 	int htlenl = 0;
-	huffup * hul = GenPairTable( hel, &htlenl );
+	hul = GenPairTable( hel, &htlenl );
 #endif
 
 	float principal_length_note = 0;
@@ -370,7 +487,7 @@ int main()
 			if( pd0 > maxpdA ) maxpdA = pd0;
 			if( pd1 > maxpdB ) maxpdB = pd1;
 
-printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0->value, h1->value );
+			//printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0->value, h1->value );
 
 			if( h0->is_term )
 				pd0 = h0->value | 0x80;
@@ -398,7 +515,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL - MinRL;
+		int searchStart = 0;//i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int bestrl = 0, bestrunstart = 0;
@@ -409,19 +526,20 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 			int rl;
 			for( 
 				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
+				ml < i && mlc < numNotes; // && rl < MaxRL;
 				ml++, mlc++, rl++ )
 			{
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > bestrl && // Make sure it's best
-				s + MinRL + rl + MaxREV >= i )
+			if( rl > bestrl )// && // Make sure it's best
+				//s + MinRL + rl + MaxREV >= i )
 			{
 				bestrl = rl;
 				bestrunstart = s;
 			}
 		}
+		printf( "Byte: %d / MRL: %d\n", i, bestrl );
 		if( bestrl > MinRL )
 		{
 			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
@@ -465,72 +583,36 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 
 	for( i = 0; i < numNotes; i++ )
 	{
-		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL - MinRL;
-		if( searchStart < 0 ) searchStart = 0;
-		int s;
-		int bestrl = 0, bestrunstart = 0;
-		for( s = searchStart; s <= i; s++ )
+		int bestrl = -1;
+		int bests = -1;
+		int s = 0;
+		for( s = bitcount - 1; s >= 0; s-- )
 		{
-			int ml;
-			int mlc;
-			int rl;
-
-			// Midway through a backseek.  Can't use it.
-			if( bitmaplocation[s] < 0 ) continue;
-			if( bitmaplocation[s] < bitcount - MaxREV ) continue;
-
-			for( 
-				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
-				ml++, mlc++, rl++ )
+			int depth = 0;
+			int dm = DecodeMatch( s, completeNoteList + i, numNotes - i, &depth );
+			printf( "Check [at byte %d]: %d -> %d -> %d\n", i, s, dm, depth );
+			if( dm > bestrl )
 			{
-				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
-			}
-
-			if( rl > bestrl )
-			{
-				bestrl = rl;
-				bestrunstart = s;
+				bestrl = dm;
+				bests = s;
 			}
 		}
 		if( bestrl > MinRL )
 		{
 			emit_bits_class++;
+			printf( "OUTPUT CB @ bp = %d   bestrl=%d  bests=%d\n", bitcount, bestrl, bests );
 			EmitBit( 1 );
-			int bcstart = bitcount;
-			bitmaplocation[i] = bitcount;
-
-			int sourcebplace = bitmaplocation[bestrunstart];
-
-			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
-			int endr = i + bestrl-1;
-
-			for( ; i < endr; i++ )
-			{
-				// We can't jump to the middle of the callback (unless we decided to include more info).
-				bitmaplocation[i] = -1;
-			}
-			numRev++;
-
-			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
-			int offset = i-bestrunstart-bestrl;
-			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
-
+			i += bestrl - 1;
+			int offset = bitcount - bests - 1;
 			int emit_best_rl = bestrl - MinRL - 1;
-
-			// Output emit_best_rl, RLBits, Prob1RL
-			// Output offset, MRBits, Prob1MR
-			// Output emit_best_rl
-			// Output offset
+			printf( "WRITE %d %d\n", emit_best_rl, offset );
 			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( offset );
-
-			//printf( "EMITT  %d %d at %d from %d(%d) BL:%d\n", emit_best_rl, offset, bitcount, sourcebplace, bestrunstart, bitcount - bcstart );
 		}
 		else
 		{
 			emit_bits_class++;
+			printf( "OUTPUT DATA @ bp = %d (Values %02x %02x (index %d))\n", bitcount,  completeNoteList[i]>>8,  completeNoteList[i]&0xff, i );
 			EmitBit( 0 );
 #ifndef SINGLETABLE
 			int n = completeNoteList[i] >> 8;
@@ -571,7 +653,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 					emit_bits_data += thul->bitlen;
 					for( ll = 0; ll < thul->bitlen; ll++ )
 					{
-						EmitBit( ll );
+						EmitBit( thul->bitstream[ll] );
 					}
 					break;
 				}
