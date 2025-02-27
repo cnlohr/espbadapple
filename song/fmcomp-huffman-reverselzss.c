@@ -159,6 +159,7 @@ int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_matc
 	do
 	{
 		printf( "CHECKP @ bp = %d\n", bp );
+		int bpstart = bp;
 		int class = PullBit( &bp );
 		if( class < 0 ) return matchno;
 //		printf( "   Class %d @ %d\n", class, bp-1 );
@@ -184,13 +185,13 @@ int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_matc
 			int offset = PullExpGolomb( &bp );
 
 			if( runlen < 0 || offset < 0 ) return matchno;
-			printf( "DEGOL %d %d\n", runlen, offset );
+			printf( "DEGOL %d %d BPIN: %d\n", runlen, offset, bp );
 			runlen = runlen + 1 + MinRL;
-			offset = offset + 1 - runlen;
-			bp = bp - offset;
+			offset = offset - 1 - runlen;
+			bp = bpstart - offset;
 			// Check for end of sequence or if bp points to something in the past.
 			if( bp < 0 || bp >= bitcount-1 ) return matchno;
-			printf( "   OFFSET %d, %d (%d)\n", runlen, offset, bp );
+			printf( "   OFFSET %d, %d (BP: %d)\n", runlen, offset, bp );
 			int dmtm = length_max_to_match - matchno;
 			if( dmtm > runlen ) dmtm = runlen;
 			int dm = DecodeMatch( bp, notes_to_match + matchno, dmtm, depth );
