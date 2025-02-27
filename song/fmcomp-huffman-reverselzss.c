@@ -154,7 +154,7 @@ int main()
 
 			for( 
 				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
+				ml < i && mlc < numNotes; // && rl < MaxRL;
 				ml++, mlc++, rl++ )
 			{
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
@@ -171,18 +171,6 @@ int main()
 			//printf( "Found Readback at %d (%d %d) (D: %d)\n", i, i-bestrunstart, bestrl, i-bestrunstart-bestrl );
 			i += bestrl-1;
 			numRev++;
-
-			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
-			int offset = i-bestrunstart-bestrl;
-			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
-
-			int emit_best_rl = bestrl - MinRL - 1;
-
-			// Output emit_best_rl, RLBits, Prob1RL
-			// Output offset, MRBits, Prob1MR
-
-			// Output emit_best_rl
-			// Output offset
 		}
 		else
 		{
@@ -356,8 +344,8 @@ int main()
 		}
 		else
 		{
-			int pd0 = h->pair0 - i;
-			int pd1 = h->pair1 - i;
+			int pd0 = h->pair0 - i - 1;
+			int pd1 = h->pair1 - i - 1;
 
 			huffelement * h0 = hel + h->pair0;
 			huffelement * h1 = hel + h->pair1;
@@ -398,7 +386,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL - MinRL;
+		int searchStart = 0; //i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int bestrl = 0, bestrunstart = 0;
@@ -409,14 +397,14 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 			int rl;
 			for( 
 				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
+				ml < i && mlc < numNotes; //&& rl < MaxRL;
 				ml++, mlc++, rl++ )
 			{
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > bestrl && // Make sure it's best
-				s + MinRL + rl + MaxREV >= i )
+			if( rl > bestrl )	 // Make sure it's best
+				//s + MinRL + rl + MaxREV >= i )
 			{
 				bestrl = rl;
 				bestrunstart = s;
@@ -466,7 +454,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 	for( i = 0; i < numNotes; i++ )
 	{
 		// Search for repeated sections.
-		int searchStart = i - MaxREV - MaxRL - MinRL;
+		int searchStart = 0; //i - MaxREV - MaxRL - MinRL;
 		if( searchStart < 0 ) searchStart = 0;
 		int s;
 		int bestrl = 0, bestrunstart = 0;
@@ -482,7 +470,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 
 			for( 
 				ml = s, mlc = i, rl = 0;
-				ml < i && mlc < numNotes && rl < MaxRL;
+				ml < i && mlc < numNotes; //&& rl < MaxRL;
 				ml++, mlc++, rl++ )
 			{
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
