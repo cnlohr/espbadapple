@@ -596,7 +596,8 @@ int main()
 			int depth = 0;
 			int dm = DecodeMatch( s, completeNoteList + i, numNotes - i, &depth );
 			//printf( "Check [at byte %d]: %d -> %d -> %d\n", i, s, dm, depth );
-			if( dm > bestrl )
+			int sderate = (log(bitcount-s+1)/log(2)) / 9;
+			if( dm - sderate > bestrl )
 			{
 				bestrl = dm;
 				bests = s;
@@ -616,7 +617,7 @@ int main()
 				exit ( -5 );
 			}
 			int emit_best_rl = bestrl - MinRL - 1;
-			printf( "WRITE %d %d\n", emit_best_rl, offset );
+			//printf( "WRITE %d %d\n", emit_best_rl, offset );
 			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( offset );
 			actualRev++;
@@ -639,7 +640,7 @@ int main()
 				huffup * thu = hu + k;
 				if( thu->value == n )
 				{
-					printf( "Emitting NOTE %04x at %d\n", n, bitcount );
+					//printf( "Emitting NOTE %04x at %d\n", n, bitcount );
 					int ll;
 					emit_bits_data += thu->bitlen;
 					for( ll = 0; ll < thu->bitlen; ll++ )
@@ -655,7 +656,6 @@ int main()
 				return -4;
 			}
 #ifndef SINGLETABLE
-
 			int lev =  completeNoteList[i] & 0xff;
 			for( k = 0; k < htlenl; k++ )
 			{
@@ -663,7 +663,7 @@ int main()
 				if( thul->value == lev )
 				{
 					int ll;
-					printf( "Emitting LEN %04x at %d\n", lev, bitcount );
+					//printf( "Emitting LEN %04x at %d\n", lev, bitcount );
 					emit_bits_data += thul->bitlen;
 					for( ll = 0; ll < thul->bitlen; ll++ )
 					{
