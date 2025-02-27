@@ -476,7 +476,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 				if( completeNoteList[ml] != completeNoteList[mlc] ) break;
 			}
 
-			if( rl > bestrl )
+			if( rl >= bestrl )
 			{
 				bestrl = rl;
 				bestrunstart = s;
@@ -503,7 +503,12 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 			numRev++;
 
 			//printf( "AT: %d BEST: LENG:%d  START:%d\n", i, bestrl, bestrunstart );
-			int offset =bitcount-bestrunstart-bestrl;
+			int offset = bitcount-bestrunstart-bestrl;
+			if( offset < 0 )
+			{
+				fprintf( stderr, "Offset fail\n" );
+				exit (-5 );
+			}
 			//printf( "Emitting: %d %d (%d %d %d %d)\n", bestrl, offset, i, bestrunstart, bestrl, MinRL );
 
 			int emit_best_rl = bestrl - MinRL - 1;
@@ -512,6 +517,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 			// Output offset, MRBits, Prob1MR
 			// Output emit_best_rl
 			// Output offset
+			printf( "WRITE %d %d\n", offset, emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( offset );
 
