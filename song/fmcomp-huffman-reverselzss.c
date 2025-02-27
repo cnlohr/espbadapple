@@ -485,6 +485,7 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 		if( bestrl > MinRL )
 		{
 			emit_bits_class++;
+			printf( "@%d  BBK: %d %d\n", bitcount, bestrunstart, bestrl );
 			EmitBit( 1 );
 			int bcstart = bitcount;
 			bitmaplocation[i] = bitcount;
@@ -518,6 +519,8 @@ printf( "%d %d  %02x %02x  %02x %02x\n", h0->is_term, h1->is_term, pd0, pd1, h0-
 		}
 		else
 		{
+			printf( "@%d EMIT: %04x\n", bitcount, completeNoteList[i] );
+
 			emit_bits_class++;
 			EmitBit( 0 );
 #ifndef SINGLETABLE
