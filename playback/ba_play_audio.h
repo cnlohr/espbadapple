@@ -77,7 +77,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player );
 	int bit;
 
 #define BITPULL \
-	bit = (bpr&1); bpr>>=1; if( ++bpoo >= 32 ) { bpo += 32; bpoo = 0; bpr = espbadapple_song_data[bpo>>5]; printf( "[RELOAD %08x]", bpr ); } printf( "%d", bit ); 
+	bit = (bpr&1); bpr>>=1; if( ++bpoo >= 32 ) { bpo += 32; bpoo = 0; bpr = espbadapple_song_data[bpo>>5]; }
 
 #define BITPULL_END \
 	*optr = (bpo & ~0x1f) | bpoo;
@@ -136,12 +136,18 @@ static void ba_audio_setup()
 {
 	struct ba_audio_player_t * player = &ba_player;
 	memset( player, 0, sizeof( *player ) );
-	player->stack[0].remain = ESPBADAPPLE_SONG_LENGTH;
+	player->stack[0].remain = ESPBADAPPLE_SONG_LENGTH + 1;
 }
 
 static int ba_audio_pull_note( struct ba_audio_player_t * player )
 {
 	int stackplace = player->stackplace;
+	player->stack[stackplace].remain--;
+	while( player->stack[stackplace].remain == 0 )
+	{
+		stackplace--;
+		if( stackplace < 0 ) return -5;
+	}
 
 	uint16_t * optr;
 
@@ -150,38 +156,29 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		optr = &player->stack[stackplace].offset;
 		int bpstart = *optr;
 		int is_backtrace = ba_audio_internal_pull_bit( player, optr );
-		printf( "IS_BACKTRACE: %d\n", is_backtrace );
 		if( !is_backtrace ) break;
 
-		stackplace++;
 		int runlen = ba_audio_internal_pull_exp_golomb( player, optr );
 		int offset = ba_audio_internal_pull_exp_golomb( player, optr );
-		printf( "BTR: %d %d\n", runlen, offset );
+
+		int tremain = runlen + ESPBADAPPLE_SONG_MINRL + 1;
+		if( tremain > player->stack[stackplace].remain ) tremain = player->stack[stackplace].remain;  //TODO: Fold tremain into remain logic below.
+		player->stack[stackplace].remain -= tremain;
+		//printf( "RATCHET IN: %d / LEFT: %d\n", tremain, player->stack[stackplace].remain );
+		stackplace++;
+
 		player->stack[stackplace] = (struct ba_audio_player_stack_element)
 		{ 
 			bpstart - ( offset + ESPBADAPPLE_SONG_OFFSET_MINIMUM + runlen + ESPBADAPPLE_SONG_MINRL + 1 ),
-			runlen + ESPBADAPPLE_SONG_MINRL + 1
+			tremain
 		};
-		printf( "RTK: %d %d\n", player->stack[stackplace].offset, player->stack[stackplace].remain );
+		//printf( "RTK: %d %d\n", player->stack[stackplace].offset, player->stack[stackplace].remain );
 	} while( 1 );
 
 	int note = ba_audio_internal_pull_huff( player, espbadapple_song_huffnote, optr );
 	int lenandrun = ba_audio_internal_pull_huff( player, espbadapple_song_hufflen, optr );
-	int remain = player->stack[stackplace].remain;
 
-	printf( "[%02x %02x, %d, %d]\n", note, lenandrun, remain, stackplace );
-
-	remain--;
-	if( remain == 0 )
-	{
-		stackplace--;
-		if( stackplace < 0 ) return -5;
-	}
-	else
-	{
-		player->stack[stackplace].remain = remain;
-	}
-
+	//printf( "[%02x %02x, %d, %d]\n", note, lenandrun, player->stack[stackplace].remain, stackplace );
 	player->stackplace = stackplace;
 	return (note<<8) | lenandrun;
 }
