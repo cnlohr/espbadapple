@@ -45,7 +45,7 @@ typedef struct ba_play_context_
 {
 	vpx_reader vpx_changes;
 	glyphtype  curmap[BLKY*BLKX];
-	uint8_t    currun[BLKY*BLKX];
+	uint8_t    currun[BLKY*BLKX];  // Not actually current run, only used for VPX change probability calculation.  Limited to RUNCODES_CONTINUOUS.
 	graphictype   glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
 	graphictype   framebuffer[RESX*RESY*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*2)];
 } ba_play_context;
@@ -111,7 +111,7 @@ int ba_play_setup( ba_play_context * ctx )
 		ctx->curmap[n] = INITIALIZE_CELL;
 	}
 	memset( ctx->currun, 0, sizeof( ctx->currun ) );
-	memset( ctx->framebuffer, 0, sizeof(ctx->framebuffer) );
+	//memset( ctx->framebuffer, 0, sizeof(ctx->framebuffer) );
 	
 	vpx_reader * rctx = &ctx->vpx_changes;
 #ifdef _VPX_TINYREAD_SFH_H
