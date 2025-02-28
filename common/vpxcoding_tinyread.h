@@ -77,7 +77,6 @@ typedef struct {
 
 
 VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size);
-VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r);
 VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob);
 VPXCODING_DECORATOR int vpx_tree_read( vpx_reader * reader, const uint8_t * probabilities, int num_probabilities, int bits_for_max_element );
 
@@ -113,66 +112,61 @@ VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, si
 	return vpx_read_bit(r) != 0;  // marker bit
 }
 
-VPXCODING_DECORATOR void vpx_reader_fill(vpx_reader *r)
-{
-	const uint8_t *const buffer_end = r->buffer_end;
-	const uint8_t *buffer = r->buffer;
-	const uint8_t *buffer_start = buffer;
-	BD_VALUE value = r->value;
-	int count = r->count;
-	const size_t bytes_left = buffer_end - buffer;
-	const size_t bits_left = bytes_left * CHAR_BIT;
-	int shift = BD_VALUE_SIZE - CHAR_BIT - (count + CHAR_BIT);
-
-	if (bits_left > BD_VALUE_SIZE) {
-		const int bits = (shift & 0xfffffff8) + CHAR_BIT;
-		BD_VALUE nv;
-		BD_VALUE big_endian_values = 0;
-		int n;
-		for( n = 0; n < 4; n++ ) big_endian_values = (big_endian_values<<8) | buffer[n];
-		nv = big_endian_values >> (BD_VALUE_SIZE - bits);
-		count += bits;
-		buffer += (bits >> 3);
-		value = r->value | (nv << (shift & 0x7));
-	} else {
-		const int bits_over = (int)(shift + CHAR_BIT - (int)bits_left);
-		int loop_end = 0;
-		if (bits_over >= 0) {
-			count += LOTS_OF_BITS;
-			loop_end = bits_over;
-		}
-
-		if (bits_over < 0 || bits_left) {
-			while (shift >= loop_end) {
-				count += CHAR_BIT;
-				value |= (BD_VALUE)*buffer++ << shift;
-				shift -= CHAR_BIT;
-			}
-		}
-	}
-
-	// NOTE: Variable 'buffer' may not relate to 'r->buffer' after decryption,
-	// so we increase 'r->buffer' by the amount that 'buffer' moved, rather
-	// than assign 'buffer' to 'r->buffer'.
-	r->buffer += buffer - buffer_start;
-	r->value = value;
-	r->count = count;
-}
-
-
 VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob)
 {
-	unsigned int bit = 0;
 	BD_VALUE value;
-	BD_VALUE bigsplit;
 	int count;
-	unsigned int range;
-	unsigned int split = (r->range * prob + (256 - prob)) >> CHAR_BIT;
-
-	if (r->count < 0) vpx_reader_fill(r);
 
 	value = r->value;
 	count = r->count;
+
+	if (r->count < 0)
+	{
+		//vpx_reader_fill
+		const uint8_t *const buffer_end = r->buffer_end;
+		const uint8_t *buffer = r->buffer;
+		const uint8_t *buffer_start = buffer;
+		const size_t bytes_left = buffer_end - buffer;
+		const size_t bits_left = bytes_left * CHAR_BIT;
+		int shift = BD_VALUE_SIZE - CHAR_BIT - (count + CHAR_BIT);
+
+		if (bits_left > BD_VALUE_SIZE) {
+			const int bits = (shift & 0xfffffff8) + CHAR_BIT;
+			BD_VALUE nv;
+			BD_VALUE big_endian_values = 0;
+			int n;
+			for( n = 0; n < 4; n++ ) big_endian_values = (big_endian_values<<8) | buffer[n];
+			nv = big_endian_values >> (BD_VALUE_SIZE - bits);
+			count += bits;
+			buffer += (bits >> 3);
+			value = r->value | (nv << (shift & 0x7));
+		} else {
+			const int bits_over = (int)(shift + CHAR_BIT - (int)bits_left);
+			int loop_end = 0;
+			if (bits_over >= 0) {
+				count += LOTS_OF_BITS;
+				loop_end = bits_over;
+			}
+
+			if (bits_over < 0 || bits_left) {
+				while (shift >= loop_end) {
+					count += CHAR_BIT;
+					value |= (BD_VALUE)*buffer++ << shift;
+					shift -= CHAR_BIT;
+				}
+			}
+		}
+
+		// NOTE: Variable 'buffer' may not relate to 'r->buffer' after decryption,
+		// so we increase 'r->buffer' by the amount that 'buffer' moved, rather
+		// than assign 'buffer' to 'r->buffer'.
+		r->buffer += buffer - buffer_start;
+	}
+
+	BD_VALUE bigsplit;
+	unsigned int range;
+	unsigned int split = (r->range * prob + (256 - prob)) >> CHAR_BIT;
+	unsigned int bit = 0;
 
 	bigsplit = (BD_VALUE)split << (BD_VALUE_SIZE - CHAR_BIT);
 

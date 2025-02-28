@@ -113,7 +113,7 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 	return v-1;
 }
 
-int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, uint16_t * htree, uint16_t * optr )
+int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16_t * htree, uint16_t * optr )
 {
 	BITPULL_START;
 	int ofs = 0;

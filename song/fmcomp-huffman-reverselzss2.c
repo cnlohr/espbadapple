@@ -422,7 +422,7 @@ int main()
 	fprintf( fData, "#define ESPBADAPPLE_SONG_LENGTH %d\n", numNotes );
 
 	fprintf( fData, "\n" );
-	fprintf( fData, "static uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen - numsym );
+	fprintf( fData, "BAS_DECORATOR uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen - numsym );
 	int maxpdA = 0;
 	int maxpdB = 0;
 	int htnlen = 0;
@@ -472,7 +472,7 @@ int main()
 	int htnlen2 = 0;
 
 #ifndef SINGLETABLE
-	fprintf( fData, "static uint16_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl - numlens );
+	fprintf( fData, "BAS_DECORATOR uint16_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl - numlens );
 
 	maxpdA = 0;
 	maxpdB = 0;
@@ -519,7 +519,7 @@ int main()
 	fprintf( fData, "};\n\n" );
 #endif
 
-	fprintf( fData, "static uint32_t espbadapple_song_data[] = {\n\t" );
+	fprintf( fData, "BAS_DECORATOR uint32_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 

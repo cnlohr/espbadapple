@@ -6,6 +6,7 @@
 #define VPXCODING_READER
 #define VPX_32BIT
 
+#define VPXCODING_AUTOGEN_NORM
 //#include "vpxcoding.h"
 #include "vpxcoding_tinyread.h"
 
