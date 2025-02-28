@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 
 #define HUFFER_IMPLEMENTATION
 #include "hufftreegen.h"
 
 const int MinRL = 2;
-#define OFFSET_MINIMUM 6
-#define MAX_BACK_DEPTH 20
+#define OFFSET_MINIMUM 7
+#define MAX_BACK_DEPTH 18
 
 FILE * fData, *fD;
 
@@ -25,7 +26,6 @@ FILE * fData, *fD;
 // Combine run + note + length
 //#define SINGLETABLE
 
-
 // Huffman generation trees.
 huffup * hu;
 huffup * hul;
@@ -34,8 +34,8 @@ huffup * hul;
 huffelement * he;
 huffelement * hel;
 
-uint8_t runbyte = 0;
-uint8_t runbyteplace = 0;
+uint32_t runword = 0;
+uint8_t runwordplace = 0;
 int total_bytes = 0;
 int bitcount = 0;
 
@@ -43,16 +43,16 @@ char * bitlist = 0; // size = bitcount
 
 void EmitBit( int ib )
 {
-	runbyte |= ib << runbyteplace;
-	runbyteplace++;
-
-	if( runbyteplace == 8 )
+	runword |= ib << runwordplace;
+	runwordplace++;
+	printf( "%d", ib );
+	if( runwordplace == 32 )
 	{
-		if( fData ) fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
-		total_bytes++;
-		if( fD ) fwrite( &runbyte, 1, 1, fD );
-		runbyte = 0;
-		runbyteplace = 0;
+		if( fData ) fprintf( fData, "0x%08x%s", runword, ((total_bytes%32)!=28)?", " : ",\n\t" );
+		total_bytes+=4;
+		if( fD ) fwrite( &runword, 1, 4, fD );
+		runword = 0;
+		runwordplace = 0;
 	}
 	bitlist = realloc( bitlist, bitcount+1 );
 	bitlist[bitcount] = ib;
@@ -319,12 +319,15 @@ int main()
 	}
 
 
-
+	int nHighestNote = 0;
+	int nLowestNote = INT_MAX;
 	// this is only a rough approximation of the distribution that will be used.
 	for( int r = 0; r < numReg; r++ )
 	{
 		int nv = regNoteList[r];
-
+		int pitch = nv>>8;
+		if( pitch > nHighestNote ) nHighestNote = pitch;
+		if( pitch < nLowestNote ) nLowestNote = pitch;
 #ifdef SINGLETABLE
 		int note = nv;
 #else
@@ -411,6 +414,15 @@ int main()
 	fprintf( fData, "#define ESPBADAPPLE_SONG_H\n\n" );
 	fprintf( fData, "#include <stdint.h>\n\n" );
 
+	fprintf( fData, "#define ESPBADAPPLE_SONG_MINRL %d\n", MinRL );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_OFFSET_MINIMUM %d\n", OFFSET_MINIMUM );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_MAX_BACK_DEPTH %d\n", MAX_BACK_DEPTH );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_MAX_BACK_DEPTH %d\n", MAX_BACK_DEPTH );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_HIGHEST_NOTE %d\n", nHighestNote );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_LOWEST_NOTE %d\n", nLowestNote );
+	fprintf( fData, "#define ESPBADAPPLE_SONG_LENGTH %d\n", numNotes );
+
+	fprintf( fData, "\n" );
 	fprintf( fData, "static uint16_t espbadapple_song_huffnote[%d] = {\n\t", hufflen - numsym );
 	int maxpdA = 0;
 	int maxpdB = 0;
@@ -461,7 +473,7 @@ int main()
 	int htnlen2 = 0;
 
 #ifndef SINGLETABLE
-	fprintf( fData, "static uint8_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl - numlens );
+	fprintf( fData, "static uint16_t espbadapple_song_hufflen[%d] = {\n\t", hufflenl - numlens );
 
 	maxpdA = 0;
 	maxpdB = 0;
@@ -508,7 +520,7 @@ int main()
 	fprintf( fData, "};\n\n" );
 #endif
 
-	fprintf( fData, "static uint8_t espbadapple_song_data[] = {\n\t" );
+	fprintf( fData, "static uint32_t espbadapple_song_data[] = {\n\t" );
 
 	printf( "max pd %d / %d\n", maxpdA, maxpdB );
 
@@ -607,17 +619,18 @@ int main()
 		{
 			emit_bits_class++;
 			int startplace = bitcount;
-			printf( "OUTPUT CB @ bp = %d   bestrl=%d  bests=%d\n", bitcount, bestrl, bests );
+			printf( "OUTPUT   CB @ bp =%5d bestrl=%3d bests=%3d ", bitcount, bestrl, bests );
 			EmitBit( 1 );
 			i += bestrl - 1;
 			int offset = startplace - bests - bestrl - OFFSET_MINIMUM;
 			if( offset < 0 )
 			{
-				fprintf( stderr, "Error: OFFSET_MINIMUM is too large\n" );
+				fprintf( stderr, "Error: OFFSET_MINIMUM is too large (%d - %d - %d - %d = %d)\n", startplace, bests, bestrl, OFFSET_MINIMUM, offset );
 				exit ( -5 );
 			}
 			int emit_best_rl = bestrl - MinRL - 1;
 			//printf( "WRITE %d %d\n", emit_best_rl, offset );
+			printf( "Write: %d %d\n", emit_best_rl, offset );
 			emit_bits_backtrack += EmitExpGolomb( emit_best_rl );
 			emit_bits_backtrack += EmitExpGolomb( offset );
 			actualRev++;
@@ -691,11 +704,11 @@ int main()
 #endif
 	printf( "Total: %d bits / %d bytes\n", bitcount, (bitcount+7)/8  );
 
-	if( runbyteplace )
+	if( runwordplace )
 	{
-		fwrite( &runbyte, 1, 1, fD );
-		total_bytes++;
-		fprintf( fData, "0x%02x%s", runbyte, ((total_bytes%16)!=15)?", " : ",\n\t" );
+		fwrite( &runword, 1, 4, fD );
+		total_bytes+=4;
+		fprintf( fData, "0x%08x%s", runword, ((total_bytes%8)!=7)?", " : ",\n\t" );
 	}
 
 	fprintf( fData, " };\n\n" );

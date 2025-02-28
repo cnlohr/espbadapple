@@ -10,7 +10,7 @@
 
 // Allow referencing things in the past.
 // Kind of arbitrary tuning.
-const int MinRL = 200000;
+const int MinRL = 2;
 const int MRBits = 10;
 const int RLBits = 8;
 const int MaxREV = (1<<MRBits)-1;
@@ -324,6 +324,7 @@ int main()
 
 	float options[2] = { numReg, numRev };
 	float fBitsFromSwitch = 0;
+	printf( "Rev/Reg: %d/%d\n", numRev, numReg );
 	for( i = 0; i < 2; i++ )
 	{
 		float fPortion = (options[i] / (numReg+numRev));

@@ -7,7 +7,7 @@
 #ifndef BAS_DECORATOR
 #define BAS_DECORATOR
 #endif
-#include "badapple_song_huffman_reverselzss.h"
+#include "badapple_song.h"
 #include "vpxcoding_tinyread.h"
 
 #ifndef F_SPS
@@ -26,9 +26,7 @@
 #define SYFN( n ) \
 	(uint16_t)((pow( 2, (((float)n + 47.0) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
 
-#define NOTE_RANGE  ( ESPBADAPPLE_SONG_HIGHEST_NOTE - ESPBADAPPLE_SONG_LOWEST_NOTE + 1 )
-
-const BAS_DECORATOR uint16_t frequencies[NOTE_RANGE] = {
+const BAS_DECORATOR uint16_t frequencies[bas_highest_note_count] = {
 	SYFN( 0), SYFN( 1), SYFN( 2), SYFN( 3), SYFN( 4), SYFN( 5), SYFN( 6), SYFN( 7), SYFN( 8), SYFN( 9),
 	SYFN(10), SYFN(11), SYFN(12), SYFN(13), SYFN(14), SYFN(15), SYFN(16), SYFN(17), SYFN(18), SYFN(19),
 	SYFN(20), SYFN(21), SYFN(22), SYFN(23), SYFN(24), SYFN(25), SYFN(26), SYFN(27), SYFN(28), SYFN(29),
@@ -36,154 +34,99 @@ const BAS_DECORATOR uint16_t frequencies[NOTE_RANGE] = {
 
 typedef uint16_t notetype;
 
+#define song_index_mask ((1<<bas_required_output_buffer_po2_bits)-1)
+
 #ifndef WARNING
 #define WARNING( x... ) fprintf( stderr, x );
 #endif
 
-/*
-#define ESPBADAPPLE_SONG_MINRL 2
-#define ESPBADAPPLE_SONG_OFFSET_MINIMUM 7
-#define ESPBADAPPLE_SONG_MAX_BACK_DEPTH 18
-*/
-
-struct ba_audio_player_stack_element
-{
-	uint16_t offset;
-	uint16_t remain;
-};
-
 struct ba_audio_player_t
 {
+	vpx_reader reader;	
+	int nindex; // For reading a note
+	int ntail;  // For having read a note
+	uint16_t   playing_freq[NUM_VOICES];
+	uint16_t   phase[NUM_VOICES];
+	int        tstop[NUM_VOICES];
 	int nexttrel;
 	int ending;
 	int t;
 	int gotnotes;
 	int sub_t_sample;
 	int outbufferhead;
-	int stackplace;
-	uint16_t   playing_freq[NUM_VOICES];
-	uint16_t   phase[NUM_VOICES];
-	int        tstop[NUM_VOICES];
 
-	struct ba_audio_player_stack_element stack[ESPBADAPPLE_SONG_MAX_BACK_DEPTH];
+	// Put at end because we only need to reference it once.
+	notetype decomp_buffer[1<<bas_required_output_buffer_po2_bits];
 } ba_player;
 
 static int ba_audio_pull_note( struct ba_audio_player_t * player );
-
-#define BITPULL_START \
-	int bpo = *optr; \
-	int bpoo = bpo & 0x1f; \
-	uint32_t bpr = espbadapple_song_data[bpo>>5]>>(bpoo); \
-	int bit;
-
-#define BITPULL \
-	bit = (bpr&1); bpr>>=1; if( ++bpoo >= 32 ) { bpo += 32; bpoo = 0; bpr = espbadapple_song_data[bpo>>5]; printf( "[RELOAD %08x]", bpr ); } printf( "%d", bit ); 
-
-#define BITPULL_END \
-	*optr = (bpo & ~0x1f) | bpoo;
-
-static int ba_audio_internal_pull_bit( struct ba_audio_player_t * player, uint16_t * optr )
-{
-	BITPULL_START;
-	BITPULL;
-	BITPULL_END;
-	return bit;
-}
-
-int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16_t * optr )
-{
-	BITPULL_START;
-	int exp = 0;
-	do
-	{
-		BITPULL;
-		if( bit ) break;
-		exp++;
-	} while( 1 );
-
-	int br;
-	int v = 1;
-	for( br = 0; br < exp; br++ )
-	{
-		v = v << 1;
-		BITPULL;
-		v |= bit;
-	}
-	BITPULL_END;
-	return v-1;
-}
-
-int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, uint16_t * htree, uint16_t * optr )
-{
-	BITPULL_START;
-	int ofs = 0;
-	do
-	{
-		uint16_t he = htree[ofs];
-		BITPULL;
-		he>>=bit*8;
-		if( he & 0x80 )
-		{
-			BITPULL_END;
-			return he & 0x7f;
-		}
-		he &= 0xff;
-		ofs = he + 1 + ofs;
-	} while( 1 );
-}
 
 static void ba_audio_setup()
 {
 	struct ba_audio_player_t * player = &ba_player;
 	memset( player, 0, sizeof( *player ) );
-	player->stack[0].remain = ESPBADAPPLE_SONG_LENGTH;
+	vpx_reader_init( &player->reader, bas_data, sizeof( bas_data ) );
 }
 
 static int ba_audio_pull_note( struct ba_audio_player_t * player )
 {
-	int stackplace = player->stackplace;
-
-	uint16_t * optr;
-
-	do
+	// Originally: //!(( player->nindex ^ player->ntail ) & song_index_mask) ) but it was not needed.
+	if( player->nindex == player->ntail )
 	{
-		optr = &player->stack[stackplace].offset;
-		int bpstart = *optr;
-		int is_backtrace = ba_audio_internal_pull_bit( player, optr );
-		printf( "IS_BACKTRACE: %d\n", is_backtrace );
-		if( !is_backtrace ) break;
+		// This will always read at least one note.
+		if( vpx_read( &player->reader, bas_probability_of_peekback ) )
+		{
+			// Doing a peekback
+			//printf( "Backlook: %d %d\n", maxrl, maxms );
+			int runlen = 0;
+			int offset = 0;
+			int k;
+			int slope = 0;
+			for( k = 0; k < bas_bit_used_for_peekback_length; k++ )
+			{
+				int bprob = bas_peekback_base_for_length + slope;
+				slope += bas_peekback_slope_for_length;
+				runlen |= vpx_read( &player->reader, bprob ) << k;
+			}
+			slope = 0;
+			for( k = 0; k < bas_bit_used_for_peekback_offset; k++ )
+			{
+				int bprob = bas_peekback_base_for_offset + slope;
+				slope += bas_peekback_slope_for_offset;
+				offset |= vpx_read( &player->reader, bprob ) << k;
+			}
 
-		stackplace++;
-		int runlen = ba_audio_internal_pull_exp_golomb( player, optr );
-		int offset = ba_audio_internal_pull_exp_golomb( player, optr );
-		printf( "BTR: %d %d\n", runlen, offset );
-		player->stack[stackplace] = (struct ba_audio_player_stack_element)
-		{ 
-			bpstart - ( offset + ESPBADAPPLE_SONG_OFFSET_MINIMUM + runlen + ESPBADAPPLE_SONG_MINRL + 1 ),
-			runlen + ESPBADAPPLE_SONG_MINRL + 1
-		};
-		printf( "RTK: %d %d\n", player->stack[stackplace].offset, player->stack[stackplace].remain );
-	} while( 1 );
-
-	int note = ba_audio_internal_pull_huff( player, espbadapple_song_huffnote, optr );
-	int lenandrun = ba_audio_internal_pull_huff( player, espbadapple_song_hufflen, optr );
-	int remain = player->stack[stackplace].remain;
-
-	printf( "[%02x %02x, %d, %d]\n", note, lenandrun, remain, stackplace );
-
-	remain--;
-	if( remain == 0 )
-	{
-		stackplace--;
-		if( stackplace < 0 ) return -5;
+			runlen += bas_min_run_length + 1;
+			int nindex = player->nindex;
+			int endoffset = nindex + runlen;
+			int startoffset = nindex - runlen - offset;
+			player->gotnotes += runlen;
+			if( startoffset < 0 || endoffset >= bas_songlen_notes )
+			{
+				WARNING( "Error: start/end %d %d/%d\n", startoffset, endoffset, bas_songlen_notes );
+				return -5;
+			}
+			do
+			{
+				player->decomp_buffer[ nindex & song_index_mask ] = player->decomp_buffer[ startoffset & song_index_mask ];
+				nindex++; startoffset++;
+				//printf( "%d %d %d\n", startoffset, player
+			} while( nindex != endoffset );
+			player->nindex = nindex;
+		}
+		else
+		{
+			// Decoding a note
+			int note = vpx_tree_read( &player->reader, bas_notes_probabilities, bas_note_probsize, bas_note_bits );
+			int coded_len_and_run = vpx_tree_read( &player->reader, bas_lenandrun_probabilities, bas_lenandrun_probsize, bas_lenandrun_bits );
+			int lenandrun = bas_lenandrun_codes[coded_len_and_run];
+			player->gotnotes++;
+			player->decomp_buffer[(player->nindex++)&song_index_mask] = lenandrun | (note<<8);
+		}
 	}
-	else
-	{
-		player->stack[stackplace].remain = remain;
-	}
-
-	player->stackplace = stackplace;
-	return (note<<8) | lenandrun;
+	if( player->gotnotes >= bas_songlen_notes )
+		player->ending = 1;
+	return player->decomp_buffer[ (player->ntail++) & song_index_mask ];
 }
 
 static inline void perform_16th_note( struct ba_audio_player_t * player )
