@@ -30,11 +30,11 @@ testsynth : testsynth.c
 
 # Another try with huffman
 
-fmcomp-huffman-reverselzss : fmcomp-huffman-reverselzss.c
+fmcomp-huffman-reverselzss2 : fmcomp-huffman-reverselzss2.c
 	gcc $(CFLAGS) -o $@ $^ -lm
 
-../playback/badapple_song_huffman_reverselzss.h : fmcomp-huffman-reverselzss fmraw.dat
-	./fmcomp-huffman-reverselzss
+../playback/badapple_song_huffman_reverselzss.h : fmcomp-huffman-reverselzss2 fmraw.dat
+	./fmcomp-huffman-reverselzss2
 
 COMPLIST:=fmraw.dat.json.jq fmraw.dat.json fmraw.dat.xml fmraw.dat BadApple-mod.mid
 
