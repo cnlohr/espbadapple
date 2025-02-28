@@ -45,7 +45,6 @@ void EmitBit( int ib )
 {
 	runword |= ib << runwordplace;
 	runwordplace++;
-	printf( "%d", ib );
 	if( runwordplace == 32 )
 	{
 		if( fData ) fprintf( fData, "0x%08x%s", runword, ((total_bytes%32)!=28)?", " : ",\n\t" );
