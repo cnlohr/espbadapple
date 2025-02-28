@@ -27,16 +27,20 @@ ba_play_context ctx;
 
 int PValueAt( int x, int y, int * edge )
 {
-	graphictype * framebuffer = (graphictype*)ctx.framebuffer;
+//	graphictype * framebuffer = (graphictype*)ctx.framebuffer;
 	if( x < 0 ) { x = 0; *edge = 1; }
 	if( x >= RESX ) { x = RESX-1; *edge = 1; }
 	if( y < 0 ) { y = 0; *edge = 1; }
 	if( y >= RESY ) { y = RESY-1; *edge = 1; }
 
-	graphictype fbv = framebuffer[(x + y*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
-	int ofs = ((x + y*RESX)*BITSETS_TILECOMP)%(GRAPHICSIZE_WORDS*8);
-	fbv >>= ofs;
-	return (fbv&0x3);
+	int tileplace = (x/BLOCKSIZE)+(y/BLOCKSIZE)*(RESX/BLOCKSIZE);
+
+	glyphtype     tileid = ctx.curmap[tileplace];
+	graphictype * sprite = (graphictype*)ctx.glyphdata[tileid];
+	graphictype   g      = sprite[y&(BLOCKSIZE-1)];
+
+	int vout = (g>>(x*BITSETS_TILECOMP)%(GRAPHICSIZE_WORDS*8)) & 3;
+	return vout;
 }
 
 int SampleValueAt( int x, int y )

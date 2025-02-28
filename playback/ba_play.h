@@ -47,7 +47,7 @@ typedef struct ba_play_context_
 	glyphtype  curmap[BLKY*BLKX];
 	uint8_t    currun[BLKY*BLKX];  // Not actually current run, only used for VPX change probability calculation.  Limited to RUNCODES_CONTINUOUS.
 	graphictype   glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
-	graphictype   framebuffer[RESX*RESY*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*2)];
+	//graphictype   framebuffer[RESX*RESY*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*2)];
 } ba_play_context;
 
 int ba_play_setup( ba_play_context * ctx )
@@ -185,7 +185,7 @@ int ba_play_frame( ba_play_context * ctx )
 			ctx->currun[n] = 0;
 
 			// Update framebuffer.
-			graphictype * glyph = (graphictype*)ctx->glyphdata[tile];
+#if 0
 			graphictype * fbo = (graphictype*)&ctx->framebuffer[(bx*BLOCKSIZE + by*BLOCKSIZE*RESX)*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*8)];
 			//printf( "%d / %d\n", (bx + by*BLOCKSIZE)*BLOCKSIZE*BITSETS_TILECOMP/32, sizeof( ctx->framebuffer ) / 4 );
 			int ly;
@@ -194,6 +194,7 @@ int ba_play_frame( ba_play_context * ctx )
 				fbo[0] = *(glyph++);
 				fbo += RESX * BITSETS_TILECOMP / (GRAPHICSIZE_WORDS*8);
 			}
+#endif
 		}
 
 		bx++;
