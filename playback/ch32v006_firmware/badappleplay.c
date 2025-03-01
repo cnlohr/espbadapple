@@ -15,7 +15,12 @@ ba_play_context ctx;
 int main()
 {
 	SystemInit();
+	printf( "A\n" );
 
+	while(1)
+	{
+		printf( "%08x\n", espbadapple_song_data[0] );
+	}
 
 	ba_play_setup( &ctx );
 	ba_audio_setup();
@@ -27,6 +32,7 @@ int main()
 	while(1)
 	{
 		if( ba_play_frame( &ctx ) ) break;
+		PrintHex( 100 );
 
 		lasttail = outbuffertail;
 		outbuffertail = (F_SPS/30*frame) % AUDIO_BUFFER_SIZE;

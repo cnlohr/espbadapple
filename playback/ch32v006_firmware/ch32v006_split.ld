@@ -1,9 +1,13 @@
 ENTRY( InterruptVector )
 MEMORY
 {
- FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 62K
- BOOTLOADER (rx) : ORIGIN = 0x1fff0000, LENGTH = 3328
- RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 8K
+	FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 62K
+
+	/* Mapped from 0x1fff0000. Codgen uses auipc, and it's
+	   "running from" 0x0000000 so we have to go with it. */
+	BOOTLOADER (rx) : ORIGIN = 0x00000000, LENGTH = 3328
+
+	RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 8K
 }
 SECTIONS
 {
@@ -15,6 +19,7 @@ SECTIONS
       . = ALIGN(4);
       _einit = .;
     } >BOOTLOADER AT>BOOTLOADER
+
     .text :
     {
       . = ALIGN(4);
