@@ -33,6 +33,58 @@ def soft_clamp(x, min, max, hardness=10.0):
     """
     return min + F.softplus(x - min, beta=hardness) - F.softplus(x - max, beta=hardness)
 
+
+def deblocking_filter(img_raw):
+    """
+    Runs Charles' custom deblocking filter on inputs, with some modifications:
+     - Our inputs are float 0-1; we scale these up to 0-3 to match the int range, but otherwise stay floating point
+     - Soft clamping function to keep this filter differentiable
+    """
+
+    # Range scaling
+    img = img_raw * 3
+
+    B, C, H, W = img.shape
+
+    # Create 1D masks for input coordinates, marking where the block filter would apply
+    x_indices = torch.arange(W, device=img.device)
+    y_indices = torch.arange(H, device=img.device)
+    mask_x = ((x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))).to(img.dtype)
+    mask_y = ((y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))).to(img.dtype)
+
+    # Reshape for broadcasting
+    mask_x = mask_x.view(1, 1, 1, W)
+    mask_y = mask_y.view(1, 1, H, 1)
+
+    # Number of samples considered per pixel
+    qty = 1 + 2 * mask_x + 2 * mask_y  # shape (B, 1, H, W)
+
+    # Pad with replication (equivalent to clamps in c pixel-sampling function)
+    padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
+
+    # Extract the center region (same as input) and neighbors
+    center = padded[:, :, 1:-1, 1:-1]
+    left = padded[:, :, 1:-1, :-2]
+    right = padded[:, :, 1:-1, 2:]
+    up = padded[:, :, :-2, 1:-1]
+    down = padded[:, :, 2:, 1:-1]
+
+    # Sampled sum
+    neighbor_sum = center + (left + right) * mask_x + (up + down) * mask_y
+    total_sum = center + neighbor_sum
+
+    # Apply clamping
+    filtered = soft_clamp(total_sum - qty - 1, min=0, max=3)
+
+    # Pass through non-filtered pixels as-is
+    result = torch.where(qty == 1, center, filtered)
+
+    # Undo scaling
+    result /= 3
+
+    return result
+
+
 class ImageReconstruction(nn.Module):
     def __init__(self, n_sequence):
         super().__init__()
@@ -105,56 +157,6 @@ class ImageReconstruction(nn.Module):
 
         return kl_div.mean()
 
-    def deblocking_filter(self, img_raw):
-        """
-        Runs Charles' custom deblocking filter on inputs, with some modifications:
-         - Our inputs are float 0-1; we scale these up to 0-3 to match the int range, but otherwise stay floating point
-         - Soft clamping function to keep this filter differentiable
-        """
-
-        # Range scaling
-        img = img_raw * 3
-
-        B, C, H, W = img.shape
-
-        # Create 1D masks for input coordinates, marking where the block filter would apply
-        x_indices = torch.arange(W, device=img.device)
-        y_indices = torch.arange(H, device=img.device)
-        mask_x = ((x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))).to(img.dtype)
-        mask_y = ((y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))).to(img.dtype)
-
-        # Reshape for broadcasting
-        mask_x = mask_x.view(1, 1, 1, W)
-        mask_y = mask_y.view(1, 1, H, 1)
-
-        # Number of samples considered per pixel
-        qty = 1 + 2 * mask_x + 2 * mask_y  # shape (B, 1, H, W)
-
-        # Pad with replication (equivalent to clamps in c pixel-sampling function)
-        padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
-
-        # Extract the center region (same as input) and neighbors
-        center = padded[:, :, 1:-1, 1:-1]
-        left = padded[:, :, 1:-1, :-2]
-        right = padded[:, :, 1:-1, 2:]
-        up = padded[:, :, :-2, 1:-1]
-        down = padded[:, :, 2:, 1:-1]
-
-        # Sampled sum
-        neighbor_sum = center + (left + right) * mask_x + (up + down) * mask_y
-        total_sum = center + neighbor_sum
-
-        # Apply clamping
-        filtered = soft_clamp(total_sum - qty - 1, min=0, max=3)
-
-        # Pass through non-filtered pixels as-is
-        result = torch.where(qty == 1, center, filtered)
-
-        # Undo scaling
-        result /= 3
-
-        return result
-
     def forward(self, frame_idxs):
         """
         Index into stored sequence weights; use these to assemble a batch of images.
@@ -183,7 +185,7 @@ class ImageReconstruction(nn.Module):
         reconstructed = self.fold(uf_reconstructed)
 
         # Apply deblocking filter.
-        reconstructed = self.deblocking_filter(reconstructed)
+        reconstructed = deblocking_filter(reconstructed)
 
         return reconstructed
 
