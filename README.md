@@ -98,18 +98,20 @@ After Full VPX
 Any time you do an experiment with this you make headway.
 
 ## Previous Work
- * May 17, 2011 - Game Boy Color - Much of the information has been lost to time - https://emuconsoleexploitnews.blogspot.com/2011/05/bad-apple-demo-ported-to-gameboy-color.html
- * October 1, 2012 - NES - 512kB, 64x60@15FPS, P/I Frames, Updating Rows of Image (later 30 FPS, but undocumented)  - https://wiki.nesdev.com/w/index.php/Bad_Apple / https://www.nesdev.org/wiki/Bad_Apple
- * January 17, 2014 - TI-84 - 2.3MB - 96x64@30FPS - Pixel at-a-time, gzipped - https://www.youtube.com/watch?v=6pAeWf3NPNU 
- * June 15, 2014 - 8088 Domination - 19.5MB - 640x200@30FPS  - https://www.youtube.com/watch?v=MWdG413nNkI - https://trixter.oldskool.org/2014/06/19/8088-domination-post-mortem-part-1/
- * June 29, 2014 - Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
- * Apr 9, 2015 - Vectrex - https://www.youtube.com/watch?v=_aFXvoTnsBU - https://web.archive.org/web/20210108203352/http://retrogamingmagazine.com/2015/07/16/bad-apple-ported-to-the-vectrex-something-that-should-technically-not-be-possible/ - http://spritesmods.com/?art=veccart&page=5
- * Jan 21, 2018 - Arduino Mega - 220,924 bytes - "Bad Duino" - https://rv6502.ca/2018/01/22/bad-duino-bad-apple-on-arduino/ - 128x176, 60fps, 16 bytes per frame.  Very Lossy. https://www.youtube.com/watch?v=IWJmK5J8shY
- * May 21, 2021, - FX-CG50 - 72x54@20FPS, RLE, FastLZ - https://github.com/oxixes/bad-apple-cg50
- * November 3, 2022 - CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
- * April 1, 2022 - Thumbboy - https://www.youtube.com/watch?v=vbBQ11BZWoU - 52x39@30FPS, 45 bytes per frame + DPCM Audio
- * April 1, 2024 - NES (TAS ACE exploid via Mario Bros) - 15/30FPS (160x120), 20x15 tiles - glyph'd using Mario glyphs. https://www.youtube.com/watch?v=Wa0u1CjGtEQ https://tasvideos.org/8991S
- * March 5, 2025 - SSH Keys - 17x9 - bad apple but it's ssh keys - https://www.5snb.club/posts/2025/bad-apple-but-its-ssh-keys/
+| Date | Platform | Storage | Res | Technique | References |
+| --- | --- | --- | --- | --- | --- |
+| 2011-05-17 | Game Boy Color | 8MB ROM | 160x144 | Unknown | https://emuconsoleexploitnews.blogspot.com/2011/05/bad-apple-demo-ported-to-gameboy-color.html / https://web.archive.org/web/20181013041044/http://www.geocities.jp/submarine600/html/apple.html |
+| 2012-10-01 | NES | 512kB | 64x60@15FPS | P/I Frames, Updating Rows of Image (later 30 FPS, but undocumented) | https://wiki.nesdev.com/w/index.php/Bad_Apple / https://www.nesdev.org/wiki/Bad_Apple |
+| 2014-01-17 | TI-84 Plys | 2.3MB | 96x64@30FPS | 1bpp, gzipped | https://www.youtube.com/watch?v=6pAeWf3NPNU  |
+| 2014-06-15 | 8088 Domination | 19.5MB | 640x200@30FPS | Row-at-a-time frame-deltas | https://www.youtube.com/watch?v=MWdG413nNkI - https://trixter.oldskool.org/2014/06/19/8088-domination-post-mortem-part-1/ |
+| 2014-06-29 | Commodore 64 | 170kB | 312x184@12FPS | Full Video, glyphs (16x16) | https://www.youtube.com/watch?v=OsDy-4L6-tQ |
+| 2015-05-09 | Vectrex | Unknown | Unknown | https://www.youtube.com/watch?v=_aFXvoTnsBU - https://web.archive.org/web/20210108203352/http://retrogamingmagazine.com/2015/07/16/bad-apple-ported-to-the-vectrex-something-that-should-technically-not-be-possible/ - http://spritesmods.com/?art=veccart&page=5 |
+| 2018-01-21 | Arduino Mega "Bad Duino" | 220,924 bytes | 128x176@60FPS | Lossy line-at-a-time deltas | https://rv6502.ca/2018/01/22/bad-duino-bad-apple-on-arduino/ https://www.youtube.com/watch?v=IWJmK5J8shY |
+| 2012-05-21 | CASIO fx-CG50 | Unknown | 72x54@20FPS | RLE, FastLZ | https://github.com/oxixes/bad-apple-cg50 |
+| 2022-11-03 | CHIP-8 | 61kB | 32x48@15FPS | Frame Diff, reduced diff, post processing, bounding box, huffman trees | https://github.com/Timendus/chip-8-bad-apple |
+| 2022-01-01 | Thumbboy | 289kB | 52x39@30FPS +DPCM Audio | https://www.youtube.com/watch?v=vbBQ11BZWoU |
+| 2024-01-01 | NES (TAS ACE exploit via Mario Bros) | Unknown | 15/30FPS (160x120) | 20x15 tiles glyph'd using Mario glyphs | https://www.youtube.com/watch?v=Wa0u1CjGtEQ https://tasvideos.org/8991S |
+| 2025-03-05 | SSH Keys | N/A | 17x9 | bad apple but it's ssh keys | https://www.5snb.club/posts/2025/bad-apple-but-its-ssh-keys/ |
  
 ### TODO
  * Double check hero frames.
