@@ -101,6 +101,7 @@ Any time you do an experiment with this you make headway.
  * Jun 15, 2014 - 8088 Domination - 19.5MB - 640x200@30FPS  - https://www.youtube.com/watch?v=MWdG413nNkI - https://trixter.oldskool.org/2014/06/19/8088-domination-post-mortem-part-1/
  * October 1, 2012 - NES - 512kB, 64x60@15FPS, P/I Frames, Updating Rows of Image (later 30 FPS, but undocumented)  - https://wiki.nesdev.com/w/index.php/Bad_Apple / https://www.nesdev.org/wiki/Bad_Apple
  * June 29, 2014 - Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
+ * Apr 9, 2015 - Vectrex - https://www.youtube.com/watch?v=_aFXvoTnsBU - https://web.archive.org/web/20210108203352/http://retrogamingmagazine.com/2015/07/16/bad-apple-ported-to-the-vectrex-something-that-should-technically-not-be-possible/ - http://spritesmods.com/?art=veccart&page=5
  * Jan 21, 2018 - Arduino Mega - 220,924 bytes - "Bad Duino" - https://rv6502.ca/2018/01/22/bad-duino-bad-apple-on-arduino/ - 128x176, 60fps, 16 bytes per frame.  Very Lossy. https://www.youtube.com/watch?v=IWJmK5J8shY
  * May 21, 2021, - FX-CG50 - 72x54@20FPS, RLE, FastLZ - https://github.com/oxixes/bad-apple-cg50
  * November 3, 2022 - CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
