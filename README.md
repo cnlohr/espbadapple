@@ -98,6 +98,7 @@ After Full VPX
 Any time you do an experiment with this you make headway.
 
 ## Previous Work
+ * May 17, 2011 - Game Boy Color - Much of the information has been lost to time - https://emuconsoleexploitnews.blogspot.com/2011/05/bad-apple-demo-ported-to-gameboy-color.html
  * October 1, 2012 - NES - 512kB, 64x60@15FPS, P/I Frames, Updating Rows of Image (later 30 FPS, but undocumented)  - https://wiki.nesdev.com/w/index.php/Bad_Apple / https://www.nesdev.org/wiki/Bad_Apple
  * January 17, 2014 - TI-84 - 2.3MB - 96x64@30FPS - Pixel at-a-time, gzipped - https://www.youtube.com/watch?v=6pAeWf3NPNU 
  * June 15, 2014 - 8088 Domination - 19.5MB - 640x200@30FPS  - https://www.youtube.com/watch?v=MWdG413nNkI - https://trixter.oldskool.org/2014/06/19/8088-domination-post-mortem-part-1/
