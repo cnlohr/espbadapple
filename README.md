@@ -101,11 +101,12 @@ Any time you do an experiment with this you make headway.
  * Jun 15, 2014 - 8088 Domination - 19.5MB - 640x200@30FPS  - https://www.youtube.com/watch?v=MWdG413nNkI - https://trixter.oldskool.org/2014/06/19/8088-domination-post-mortem-part-1/
  * October 1, 2012 - NES - 512kB, 64x60@15FPS, P/I Frames, Updating Rows of Image (later 30 FPS, but undocumented)  - https://wiki.nesdev.com/w/index.php/Bad_Apple / https://www.nesdev.org/wiki/Bad_Apple
  * June 29, 2014 - Commodore 64 - 170kB, 312x184@12FPS, Full Video, glyphs (16x16) -  https://www.youtube.com/watch?v=OsDy-4L6-tQ
- * Jan 21, 2018 - Arduino Mega - "Bad Duino" - https://rv6502.ca/2018/01/22/bad-duino-bad-apple-on-arduino/ - 128x176, 60fps, 16 bytes per frame.  Very Lossy. https://www.youtube.com/watch?v=IWJmK5J8shY
- * May 21, 2021, -  FX-CG50 - 72x54@20FPS, RLE, FastLZ - https://github.com/oxixes/bad-apple-cg50
+ * Jan 21, 2018 - Arduino Mega - 220,924 bytes - "Bad Duino" - https://rv6502.ca/2018/01/22/bad-duino-bad-apple-on-arduino/ - 128x176, 60fps, 16 bytes per frame.  Very Lossy. https://www.youtube.com/watch?v=IWJmK5J8shY
+ * May 21, 2021, - FX-CG50 - 72x54@20FPS, RLE, FastLZ - https://github.com/oxixes/bad-apple-cg50
  * November 3, 2022 - CHIP-8 - 61kB of video data, 32x48@15FPS, Full Video, implementing techniques like frame diff, reduced diff, post processing, bounding box, huffman trees. - https://github.com/Timendus/chip-8-bad-apple
  * April 1, 2022 - Thumbboy - https://www.youtube.com/watch?v=vbBQ11BZWoU - 52x39@30FPS, 45 bytes per frame + DPCM Audio
  * April 1, 2024 - NES (TAS ACE exploid via Mario Bros) - 15/30FPS (160x120), 20x15 tiles - glyph'd using Mario glyphs. https://www.youtube.com/watch?v=Wa0u1CjGtEQ https://tasvideos.org/8991S
+ * March 5, 2025 - SSH Keys - 17x9 - bad apple but it's ssh keys - https://www.5snb.club/posts/2025/bad-apple-but-its-ssh-keys/
  
 ### TODO
  * Double check hero frames.
