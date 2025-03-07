@@ -43,7 +43,7 @@ static const uint8_t ssd1306_init_array[] =
 	0xA1, // Segment remap
 	0xC8, // Set COM output scan direction
 	0xDA, 0x12, // Set COM pins hardware configuration
-	0x81, 0xCF, // Contrast control
+	0x81, 0xaF, // Contrast control (0xCF is very bright)
 	//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
 	0xDB, 0x30, // Set VCOMH Deselect Level
 //	0xA4, // Entire display on (a5)/off(a4)
@@ -67,8 +67,6 @@ int main()
 	// Trying another mode
 	ssd1306_mini_pkt_send( ssd1306_init_array, sizeof(ssd1306_init_array), 1 );
 
-	ba_play_setup( &ctx );
-	ba_audio_setup();
 	int lasttail = 0;
 	int outbuffertail = 0;
 	int frame = 0;
@@ -77,11 +75,16 @@ int main()
 	uint32_t freeTime;
 
 	int subframe = 0;
+
+restart:
+	ba_play_setup( &ctx );
+	ba_audio_setup();
+	frame = 0;
 	while(1)
 	{
 		if( subframe == 3 )
 		{
-			if( ba_play_frame( &ctx ) ) break;
+			if( ba_play_frame( &ctx ) ) goto restart;
 			lasttail = outbuffertail;
 			subframe = 0;
 			frame++;
@@ -127,7 +130,7 @@ int main()
 				for( lg = 0; lg< 8; lg ++ )
 				{
 					int go = g[lg];
-					if( (subframe+x+y)&1 )
+					if( (subframe+x+y)&3 )
 						go >>= 8;
 					ssd1306_mini_i2c_sendbyte( go );
 				}
