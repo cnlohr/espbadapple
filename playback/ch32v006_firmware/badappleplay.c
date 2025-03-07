@@ -67,7 +67,6 @@ int main()
 	// Trying another mode
 	ssd1306_mini_pkt_send( ssd1306_init_array, sizeof(ssd1306_init_array), 1 );
 
-restart:
 	ba_play_setup( &ctx );
 	ba_audio_setup();
 
@@ -84,7 +83,8 @@ restart:
 	{
 		if( subframe == 3 )
 		{
-			if( ba_play_frame( &ctx ) ) goto restart;
+			if( frame == FRAMECT ) asm volatile( "j 0" );
+			ba_play_frame( &ctx );
 			lasttail = outbuffertail;
 			subframe = 0;
 			frame++;
