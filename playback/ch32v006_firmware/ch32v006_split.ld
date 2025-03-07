@@ -28,7 +28,7 @@ SECTIONS
       *(.rodata)
       *(.rodata*)
       *(.gnu.linkonce.t.*)
-      . = ALIGN(4);
+      . = ALIGN(256);
     } >BOOTLOADER AT>BOOTLOADER
 
 	.fixedflash :
@@ -96,7 +96,7 @@ SECTIONS
       *(.data .data.*)
       *(.gnu.linkonce.d.*)
       . = ALIGN(8);
-      PROVIDE( __global_pointer$ = . + 0x800 );
+      PROVIDE( __global_pointer$ = . + 0x3fc );
       *(.sdata .sdata.*)
       *(.sdata2*)
       *(.gnu.linkonce.s.*)

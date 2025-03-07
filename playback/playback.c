@@ -37,9 +37,10 @@ int PValueAt( int x, int y, int * edge )
 
 	glyphtype     tileid = ctx.curmap[tileplace];
 	graphictype * sprite = (graphictype*)ctx.glyphdata[tileid];
-	graphictype   g      = sprite[y&(BLOCKSIZE-1)];
+	graphictype   g      = sprite[x&(BLOCKSIZE-1)];
 
-	int vout = (g>>(x*BITSETS_TILECOMP)%(GRAPHICSIZE_WORDS*8)) & 3;
+	uint32_t v = (g>>((y%BLOCKSIZE)));
+	int vout = (v & 1) | (( v & 0x100)>>7);
 	return vout;
 }
 

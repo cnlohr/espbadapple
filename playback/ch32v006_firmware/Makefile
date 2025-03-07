@@ -1,7 +1,7 @@
 include ../../common/make.inc
 
 PREFIX:=~/Downloads/xpack-riscv-none-elf-gcc-14.2.0-3/bin/riscv-none-elf
-OBJCOPY_FLAGS:=
+OBJCOPY_FLAGS:=-j .init -j .text
 WRITE_SECTION:=0x1fff0000
 
 CFLAGS= -DRESX=${RESX} -DRESY=${RESY} -DBLOCKSIZE=${BLOCKSIZE} -DFRAMECT=${FRAMECT} -DTARGET_GLYPH_COUNT=${TARGET_GLYPH_COUNT}
@@ -17,7 +17,10 @@ include ../ch32v003fun/ch32fun/ch32fun.mk
 
 optionbytes:
 	#$(MINICHLINK)/minichlink -w +a55aff00 option # Enable bootloader, disable RESET
-	$(MINICHLINK)/minichlink -w +a55aff00 option # Enable bootloader, enable RESET
+	#$(MINICHLINK)/minichlink -w +a55aff00 option # Enable bootloader, enable RESET
+	#$(MINICHLINK)/minichlink -w +a55aef10 option # Enable bootloader, enable RESET (Alternate)
+	$(MINICHLINK)/minichlink -w +a55adf20 option # Disable bootloader, disable RESET
+	#$(MINICHLINK)/minichlink -w +a55acf30 option # Disable bootloader, enable RESET
 
 flashdata :
 	$(PREFIX)-objcopy -j .fixedflash -O binary $(TARGET).elf fixedflash.bin

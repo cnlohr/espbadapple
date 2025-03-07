@@ -65,9 +65,9 @@ int ba_play_setup( ba_play_context * ctx )
 		int g = 0;
 		int runsofar = 0;
 		int is0or1 = 0;
-		graphictype * gd = &ctx->glyphdata[0][0];
-		int cpixel = 0;
-		int writeg = 0;
+		//graphictype * gd = &ctx->glyphdata[0];
+		//int cpixel = 0;
+		//int writeg = 0;
 		for( g = 0; g < TILE_COUNT*BLOCKSIZE*BLOCKSIZE; g+=1 )
 		{
 			int tprob = ba_vpx_glyph_probability_run_0_or_1[is0or1][runsofar];
@@ -76,33 +76,28 @@ int ba_play_setup( ba_play_context * ctx )
 				tprob = 128;
 				runsofar = MAXPIXELRUNTOSTORE-1;
 			}
-			int color = vpx_read( &r, tprob );
-			cpixel |=  color<<(++writeg);
-
 			int subpixel;
-			for( subpixel = 1; subpixel < BITSETS_TILECOMP; subpixel++ )
+			int gid = ((g/BLOCKSIZE/BLOCKSIZE)); 
+			int lx = (g&(BLOCKSIZE-1))%BLOCKSIZE;
+			int ly = ((g/BLOCKSIZE)&(BLOCKSIZE-1))%BLOCKSIZE;
+			for( subpixel = 0; subpixel < BITSETS_TILECOMP; subpixel++ )
 			{
-				int lb = vpx_read( &r, color?GSC1:GSC0 );
-				cpixel |= lb<<(writeg-1); // Yuck.. bit ordering here is weird.
-				writeg++;
+				int lb = vpx_read( &r, tprob );
+				if( subpixel == 0 )
+				{
+					if( lb != is0or1 )
+					{
+						is0or1 = lb;
+						runsofar = 0;
+					}
+					else if( runsofar < MAXPIXELRUNTOSTORE-1 )
+					{
+						runsofar++;
+					}
+					tprob = lb?GSC1:GSC0;
+				}
+				ctx->glyphdata[gid][lx] |= lb<<(ly+BLOCKSIZE*(BITSETS_TILECOMP-1)-subpixel*BLOCKSIZE); // Yuck.. bit ordering here is weird.
 			}
-
-			if( (g & (((GRAPHICSIZE_WORDS*8)/BITSETS_TILECOMP)-1)) == ((((GRAPHICSIZE_WORDS*8)/BITSETS_TILECOMP)-1)) )
-			{
-				*(gd++) = cpixel;
-				writeg = cpixel = 0;
-			}
-
-			if( color != is0or1 )
-			{
-				is0or1 = color;
-				runsofar = 0;
-			}
-			else if( runsofar < MAXPIXELRUNTOSTORE-1 )
-			{
-				runsofar++;
-			}
-
 		}
 	}
 
