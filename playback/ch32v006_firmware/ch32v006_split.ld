@@ -88,7 +88,7 @@ SECTIONS
     {
       . = ALIGN(4);
       PROVIDE(_data_lma = .);
-    } >RAM AT>BOOTLOADER
+    } >BOOTLOADER AT>BOOTLOADER
     .data :
     {
       . = ALIGN(4);

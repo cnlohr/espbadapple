@@ -1,7 +1,7 @@
 include ../../common/make.inc
 
 PREFIX:=~/Downloads/xpack-riscv-none-elf-gcc-14.2.0-3/bin/riscv-none-elf
-OBJCOPY_FLAGS:=-j .init -j .text
+OBJCOPY_FLAGS:=-j .init -j .text -j .data
 WRITE_SECTION:=0x1fff0000
 
 CFLAGS= -DRESX=${RESX} -DRESY=${RESY} -DBLOCKSIZE=${BLOCKSIZE} -DFRAMECT=${FRAMECT} -DTARGET_GLYPH_COUNT=${TARGET_GLYPH_COUNT}
