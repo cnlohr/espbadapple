@@ -22,6 +22,11 @@ optionbytes:
 	$(MINICHLINK)/minichlink -w +a55adf20 option # Disable bootloader, disable RESET
 	#$(MINICHLINK)/minichlink -w +a55acf30 option # Disable bootloader, enable RESET
 
+enablebootloader:
+	$(MINICHLINK)/minichlink -w +a55aff00 option # Enable bootloader, disable RESET
+disablebootloader:
+	$(MINICHLINK)/minichlink -w +a55adf20 option # Disable bootloader, disable RESET
+
 flashdata :
 	$(PREFIX)-objcopy -j .fixedflash -O binary $(TARGET).elf fixedflash.bin
 	$(MINICHLINK)/minichlink -w fixedflash.bin 0x08000000
