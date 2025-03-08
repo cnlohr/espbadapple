@@ -28,33 +28,34 @@ volatile uint32_t kas = 0;
 #define SSD1306_RST_PIN PC3
 
 #define I2CDELAY_FUNC( x )
+	// asm volatile( "nop\nnop\n");
 
+#include "ssd1306.h"
 #include "ssd1306mini.h"
 
-static const uint8_t ssd1306_init_array[] =
-{
-	0xAE, // Display off
-	0x20, 0x00, // Horizontal addresing mode
-	0x00, 0x12, 0x40, 0xB0,
-	0xD5, 0xf0, // Function Selection   <<< This controls scan speed. F0 is fastest.
-	0xA8, 0x2F, // Set Multiplex Ratio
-	0xD3, 0x00, // Set Display Offset
-	0x40,
-	0xA1, // Segment remap
-	0xC8, // Set COM output scan direction
-	0xDA, 0x12, // Set COM pins hardware configuration
-	0x81, 0xaF, // Contrast control (0xCF is very bright)
-	//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
-	0xDB, 0x30, // Set VCOMH Deselect Level
-//	0xA4, // Entire display on (a5)/off(a4)
-	0xA6, // Normal (a6)/inverse (a7)
-//	0x8D, 0x14, // Set Charge Pump //XXX TODO CHECK ME FIRST.
-	0xAF, // Display On
-	SSD1306_COLUMNADDR, SSD1306_OFFSET, SSD1306_OFFSET+SSD1306_W-1,
-	SSD1306_PAGEADDR, 0, 7, // Page setup, start at 0 and end at 7
-};
+	const uint8_t ssd1306_init_array[] =
+	{
+		0xAE, // Display off
+		0x20, 0x00, // Horizontal addresing mode
+		0x00, 0x12, 0x40, 0xB0,
+		0xD5, 0xf0, // Function Selection   <<< This controls scan speed. F0 is fastest.  The LSN = D divisor.
+		0xA8, 0x2F, // Set Multiplex Ratio
+		0xD3, 0x00, // Set Display Offset
+		0x40,
+		0xA1, // Segment remap
+		0xC8, // Set COM output scan direction
+		0xDA, 0x12, // Set COM pins hardware configuration
+		0x81, 0xcf, // Contrast control
+		//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
+		0xDB, 0x30, // Set VCOMH Deselect Level
+		0xA4, // Entire display on (a5)/off(a4)
+		0xA6, // Normal (a6)/inverse (a7)
+		0x8D, 0x14, // Set Charge Pump
+		0xAF, // Display On
+		SSD1306_PAGEADDR, 0, 7, // Page setup, start at 0 and end at 7
+	};
 
-uint8_t ssd1306_buffer[64];
+//uint8_t ssd1306_buffer[64];
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -81,15 +82,6 @@ int main()
 
 	while(1)
 	{
-		if( subframe == 3 )
-		{
-			if( frame == FRAMECT ) asm volatile( "j 0" );
-			ba_play_frame( &ctx );
-			lasttail = outbuffertail;
-			subframe = 0;
-			frame++;
-		}
-
 		freeTime = nextFrame - SysTick->CNT;
 		while( (int32_t)(SysTick->CNT - nextFrame) < 0 );
 		nextFrame += 400000; 
@@ -100,14 +92,13 @@ int main()
 
 		// Move the cursor "off screen"
 		// Scan over two scanlines to hide updates
+
 		ssd1306_mini_pkt_send( 
 			(const uint8_t[]){0xD3, 0x32, 0xA8, 0x01,
 			// Column start address (0 = reset)
 			// Column end address (127 = reset)
-			}, 4, 1 );
-
-		// Has to be a different transaction for some reason.
-		ssd1306_mini_pkt_send( (const uint8_t[]){0xb0}, 1, 1 );
+			SSD1306_COLUMNADDR, SSD1306_OFFSET, SSD1306_OFFSET+SSD1306_W-1, 0xb0 },
+			8, 1 );
 
 
 		// Send data
@@ -116,7 +107,26 @@ int main()
 		ssd1306_mini_i2c_sendstart();
 		ssd1306_mini_i2c_sendbyte( SSD1306_I2C_ADDR<<1 );
 		ssd1306_mini_i2c_sendbyte( 0x40 ); // Data
+		
 
+#if 1
+		if( subframe == 3 )
+		{
+			if( frame == FRAMECT ) asm volatile( "j 0" );
+			ba_play_frame( &ctx );
+			lasttail = outbuffertail;
+			subframe = 0;
+			frame++;
+		}
+#endif
+
+		//Delay_Us(100);
+#if 0
+		int n;
+		uint8_t go = (subframe & 1) ? 0xff : 0x00;
+		for( n = 0; n < 6*8*8; n++ )
+			ssd1306_mini_i2c_sendbyte( go );
+#else
 		glyphtype * gm = ctx.curmap;
 		for( y = 0; y < 6; y++ )
 		{
@@ -126,11 +136,12 @@ int main()
 				glyphtype gindex = *(gm++);
 				graphictype * g = ctx.glyphdata[gindex];
 				
+					//int go = (subframe & 1)?0xff:0x00;
 				int lg;
 				for( lg = 0; lg< 8; lg ++ )
 				{
 					int go = g[lg];
-					if( (subframe+x+y)&3 )
+					if( (subframe)&1 )
 						go >>= 8;
 					ssd1306_mini_i2c_sendbyte( go );
 				}
@@ -140,6 +151,7 @@ int main()
 			//for( k = 0; k < sizeof(ssd1306_buffer); k++ ) ssd1306_buffer[k] = frame;
 			//ssd1306_mini_data(ssd1306_buffer, sizeof(ssd1306_buffer));
 		}
+#endif
 
 		ssd1306_mini_i2c_sendstop();
 
@@ -147,6 +159,7 @@ int main()
 		// Overscan screen by 2 pixels, but release from 2-scanline mode.
 		ssd1306_mini_pkt_send( (const uint8_t[]){0xD3, 0x3e, 0xA8, 0x31}, 4, 1 ); 
 
+#if 1
 		outbuffertail = (F_SPS/30*frame) % AUDIO_BUFFER_SIZE;
 		ba_audio_fill_buffer( out_buffer_data, outbuffertail );
 
@@ -156,7 +169,7 @@ int main()
 			//fwrite( &fo, 1, 4, fAudioDump );
 			// Do something with out_buffer_data.
 		}
-
+#endif
 		subframe++;
 	}
 }

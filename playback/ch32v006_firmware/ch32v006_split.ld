@@ -40,7 +40,7 @@ SECTIONS
     {
       KEEP(*(SORT_NONE(.fini)))
       . = ALIGN(4);
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     PROVIDE( _etext = . );
     PROVIDE( _eitcm = . );
     .preinit_array :
@@ -48,21 +48,21 @@ SECTIONS
       PROVIDE_HIDDEN (__preinit_array_start = .);
       KEEP (*(.preinit_array))
       PROVIDE_HIDDEN (__preinit_array_end = .);
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .init_array :
     {
       PROVIDE_HIDDEN (__init_array_start = .);
       KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
       KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
       PROVIDE_HIDDEN (__init_array_end = .);
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .fini_array :
     {
       PROVIDE_HIDDEN (__fini_array_start = .);
       KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
       KEEP (*(.fini_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .dtors))
       PROVIDE_HIDDEN (__fini_array_end = .);
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .ctors :
     {
       KEEP (*crtbegin.o(.ctors))
@@ -70,7 +70,7 @@ SECTIONS
       KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .ctors))
       KEEP (*(SORT(.ctors.*)))
       KEEP (*(.ctors))
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .dtors :
     {
       KEEP (*crtbegin.o(.dtors))
@@ -78,17 +78,17 @@ SECTIONS
       KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .dtors))
       KEEP (*(SORT(.dtors.*)))
       KEEP (*(.dtors))
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .dalign :
     {
       . = ALIGN(4);
       PROVIDE(_data_vma = .);
-    } >RAM AT>FLASH
+    } >RAM AT>BOOTLOADER
     .dlalign :
     {
       . = ALIGN(4);
       PROVIDE(_data_lma = .);
-    } >FLASH AT>FLASH
+    } >BOOTLOADER AT>BOOTLOADER
     .data :
     {
       . = ALIGN(4);
@@ -108,7 +108,7 @@ SECTIONS
       *(.srodata .srodata.*)
       . = ALIGN(4);
       PROVIDE( _edata = .);
-    } >RAM AT>FLASH
+    } >RAM AT>BOOTLOADER
     .bss :
     {
       . = ALIGN(4);
@@ -120,7 +120,7 @@ SECTIONS
       *(COMMON*)
       . = ALIGN(4);
       PROVIDE( _ebss = .);
-    } >RAM AT>FLASH
+    } >RAM AT>BOOTLOADER
     PROVIDE( _end = _ebss);
  PROVIDE( end = . );
  PROVIDE( _eusrstack = ORIGIN(RAM) + LENGTH(RAM));
