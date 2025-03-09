@@ -88,7 +88,7 @@ int main()
 	AFIO->PCFR1 = AFIO_PCFR1_TIM2_RM_0 | AFIO_PCFR1_TIM2_RM_1 | AFIO_PCFR1_TIM2_RM_2;
 
 	TIM2->PSC = 0x0001;
-	TIM2->ATRLR = 255;
+	TIM2->ATRLR = 255; // XXX TODO Should this be 255 or 256?
 
 	// for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
 	// enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
@@ -133,7 +133,7 @@ int main()
 			if( frame == FRAMECT ) asm volatile( "j 0" );
 			if( frame == 40 )
 			{
-				// Setup DMA
+				// Start playing music at frame 37.
 				// Triggered off TIM2UP
 				DMA1_Channel2->CNTR = AUDIO_BUFFER_SIZE;
 				DMA1_Channel2->MADDR = (uint32_t)out_buffer_data;
