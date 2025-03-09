@@ -11,7 +11,7 @@
 #include "vpxcoding_tinyread.h"
 
 #ifndef F_SPS
-#define F_SPS 46875
+#define F_SPS (46875*2)
 #endif
 
 #define NUM_VOICES 4
@@ -19,12 +19,14 @@
 
 // MUST BE POWER-OF-TWO
 #ifndef AUDIO_BUFFER_SIZE
-#define AUDIO_BUFFER_SIZE 2048
+#define AUDIO_BUFFER_SIZE 1024
 #endif
 
 // Note 0 in MIDI is -69 from A 440.  We are offset at 47, because the lowest note in our stream is note 47.
+#define LOWEST_NOTE (47.0) // Could tune up or down to taste.
+
 #define SYFN( n ) \
-	(uint16_t)((pow( 2, (((float)n + 47.0) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
+	(uint16_t)((pow( 2, (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
 
 #define NOTE_RANGE  ( ESPBADAPPLE_SONG_HIGHEST_NOTE - ESPBADAPPLE_SONG_LOWEST_NOTE + 1 )
 
@@ -229,7 +231,8 @@ static inline void perform_16th_note( struct ba_audio_player_t * player )
 	}
 }
 
-static int ba_audio_fill_buffer( uint8_t * outbuffer, int outbuffertail )
+int ba_audio_fill_buffer( volatile uint8_t * outbuffer, int outbuffertail ) __attribute__((noinline));
+int ba_audio_fill_buffer( volatile uint8_t * outbuffer, int outbuffertail )
 {
 	int i;
 	struct ba_audio_player_t * player = &ba_player;
@@ -247,7 +250,7 @@ static int ba_audio_fill_buffer( uint8_t * outbuffer, int outbuffertail )
 			player->sub_t_sample += TIMESCALE;
 		}
 		
-		int sample = 0;
+		uint32_t sample = 0;
 		for( i = 0; i < NUM_VOICES; i++ )
 		{
 			int pn = player->playing_freq[i];
@@ -267,9 +270,11 @@ static int ba_audio_fill_buffer( uint8_t * outbuffer, int outbuffertail )
 			}
 		}
 
-		outbuffer[outbufferhead] = sample >> (1+8);
+		outbuffer[outbufferhead] = (volatile uint32_t)((sample >> (1+8+1/*Volume reduction*/)));
+		//asm volatile( "nop" : : [dirty]"r"(sample) : "memory" );
 		outbufferhead = ( outbufferhead + 1 ) & ( AUDIO_BUFFER_SIZE - 1);
 	}
+	//PrintHex( outbuffer[outbufferhead] );
 	player->outbufferhead = outbufferhead;
 	return 0;
 }

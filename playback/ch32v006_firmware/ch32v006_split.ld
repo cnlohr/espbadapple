@@ -28,7 +28,6 @@ SECTIONS
       *(.rodata)
       *(.rodata*)
       *(.gnu.linkonce.t.*)
-      . = ALIGN(256);
     } >BOOTLOADER AT>BOOTLOADER
 
 	.fixedflash :
@@ -121,6 +120,12 @@ SECTIONS
       . = ALIGN(4);
       PROVIDE( _ebss = .);
     } >RAM AT>BOOTLOADER
+
+	.padding :
+	{
+		. = ALIGN(256);
+	} > BOOTLOADER AT>BOOTLOADER
+
     PROVIDE( _end = _ebss);
  PROVIDE( end = . );
  PROVIDE( _eusrstack = ORIGIN(RAM) + LENGTH(RAM));

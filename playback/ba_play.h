@@ -51,7 +51,7 @@ typedef struct ba_play_context_
 	//graphictype   framebuffer[RESX*RESY*BITSETS_TILECOMP/(GRAPHICSIZE_WORDS*2)];
 } ba_play_context;
 
-int ba_play_setup( ba_play_context * ctx )
+static int ba_play_setup( ba_play_context * ctx )
 {
 
 	// Load glyphs into RAM.
@@ -118,7 +118,7 @@ int ba_play_setup( ba_play_context * ctx )
 	return 0;
 }
 
-int ba_play_frame( ba_play_context * ctx )
+static int ba_play_frame( ba_play_context * ctx )
 {
 #ifndef INVERT_RUNCODE_COMPRESSION
 #error This decoder is only written for inverted runcode compression
