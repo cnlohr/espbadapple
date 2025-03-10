@@ -11,7 +11,7 @@
 #include "vpxcoding_tinyread.h"
 
 #ifndef F_SPS
-#define F_SPS (46875*2)
+#define F_SPS (46875)
 #endif
 
 #define NUM_VOICES 4

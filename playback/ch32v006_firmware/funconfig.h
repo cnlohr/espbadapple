@@ -8,6 +8,7 @@
 //#define FUNCONF_TINYVECTOR 1
 #define FUNCONF_SYSTICK_USE_HCLK 1
 #define FUNCONF_USE_HSE 1
+#define FUNCONF_USE_PLL 1
 
 #endif
 

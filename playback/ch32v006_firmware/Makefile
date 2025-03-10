@@ -6,7 +6,7 @@ WRITE_SECTION:=0x1fff0000
 
 CFLAGS= -DRESX=${RESX} -DRESY=${RESY} -DBLOCKSIZE=${BLOCKSIZE} -DFRAMECT=${FRAMECT} -DTARGET_GLYPH_COUNT=${TARGET_GLYPH_COUNT}
 LDFLAGS=
-CFLAGS+=-I.. -I../../common -I../../vpxtest -mrelax -ffunction-sections -flto -Os -ffunction-sections -fdata-sections -fmessage-length=0 -msmall-data-limit=8
+CFLAGS+=-I.. -I../../common -I../../vpxtest -mrelax -ffunction-sections -flto -Os -ffunction-sections -fdata-sections -fmessage-length=0 -msmall-data-limit=8 -g
 LINKER_SCRIPT:=ch32v006_split.ld
 
 all : flash

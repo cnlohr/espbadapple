@@ -32,31 +32,49 @@ volatile uint32_t kas = 0;
 
 #include "ssd1306mini.h"
 
-	const uint8_t ssd1306_init_array[] __attribute__((section(".fixedflash"))) =
-	{
-		0xAE, // Display off
-		0x20, 0x00, // Horizontal addresing mode
-		0x00, 0x12, 0x40, 0xB0,
-		0xD5, 0xf0, // Function Selection   <<< This controls scan speed. F0 is fastest.  The LSN = D divisor.
-		0xA8, 0x2F, // Set Multiplex Ratio
-		0xD3, 0x00, // Set Display Offset
-		0x40,
-		0xA1, // Segment remap
-		0xC8, // Set COM output scan direction
-		0xDA, 0x12, // Set COM pins hardware configuration
-		0x81, 0xcf, // Contrast control
-		//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
-		0xDB, 0x30, // Set VCOMH Deselect Level
-		0xA4, // Entire display on (a5)/off(a4)
-		0xA6, // Normal (a6)/inverse (a7)
-		0x8D, 0x14, // Set Charge Pump
-		0xAF, // Display On
-		SSD1306_PAGEADDR, 0, 7, // Page setup, start at 0 and end at 7
-	};
+const uint8_t ssd1306_init_array[] __attribute__((section(".fixedflash"))) =
+{
+	0xAE, // Display off
+	0x20, 0x00, // Horizontal addresing mode
+	0x00, 0x12, 0x40, 0xB0,
+	0xD5, 0xf0, // Function Selection   <<< This controls scan speed. F0 is fastest.  The LSN = D divisor.
+	0xA8, 0x2F, // Set Multiplex Ratio
+	0xD3, 0x00, // Set Display Offset
+	0x40,
+	0xA1, // Segment remap
+	0xC8, // Set COM output scan direction
+	0xDA, 0x12, // Set COM pins hardware configuration
+	0x81, 0xcf, // Contrast control
+	//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
+	0xDB, 0x30, // Set VCOMH Deselect Level
+	0xA4, // Entire display on (a5)/off(a4)
+	0xA6, // Normal (a6)/inverse (a7)
+	0x8D, 0x14, // Set Charge Pump
+	0xAF, // Display On
+	SSD1306_PAGEADDR, 0, 7, // Page setup, start at 0 and end at 7
+};
 
 //uint8_t ssd1306_buffer[64];
 
 ////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void EmitEdge( uint32_t gou, uint32_t got, uint32_t gon, uint32_t subframe )
+{
+	int gouah = got | gou;
+	int goual = got ^ gou; //Half-adder
+	int gonah = got | gon;
+	int gonal = got ^ gon; //Half-adder
+
+	if( (subframe)&1 )
+	{
+		got>>= 8;
+		gou>>= 8;
+	}
+
+	int go = 0;
+	ssd1306_mini_i2c_sendbyte( go );
+}
 
 int main()
 {
@@ -76,10 +94,6 @@ int main()
 
 	int subframe = 0;
 
-
-
-
-
 	// Setup PD3/PD4 as TIM2_CH1/TIM2_CH2 as output
 	// TIM2_RM=111 (Full)
 	RCC->APB1PCENR |= RCC_APB1Periph_TIM2;
@@ -88,7 +102,7 @@ int main()
 	AFIO->PCFR1 = AFIO_PCFR1_TIM2_RM_0 | AFIO_PCFR1_TIM2_RM_1 | AFIO_PCFR1_TIM2_RM_2;
 
 	TIM2->PSC = 0x0001;
-	TIM2->ATRLR = 255; // XXX TODO Should this be 255 or 256?
+	TIM2->ATRLR = 511; // XXX TODO Should this be 255 or 256?
 
 	// for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
 	// enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
@@ -116,11 +130,11 @@ int main()
 	// Weeeird... PUPD works better than GPIO_CFGLR_OUT_AF_PP
 	funPinMode( PD3, GPIO_CFGLR_IN_PUPD );
 	funPinMode( PD4, GPIO_CFGLR_IN_PUPD );
-
-
-
 	funPinMode( PD3, GPIO_CFGLR_OUT_AF_PP );
 	funPinMode( PD4, GPIO_CFGLR_OUT_AF_PP );
+
+
+	funPinMode( PD6, GPIO_CFGLR_OUT_PP );
 
 	while(1)
 	{
@@ -154,7 +168,14 @@ int main()
 		}
 #endif
 
-		while( (int32_t)(SysTick->CNT - nextFrame) < 0 );
+		funDigitalWrite( PD6, 0 );
+
+		while( (int32_t)(SysTick->CNT - nextFrame) < 0 )
+		{
+		}
+
+		funDigitalWrite( PD6, 1 );
+
 		nextFrame += 400000; 
 		// 1600000 is 30Hz
 		// 800000 is 60Hz
@@ -179,38 +200,79 @@ int main()
 		ssd1306_mini_i2c_sendbyte( SSD1306_I2C_ADDR<<1 );
 		ssd1306_mini_i2c_sendbyte( 0x40 ); // Data
 
-//		Delay_Us(10);
-#if 0
-		int n;
-		uint8_t go = (subframe & 1) ? 0xff : 0x00;
-		for( n = 0; n < 6*8*8; n++ )
-			ssd1306_mini_i2c_sendbyte( go );
-#else
+		funDigitalWrite( PD6, 0 );
+
 		glyphtype * gm = ctx.curmap;
-		for( y = 0; y < 6; y++ )
+
+		if( 1 )
 		{
-			int x;
-			for( x = 0; x < 8; x++ )
+			for( y = 0; y < 6; y++ )
 			{
-				glyphtype gindex = *(gm++);
-				graphictype * g = ctx.glyphdata[gindex];
-				
-					//int go = (subframe & 1)?0xff:0x00;
-				int lg;
-				for( lg = 0; lg< 8; lg ++ )
+				int x;
+				for( x = 0; x < 8; x++ )
 				{
-					int go = g[lg];
-					if( (subframe)&1 )
-						go >>= 8;
-					ssd1306_mini_i2c_sendbyte( go );
+					glyphtype gindex = *(gm);
+					graphictype * g     = ctx.glyphdata[gindex];
+					graphictype * gprev = ctx.glyphdata[gm[(x>0)?-1:0]];
+					graphictype * gnext = ctx.glyphdata[gm[(x<8)? 1:0]];
+					gm++;
+					
+					//int go = (subframe & 1)?0xff:0x00;
+					int lg;
+					{
+						uint32_t got = g[0];
+						uint32_t gou = gprev[7];
+						uint32_t gon = g[1];
+
+						EmitEdge( gou, got, gon, subframe );
+					}
+					for( lg = 1; lg < 7; lg ++ )
+					{
+						int go = g[lg];
+
+						// Bits in this word scan left-to-right.
+						// LG is "x" from left-to-right
+						if( (subframe)&1 )
+							go >>= 8;
+						ssd1306_mini_i2c_sendbyte( go );
+					}
+					{
+						uint32_t got = g[7];
+						uint32_t gou = g[5];
+						uint32_t gon = gnext[0];
+						EmitEdge( gou, got, gon, subframe );
+					}
 				}
 			}
-			//memset( ssd1306_buffer, n, sizeof( ssd1306_buffer ) );
-			//int k;
-			//for( k = 0; k < sizeof(ssd1306_buffer); k++ ) ssd1306_buffer[k] = frame;
-			//ssd1306_mini_data(ssd1306_buffer, sizeof(ssd1306_buffer));
 		}
-#endif
+		else
+		{
+			// 2.59ms
+			for( y = 0; y < 6; y++ )
+			{
+				int x;
+				for( x = 0; x < 8; x++ )
+				{
+					glyphtype gindex = *(gm++);
+					graphictype * g = ctx.glyphdata[gindex];
+					
+					//int go = (subframe & 1)?0xff:0x00;
+					int lg;
+					for( lg = 0; lg< 8; lg ++ )
+					{
+						int go = g[lg];
+						if( (subframe)&1 )
+							go >>= 8;
+						ssd1306_mini_i2c_sendbyte( go );
+					}
+				}
+				//memset( ssd1306_buffer, n, sizeof( ssd1306_buffer ) );
+				//int k;
+				//for( k = 0; k < sizeof(ssd1306_buffer); k++ ) ssd1306_buffer[k] = frame;
+				//ssd1306_mini_data(ssd1306_buffer, sizeof(ssd1306_buffer));
+			}
+		}
+		funDigitalWrite( PD6, 1 );
 
 		ssd1306_mini_i2c_sendstop();
 
@@ -226,7 +288,10 @@ int main()
 		//if( outbuffertail >= AUDIO_BUFFER_SIZE ) outbuffertail -= AUDIO_BUFFER_SIZE;
 		ba_audio_fill_buffer( out_buffer_data, v );
 #endif
+
+		funDigitalWrite( PD6, 0 );
 		subframe++;
+		funDigitalWrite( PD6, 1 );
 	}
 }
 
