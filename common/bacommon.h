@@ -113,9 +113,8 @@
 
 // TUNE ME!!  This controls how likely less-than-most significant bits in pixels are to be set/unset.
 #if defined( VPX_GREY3 )
-//XXX TODO Tune for Grey3
-#define GSC1 255
-#define GSC0 212
+#define GSC1 0   // If 1, we are guaranteed to be white.
+#define GSC0 210
 #else
 #define GSC1 6
 #define GSC0 248

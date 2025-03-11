@@ -152,7 +152,8 @@ int KOut( uint16_t tg )
 	static int kx, ky, okx, subframe;
 	for( int innery = 0; innery < 8; innery++ )
 	{
-		fba[ky*8+innery][kx*8+okx] += ((tg>>(innery+subframe*8))&1) | (tg>>(innery+8))&1;
+		//((tg>>(innery+subframe*8))&1) | 
+		fba[ky*8+innery][kx*8+okx] += (tg>>(innery))&1;
 	}
 	okx++;
 	if( okx == 8 )
@@ -176,7 +177,129 @@ int KOut( uint16_t tg )
 	}
 }
 
-void EmitSample8()
+
+/* Tricky, blend function:
+
+	tgadd = (tgnext + tgprev)>>1;
+	tgtot = tg + tgadd - 2;
+
+	tgnext -> tgnexthi, tgnextlo
+	tgprev -> tgprevhi, tgprevlo
+	tg     -> tg    hi, tg    lo
+
+	but for left and right we (prev+next)>>1
+
+
+	// What about this approach:
+	//
+	// PLUS ONE BIAS
+	//   prev + next + 1 / 2
+	//
+	//  0 0 0 0 + 1 = 0 0
+	//  0 0 0 1 + 1 = 0 1
+	//  0 0 1 0 + 1 = 0 1
+	//  0 1 0 0 + 1 = 0 1
+	//  0 1 0 1 + 1 = 0 1
+	//  0 1 1 0 + 1 = 1 0
+	//  1 0 0 0 + 1 = 0 1
+	//  1 0 0 1 + 1 = 1 0
+	//  1 0 1 0 + 1 = 1 1 ** May not be worth messing with
+	//
+	// MSB: E=BC+AD+AC
+	// LSB: F=((AxB)x(CxD))+AB+AC
+	//
+	// ... What if we make 1,0 illegal?      *********************************
+	//  0 0 0 0 + 1 = 0 0
+	//  0 0 0 1 + 1 = 0 1
+	//  0 0 1 1 + 1 = 0 1
+	//  0 1 0 0 + 1 = 0 1
+	//  0 1 0 1 + 1 = 0 1
+	//  0 1 1 1 + 1 = 1 1
+	//  1 1 0 0 + 1 = 0 1
+	//  1 1 0 1 + 1 = 1 1
+	//  1 1 1 1 + 1 = 1 1
+	//
+	// MSB: E=BC+AD
+	// LSB: F=D+B
+	//
+	//  NO PLUS ONE BIAS (But 0,1 legal)
+	//   prev + next + 1 / 2
+	//
+	//  0 0 0 0 = 0 0
+	//  0 0 0 1 = 0 0
+	//  0 0 1 0 = 0 1
+	//  0 1 0 0 = 0 0
+	//  0 1 0 1 = 0 1
+	//  0 1 1 0 = 0 1
+	//  1 0 0 0 = 0 1
+	//  1 0 0 1 = 0 1
+	//  1 0 1 0 = 1 0
+	//
+	// MSB: E=AC
+	// LSB: F=AxC+BD
+	//
+	// Because of simplicity, trying to go for no +1 bias.
+	//  -> Add these and subtract one.
+	//
+	//  E F G H
+	//  0 0 0 0 - 1 = 0 = 00
+	//  0 0 0 1 - 1 = 0 = 00
+	//  0 0 1 0 - 1 = 1 = 01
+	//  0 1 0 0 - 1 = 0 = 00
+	//  0 1 0 1 - 1 = 1 = 01
+	//  0 1 1 0 - 1 = 2 = 11
+	//  1 0 0 0 - 1 = 1 = 01
+	//  1 0 0 1 - 1 = 2 = 11
+	//  1 0 1 0 - 1 = 2 = 11
+	//
+	// MSB: J=FG+EH+EG
+	// LSB: K=G+E+FH 
+	//
+	//
+	// ... What if we do the 0..1..3 encoding? (1,0 illegal) *****************
+	//  E F G H
+	//  0 0 0 0 - 1 = 0 = 00
+	//  0 0 0 1 - 1 = 0 = 00
+	//  0 0 1 1 - 1 = 1 = 01
+	//  0 1 0 0 - 1 = 0 = 00
+	//  0 1 0 1 - 1 = 1 = 01
+	//  0 1 1 1 - 1 = 2 = 11
+	//  1 1 0 0 - 1 = 1 = 01
+	//  1 1 0 1 - 1 = 2 = 11
+	//  1 1 1 1 - 1 = 2 = 11
+	//
+	// MSB: J = FG+EH
+	// LSB: K = G+E+FH
+	//
+	//  I used http://www.32x8.com/ to solve for the k-maps.
+//printf( "%02x %02x %02x %02x  %02x %02x / %02x %02x  %02x %02x\n", A, B, C, D, E, F, G, H, (F&G)|(E&H), G|E|(F&H) );
+
+*/
+
+void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int subframe )
+{
+	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
+	// (so all should fit in working reg space)
+	graphictype A = tgprev >> 8;
+	graphictype B = tgprev;      // implied & 0xff
+	graphictype C = tgnext >> 8;
+	graphictype D = tgnext;      // implied & 0xff
+
+	graphictype E = (B&C)|(A&D); // 8 bits worth of MSB of (next+prev+1)/2
+	graphictype F = D|B;         // 8 bits worth of LSB of (next+prev+1)/2
+
+	graphictype G = tg >> 8;
+	graphictype H = tg;          // implied & 0xff
+
+	if( subframe )
+		tg = (F&G)|(E&H);     // 8 bits worth of MSB of this+(next+prev+1)/2-1
+	else
+		tg = G|E|(F&H);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+
+	KOut( tg );
+}
+
+void EmitSamples8()
 {
 	int bx, by;
 
@@ -186,50 +309,39 @@ void EmitSample8()
 
 	for( subframe = 0; subframe < 2; subframe++ )
 	{
+		int gmi = 0;
 		for( by = 0; by < RESY/BLOCKSIZE; by ++ )
 		{
 			for( bx = 0; bx < RESX/BLOCKSIZE; bx ++ )
 			{
 				// Happens per-column-in-block
-				glyphtype gindex = gm[bx+by*RESX/BLOCKSIZE];
+				glyphtype gindex = gm[gmi];
 				graphictype * g = ctx.glyphdata[gindex];
 				int sx = 0;
 				if( bx > 0 )
 				{
-					uint32_t tgnext = g[1];
-					uint32_t tg = g[0];
-					uint32_t tgprev = ctx.glyphdata[gindex-1][7];
+					graphictype tgnext = g[1];
+					graphictype tg = g[0];
+					graphictype tgprev = ctx.glyphdata[gm[gmi-1]][7];
 
-					/* Tricky, blend function:
-
-						tgadd = (tgnext + tgprev)>>1;
-						tgtot = tg + tgadd - 2;
-
-						tgnext -> tgnexthi, tgnextlo
-						tgprev -> tgprevhi, tgprevlo
-						tg     -> tg    hi, tg    lo
-
-						but for left and right we (prev+next)>>1
-					*/
-
-					KOut( tg );
+					EmitPartial( tgprev, tg, tgnext, subframe );
 					sx = 1;
 				}
 				int sxend = (bx < RESX/BLOCKSIZE-1) ? 7: 8;
 				for( ; sx < sxend; sx++ )
 				{
 					uint16_t tg = g[sx];
-
-					KOut( tg );
+					KOut( tg >> (subframe*8) );
 				}
 				if( sx < 8 )
 				{
 					// Blend last.
-					uint32_t tgprev = g[6];
-					uint32_t tg = g[7];
-					uint32_t tgnext = ctx.glyphdata[gindex+1][0];
-					KOut( tg );
+					graphictype tgprev = g[6];
+					graphictype tg = g[7];
+					graphictype tgnext = ctx.glyphdata[gm[gmi-1]][0];
+					EmitPartial( tgprev, tg, tgnext, subframe );
 				}
+				gmi++;
 			}
 		}
 	}
@@ -284,7 +396,7 @@ int main()
 		if( ba_play_frame( &ctx ) ) break;
 
 #ifdef FAKESAMPLE8
-		EmitSample8();
+		EmitSamples8();
 #else
 		for( y = 0; y < RESY; y++ )
 		{

@@ -236,6 +236,7 @@ void VPBlockDrawGif( ge_GIF * gifout, int xofs, int yofs, int vw, int gx, int gy
 		int b = d * 15.9;
 #elif defined( VPX_GREY3 )
 		int b = d * 2.999;
+		if( b >= 3 ) b = 2;
 #elif defined( VPX_GREY4 )
 
 #if VPX_GORP_KERNEL_MOVE
@@ -1260,7 +1261,9 @@ int main( int argc, char ** argv )
 #if defined( VPX_GREY4 )
 				int c = (int)(fg[x+y*BLOCKSIZE] * 255) >> (8-BITSETS_TILECOMP);
 #else
+				// VPX_GREY3
 				int c = (int)(fg[x+y*BLOCKSIZE] * 2.999);
+				if( c == 2 ) c = 3;
 #endif
 				osym = (osym<<BITSETS_TILECOMP) | c;
 
