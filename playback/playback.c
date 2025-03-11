@@ -24,6 +24,9 @@ int HandleDestroy() { return 0; }
 
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
+ge_GIF * gifout;
+
+#ifdef VPX_GREY4
 
 int PValueAt( int x, int y, int * edge )
 {
@@ -79,6 +82,179 @@ int SampleValueAt( int x, int y )
 	return r;
 }
 
+#elif defined( VPX_GREY3 )
+
+int PValueAt( int x, int y, int * edge )
+{
+//	graphictype * framebuffer = (graphictype*)ctx.framebuffer;
+	if( x < 0 ) { x = 0; *edge = 1; }
+	if( x >= RESX ) { x = RESX-1; *edge = 1; }
+	if( y < 0 ) { y = 0; *edge = 1; }
+	if( y >= RESY ) { y = RESY-1; *edge = 1; }
+
+	int tileplace = (x/BLOCKSIZE)+(y/BLOCKSIZE)*(RESX/BLOCKSIZE);
+
+	glyphtype     tileid = ctx.curmap[tileplace];
+	graphictype * sprite = (graphictype*)ctx.glyphdata[tileid];
+	graphictype   g      = sprite[x&(BLOCKSIZE-1)];
+
+	uint32_t v = (g>>((y%BLOCKSIZE)));
+	int vout = (v & 1) | (( v & 0x100)>>7);
+	return vout;
+}
+
+int SampleValueAt( int x, int y )
+{
+	int edge = 0;
+	int iSampleAdd = PValueAt( x, y, &edge );
+	int iSampleAddQty = 1;
+
+	// Vaguely based on the grey4 from above... But, with a tighter kernel.
+
+	if( (x & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (x & (BLOCKSIZE-1)) == 0 )
+	{
+		iSampleAddQty += 1;
+		iSampleAdd += PValueAt( x-1, y, &edge )>>1;
+		iSampleAdd += PValueAt( x+1, y, &edge )>>1;
+	}
+	if( (y & (BLOCKSIZE-1)) == (BLOCKSIZE-1) || (y & (BLOCKSIZE-1)) == 0 )
+	{
+		iSampleAddQty += 1;
+		iSampleAdd += PValueAt( x, y-1, &edge )>>1;
+		iSampleAdd += PValueAt( x, y+1, &edge )>>1;
+	}
+	if( iSampleAddQty == 1 ) return iSampleAdd;
+
+	int r = iSampleAdd - iSampleAddQty;
+	if( edge )
+	{
+		if( r > 1 ) r = 2;
+		if( r < 2 ) r = 0;
+	}
+	else
+	{
+		if( r > 2 ) r = 2;
+		if( r < 0 ) r = 0;
+	}
+
+	return r;
+}
+
+#define FAKESAMPLE8 1
+
+
+int outx, outy, outsi;
+
+uint8_t fba[RESY][RESX];
+
+int KOut( uint16_t tg )
+{
+	static int kx, ky, okx, subframe;
+	for( int innery = 0; innery < 8; innery++ )
+	{
+		fba[ky*8+innery][kx*8+okx] += ((tg>>(innery+subframe*8))&1) | (tg>>(innery+8))&1;
+	}
+	okx++;
+	if( okx == 8 )
+	{
+		okx = 0;
+		kx++;
+		if( kx == (RESX/BLOCKSIZE) )
+		{
+			kx = 0;
+			ky++;
+			if( ky == RESY/BLOCKSIZE )
+			{
+				ky = 0;
+				subframe++;
+				if( subframe == 2 )
+				{
+					subframe = 0;
+				}
+			}
+		}
+	}
+}
+
+void EmitSample8()
+{
+	int bx, by;
+
+	glyphtype * gm = ctx.curmap;
+	int subframe;
+	memset( fba, 0, sizeof( fba ) );
+
+	for( subframe = 0; subframe < 2; subframe++ )
+	{
+		for( by = 0; by < RESY/BLOCKSIZE; by ++ )
+		{
+			for( bx = 0; bx < RESX/BLOCKSIZE; bx ++ )
+			{
+				// Happens per-column-in-block
+				glyphtype gindex = gm[bx+by*RESX/BLOCKSIZE];
+				graphictype * g = ctx.glyphdata[gindex];
+				int sx = 0;
+				if( bx > 0 )
+				{
+					uint32_t tgnext = g[1];
+					uint32_t tg = g[0];
+					uint32_t tgprev = ctx.glyphdata[gindex-1][7];
+
+					/* Tricky, blend function:
+
+						tgadd = (tgnext + tgprev)>>1;
+						tgtot = tg + tgadd - 2;
+
+						tgnext -> tgnexthi, tgnextlo
+						tgprev -> tgprevhi, tgprevlo
+						tg     -> tg    hi, tg    lo
+
+						but for left and right we (prev+next)>>1
+					*/
+
+					KOut( tg );
+					sx = 1;
+				}
+				int sxend = (bx < RESX/BLOCKSIZE-1) ? 7: 8;
+				for( ; sx < sxend; sx++ )
+				{
+					uint16_t tg = g[sx];
+
+					KOut( tg );
+				}
+				if( sx < 8 )
+				{
+					// Blend last.
+					uint32_t tgprev = g[6];
+					uint32_t tg = g[7];
+					uint32_t tgnext = ctx.glyphdata[gindex+1][0];
+					KOut( tg );
+				}
+			}
+		}
+	}
+
+	int x, y;
+	for( y = 0; y < RESY; y++ )
+	for( x = 0; x < RESX; x++ )
+	{
+		float f = fba[y][x] * 128;
+		if( f < 0 ) f = 0; 
+		if( f > 255.5 ) f = 255.5;
+		int v = f;
+		uint8_t * gof = gifout->frame;
+		int zx, zy;
+		for( zx = 0; zx < ZOOM; zx++ )
+		for( zy = 0; zy < ZOOM; zy++ )
+			gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = (f/120);
+		uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
+		CNFGColor( color );
+		CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
+	}
+}
+
+#endif
+
 int main()
 {
 	int x, y;
@@ -86,8 +262,12 @@ int main()
 
 	CNFGSetup( "test", 1024, 768 );
 
+#ifdef VPX_GREY4
 	static uint8_t palette[48] = { 0, 0, 0, 85, 85, 85, 171, 171, 171, 255, 255, 255 };
-	ge_GIF * gifout = ge_new_gif( "playback.gif", RESX*ZOOM, RESY*ZOOM, palette, 4, -1, 0 );
+#elif defined( VPX_GREY3 )
+	static uint8_t palette[48] = { 0, 0, 0, 128, 128, 128, 255, 255, 255 };
+#endif
+	gifout = ge_new_gif( "playback.gif", RESX*ZOOM, RESY*ZOOM, palette, 4, -1, 0 );
 
 	ba_play_setup( &ctx );
 	ba_audio_setup();
@@ -103,28 +283,37 @@ int main()
 
 		if( ba_play_frame( &ctx ) ) break;
 
+#ifdef FAKESAMPLE8
+		EmitSample8();
+#else
 		for( y = 0; y < RESY; y++ )
 		{
-			for( x = 0; x < RESX; x++ )
+			for( x = 0; x < RESX; )
 			{
-				//float f = (PValueAt( x, y ) + PValueAt( x+1,y+1)*.5 + PValueAt(x+1,y)*.5 + PValueAt(x,y+1)*.5)/2.5;
-				//f = f * 2 - 255.0;
-				int sample = SampleValueAt( x, y );
-				int f = sample;
-				f = f * 85;
-				if( f < 0 ) f = 0; 
-				if( f > 255.5 ) f = 255.5;
-				int v = f;
-				uint8_t * gof = gifout->frame;
-				int zx, zy;
-				for( zx = 0; zx < ZOOM; zx++ )
-				for( zy = 0; zy < ZOOM; zy++ )
-					gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = sample;
-				uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
-				CNFGColor( color );
-				CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
+				{
+					int sample = SampleValueAt( x, y );
+					int f = sample;
+#ifdef VPX_GREY4
+					f = f * 85;
+#elif defined( VPX_GREY3 )
+					f = f * 128;
+#endif
+					if( f < 0 ) f = 0; 
+					if( f > 255.5 ) f = 255.5;
+					int v = f;
+					uint8_t * gof = gifout->frame;
+					int zx, zy;
+					for( zx = 0; zx < ZOOM; zx++ )
+					for( zy = 0; zy < ZOOM; zy++ )
+						gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = sample;
+					uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
+					CNFGColor( color );
+					CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
+				}
 			}
 		}
+
+#endif
 
 		ge_add_frame(gifout, 2);
 

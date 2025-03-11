@@ -85,7 +85,8 @@
 #define DEDICATE_TILE_CLASS01 1 // Only used for K-Means
 #define EXPECTED_VALUE_GREEDY_OPTIMIZATION 1 // Disable k-means VPX, and instead use a greedy algorithm
 
-#define VPX_GREY4 1
+#define VPX_GREY3 1
+//#define VPX_GREY4 1
 //#define VPX_GREY16 1 
 
 // Force huffman in VPX for tiles instead for size comparison.
@@ -111,8 +112,14 @@
 //#define PROB_ENDIAN_FLIP 1
 
 // TUNE ME!!  This controls how likely less-than-most significant bits in pixels are to be set/unset.
+#if defined( VPX_GREY3 )
+//XXX TODO Tune for Grey3
+#define GSC1 255
+#define GSC0 212
+#else
 #define GSC1 6
 #define GSC0 248
+#endif
 
 
 // Relies on RUNCODES_CONTINUOUS_BY_CLASS

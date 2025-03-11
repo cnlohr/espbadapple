@@ -18,7 +18,7 @@
 #endif
 #include "badapple_data.h"
 
-#if defined( VPX_GREY4 )
+#if defined( VPX_GREY4 ) || defined( VPX_GREY3 )
 	#define BITSETS_TILECOMP 2
 #elif defined( VPX_GREY16 )
 	#define BITSETS_TILECOMP 4

@@ -234,6 +234,8 @@ void VPBlockDrawGif( ge_GIF * gifout, int xofs, int yofs, int vw, int gx, int gy
 		float d = GETPIX( x, y, gx, gy, curglyphs, prevglyphs );
 #ifdef VPX_GREY16
 		int b = d * 15.9;
+#elif defined( VPX_GREY3 )
+		int b = d * 2.999;
 #elif defined( VPX_GREY4 )
 
 #if VPX_GORP_KERNEL_MOVE
@@ -1238,7 +1240,7 @@ int main( int argc, char ** argv )
 
 	// Just a quick test to see if we can compress the tilemaps.
 	FILE * fRawTiles = fopen( "TEST_rawtiles.dat", "wb" );
-#if defined( VPX_GREY4 )
+#if defined( VPX_GREY4 ) || defined( VPX_GREY3 )
 	#define BITSETS_TILECOMP 2
 #elif defined( VPX_GREY16 )
 	#define BITSETS_TILECOMP 4
@@ -1255,7 +1257,11 @@ int main( int argc, char ** argv )
 			uint32_t osym = 0;
 			for( x = 0; x < BLOCKSIZE; x++ )
 			{
+#if defined( VPX_GREY4 )
 				int c = (int)(fg[x+y*BLOCKSIZE] * 255) >> (8-BITSETS_TILECOMP);
+#else
+				int c = (int)(fg[x+y*BLOCKSIZE] * 2.999);
+#endif
 				osym = (osym<<BITSETS_TILECOMP) | c;
 
 				int k;
@@ -1722,7 +1728,7 @@ int main( int argc, char ** argv )
 #endif
 #endif
 	int glyphsize = BLOCKSIZE * BLOCKSIZE / 8 * maxtilect_remapped;
-#ifdef VPX_GREY4
+#if defined( VPX_GREY3 ) || defined( VPX_GREY4 )
 	glyphsize *= 2;
 #elif defined( VPX_GREY16 )
 	glyphsize *= 4;
@@ -1816,8 +1822,12 @@ int main( int argc, char ** argv )
 					k++;
 					crun |= (lc ? 1 : 0) << (BITSETS_TILECOMP-k-1);
 				}
-
+#ifdef VPX_GREY3
+				glyphsnew[n++] = ((float)crun) / 2.0;
+#else
 				glyphsnew[n++] = ((float)crun) / ((1<<BITSETS_TILECOMP)-1);
+#endif
+
 				k = 0;
 				crun = 0;
 
@@ -1853,7 +1863,9 @@ int main( int argc, char ** argv )
 		vpx_reader reader;
 		vpx_reader_init(&reader, bufferVPX, w_combined.pos, 0, 0 );
 
-#ifdef VPX_GREY4
+#ifdef VPX_GREY3
+		uint8_t palette[48] = { 0, 0, 0, 128, 128, 128, 255, 255, 255 };
+#elif defined( VPX_GREY4 )
 		uint8_t palette[48] = { 0, 0, 0, 85, 85, 85, 171, 171, 171, 255, 255, 255 };
 #elif defined( VPX_GREY16 )
 		uint8_t palette[48] = {
