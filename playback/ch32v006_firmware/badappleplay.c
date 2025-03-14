@@ -383,14 +383,12 @@ int main()
 		// Overscan screen by 2 pixels, but release from 2-scanline mode.
 		ssd1306_mini_pkt_send( (const uint8_t[]){0xD3, 0x3e, 0xA8, 0x31}, 4, 1 ); 
 
-#if  1
 		int v = AUDIO_BUFFER_SIZE - DMA1_Channel2->CNTR - 1;
 		if( v < 0 ) v = 0;
 		//PrintHex( out_buffer_data[0] );
 		//outbuffertail += 400;//(F_SPS/120*frame) % AUDIO_BUFFER_SIZE;
 		//if( outbuffertail >= AUDIO_BUFFER_SIZE ) outbuffertail -= AUDIO_BUFFER_SIZE;
 		ba_audio_fill_buffer( out_buffer_data, v );
-#endif
 
 		funDigitalWrite( PD6, 0 );
 		subframe++;
