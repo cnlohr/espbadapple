@@ -45,7 +45,7 @@ const uint8_t ssd1306_init_array[] __attribute__((section(".fixedflash"))) =
 	0xC8, // Set COM output scan direction
 	0xDA, 0x12, // Set COM pins hardware configuration
 	0x81, 0xcf, // Contrast control
-	//0xD9, 0x22, // Set Pre-Charge Period  (Not used)
+	0xD9, 0x22, // Set Pre-Charge Period  (Not used)
 	0xDB, 0x30, // Set VCOMH Deselect Level
 	0xA4, // Entire display on (a5)/off(a4)
 	0xA6, // Normal (a6)/inverse (a7)
@@ -58,7 +58,7 @@ const uint8_t ssd1306_init_array[] __attribute__((section(".fixedflash"))) =
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-
+#if 0
 void EmitEdge( uint32_t gou, uint32_t got, uint32_t gon, uint32_t subframe )
 {
 	int gouah = got | gou;
@@ -74,6 +74,95 @@ void EmitEdge( uint32_t gou, uint32_t got, uint32_t gon, uint32_t subframe )
 
 	int go = 0;
 	ssd1306_mini_i2c_sendbyte( go );
+}
+#endif
+
+uint16_t pixelmap[64*6];
+
+//pixelmap[64*6];
+int pmp;
+// From ttablegen.c
+const uint8_t potable[16]  __attribute__((section(".fixedflash"))) = { 0x50, 0xa4, 0xa4, 0xa4, 0xa4, 0xa4, 0xf9, 0xf9, 0xa4, 0xf9, 0xf9, 0xf9, 0xa4, 0xf9, 0xf9, 0xf9, };
+
+void PMEmit( uint16_t pvo )
+{
+
+	// If we only cared about left/right blurring, we could just say 
+	//	pixelmap[pmp++] = pvo; ... but we don't.
+	pixelmap[pmp++] = pvo;
+}
+
+void EmitEdge( graphictype tgprev, graphictype tg, graphictype tgnext )
+{
+	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
+	// (so all should fit in working reg space)
+	graphictype A = tgprev >> 8;
+	graphictype B = tgprev;      // implied & 0xff
+	graphictype C = tgnext >> 8;
+	graphictype D = tgnext;      // implied & 0xff
+
+	graphictype E = (B&C)|(A&D); // 8 bits worth of MSB of (next+prev+1)/2
+	graphictype F = D|B;         // 8 bits worth of LSB of (next+prev+1)/2
+
+	graphictype G = tg >> 8;
+	graphictype H = tg;          // implied & 0xff
+
+	//if( subframe )
+	int tghi = (F&G)|(E&H);     // 8 bits worth of MSB of this+(next+prev+1)/2-1
+	//else
+	int tglo = G|E|(F&H);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+
+	//ssd1306_mini_i2c_sendbyte( tg );
+	PMEmit( (tghi << 8) | tglo );
+}
+
+
+
+void UpdatePixelMap()
+{
+	int y;
+	glyphtype * gm = ctx.curmap;
+	pmp = 0;
+	for( y = 0; y < 6; y++ )
+	{
+		int x;
+		for( x = 0; x < 8; x++ )
+		{
+			glyphtype gindex = *(gm);
+			graphictype * g     = ctx.glyphdata[gindex];
+			graphictype * gprev = ctx.glyphdata[gm[-1]];
+			graphictype * gnext = ctx.glyphdata[gm[ 1]];
+			gm++;
+			
+			//int go = (subframe & 1)?0xff:0x00;
+			int lg;
+			{
+				uint32_t got = g[0];
+				uint32_t gon = g[1];
+				uint32_t gou = (x>0)?gprev[7]:gon;
+
+				EmitEdge( gou, got, gon );
+			}
+			for( lg = 1; lg < 7; lg ++ )
+			{
+				int go = g[lg];
+
+				// Bits in this word scan left-to-right.
+				// LG is "x" from left-to-right
+				//if( (subframe)&1 )
+				//	go >>= 8;
+				//ssd1306_mini_i2c_sendbyte( go );
+				PMEmit( go );
+			}
+			{
+				uint32_t got = g[7];
+				uint32_t gou = g[6];
+				uint32_t gon = (x<8)?gnext[0]:gou;
+				EmitEdge( gou, got, gon );
+			}
+		}
+	}
+	
 }
 
 int main()
@@ -141,7 +230,7 @@ int main()
 		//PrintHex( DMA1_Channel2->CNTR );
 		//TIM2->CH1CVR = subframe * 5;
 		//out_buffer_data[frame&(AUDIO_BUFFER_SIZE-1)] = (frame&0x15)+128;
-#if 1
+
 		if( subframe == 4 )
 		{
 			if( frame == FRAMECT ) asm volatile( "j 0" );
@@ -160,13 +249,15 @@ int main()
 					DMA_CFGR1_MINC |                     // Increase memory.
 					DMA_CFGR1_CIRC |                     // Circular mode.
 					DMA_CFGR1_EN;                        // Enable
-
 			}
 			ba_play_frame( &ctx );
 			subframe = 0;
 			frame++;
 		}
-#endif
+		else if( subframe == 1 )
+		{
+			UpdatePixelMap();
+		}
 
 		funDigitalWrite( PD6, 0 );
 
@@ -192,7 +283,6 @@ int main()
 			SSD1306_COLUMNADDR, SSD1306_OFFSET, SSD1306_OFFSET+SSD1306_W-1, 0xb0 },
 			8, 1 );
 
-
 		// Send data
 		int y;
 
@@ -202,51 +292,64 @@ int main()
 
 		funDigitalWrite( PD6, 0 );
 
-		glyphtype * gm = ctx.curmap;
-
-		if( 1 )
+		if( 1 ) // New, filtered output.
 		{
-			for( y = 0; y < 6; y++ )
+
+			int pvx;
+			int pvy;
+
+			int i;
+			uint16_t * pmo = pixelmap;
+			for( i = 0; i < sizeof(pixelmap)/2; i++ )
 			{
-				int x;
-				for( x = 0; x < 8; x++ )
+				if( pvx == 64 ) { pvx = 0; pvy++; }
+				int pvo = pmo[i];
+				uint16_t pvr = pvo & 0x7e7e;
+
+				int pprev, pnext, pthis;
+
+				if( i < 64 )
+					pprev = ((pvo>>8)&2) | ((pvo>>1)&1);
+				else
 				{
-					glyphtype gindex = *(gm);
-					graphictype * g     = ctx.glyphdata[gindex];
-					graphictype * gprev = ctx.glyphdata[gm[(x>0)?-1:0]];
-					graphictype * gnext = ctx.glyphdata[gm[(x<8)? 1:0]];
-					gm++;
-					
-					//int go = (subframe & 1)?0xff:0x00;
-					int lg;
-					{
-						uint32_t got = g[0];
-						uint32_t gou = gprev[7];
-						uint32_t gon = g[1];
-
-						EmitEdge( gou, got, gon, subframe );
-					}
-					for( lg = 1; lg < 7; lg ++ )
-					{
-						int go = g[lg];
-
-						// Bits in this word scan left-to-right.
-						// LG is "x" from left-to-right
-						if( (subframe)&1 )
-							go >>= 8;
-						ssd1306_mini_i2c_sendbyte( go );
-					}
-					{
-						uint32_t got = g[7];
-						uint32_t gou = g[5];
-						uint32_t gon = gnext[0];
-						EmitEdge( gou, got, gon, subframe );
-					}
+					int kpre = pmo[i-64];
+					pprev = ((kpre>>14)&2) | ((kpre>>7)&1);
 				}
+				pnext = ((pvo>>8)&2) | ((pvo>>1)&1);
+
+				pprev = pnext;
+
+				pthis = ((pvo>>7)&2) | ((pvo>>0)&1);
+
+				int pol = (potable[pnext+pprev*4]>>pthis)&3;
+				pvr |= (pol & 1) | (pol&2)<<7;
+
+				if( i >= 256 )
+					pnext = ((pvo>>13)&2) | ((pvo>>6)&1);
+				else
+				{
+					int knext = pmo[i+64];
+					pnext = ((knext>>7)&2) | (knext &1);
+				}
+				pprev = ((pvo>>13)&2) | ((pvo>>6)&1);
+				pthis = ((pvo>>14)&2) | ((pvo>>7)&1);
+
+				pol = (potable[pnext+pprev*4]>>pthis)&3;
+				pvr |= (pol & 1)<<7 | (pol&2)<<14;
+
+				//pixelbase[pmp] = pvo;
+				uint16_t po = pvr;
+
+				if( subframe & 1 )
+					ssd1306_mini_i2c_sendbyte( po>>8 );
+				else
+					ssd1306_mini_i2c_sendbyte( po );
 			}
 		}
 		else
 		{
+
+			glyphtype * gm = ctx.curmap;
 			// 2.59ms
 			for( y = 0; y < 6; y++ )
 			{

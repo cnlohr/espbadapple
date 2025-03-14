@@ -78,17 +78,19 @@ SECTIONS
       KEEP (*(SORT(.dtors.*)))
       KEEP (*(.dtors))
     } >BOOTLOADER AT>BOOTLOADER
+
     .dalign :
     {
       . = ALIGN(4);
       PROVIDE(_data_vma = .);
-    } >RAM AT>BOOTLOADER
+    } >RAM AT>RAM
+
     .dlalign :
     {
-      . = ALIGN(4);
       PROVIDE(_data_lma = .);
     } >BOOTLOADER AT>BOOTLOADER
-    .data :
+
+    .data : 
     {
       . = ALIGN(4);
       *(.gnu.linkonce.r.*)
@@ -105,9 +107,9 @@ SECTIONS
       *(.srodata.cst4)
       *(.srodata.cst2)
       *(.srodata .srodata.*)
-      . = ALIGN(4);
       PROVIDE( _edata = .);
     } >RAM AT>BOOTLOADER
+
     .bss :
     {
       . = ALIGN(4);
@@ -121,14 +123,17 @@ SECTIONS
       PROVIDE( _ebss = .);
     } >RAM AT>BOOTLOADER
 
-	.padding :
-	{
-		. = ALIGN(256);
-	} > BOOTLOADER AT>BOOTLOADER
-
     PROVIDE( _end = _ebss);
  PROVIDE( end = . );
  PROVIDE( _eusrstack = ORIGIN(RAM) + LENGTH(RAM));
+
+	.padding :
+	{
+		. = ALIGN(256);
+		FILL(0xDEADBEEF)
+	} >BOOTLOADER =0xff
+
+
     /DISCARD/ : {
       *(.note .note.*)
       *(.eh_frame .eh_frame.*)

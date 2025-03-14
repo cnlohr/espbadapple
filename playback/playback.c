@@ -322,7 +322,7 @@ void EmitSamples8()
 				{
 					graphictype tgnext = g[1];
 					graphictype tg = g[0];
-					graphictype tgprev = ctx.glyphdata[gm[gmi-1]][7];
+					graphictype tgprev = (bx > 0 ) ? ctx.glyphdata[gm[gmi-1]][7] : tgnext;
 
 					EmitPartial( tgprev, tg, tgnext, subframe );
 					sx = 1;
@@ -338,7 +338,7 @@ void EmitSamples8()
 					// Blend last.
 					graphictype tgprev = g[6];
 					graphictype tg = g[7];
-					graphictype tgnext = ctx.glyphdata[gm[gmi-1]][0];
+					graphictype tgnext = (bx<RESX/BLOCKSIZE-1)?ctx.glyphdata[gm[gmi-1]][0] : tgprev;
 					EmitPartial( tgprev, tg, tgnext, subframe );
 				}
 				gmi++;
