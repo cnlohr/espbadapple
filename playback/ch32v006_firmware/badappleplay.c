@@ -11,7 +11,7 @@
 //      |           |
 //      +- 100 Ohm -+
 
-#define F_SPS (48000000/300/2)
+#define F_SPS (48000000/256/2) // Confirmed 256.
 
 #define WARNING(x...)
 
@@ -185,6 +185,8 @@ int main()
 	// Trying another mode
 	ssd1306_mini_pkt_send( ssd1306_init_array, sizeof(ssd1306_init_array), 1 );
 
+	DMA1_Channel2->CFGR = 0;
+
 	ba_play_setup( &ctx );
 	ba_audio_setup();
 
@@ -202,7 +204,7 @@ int main()
 	AFIO->PCFR1 = AFIO_PCFR1_TIM2_RM_0 | AFIO_PCFR1_TIM2_RM_1 | AFIO_PCFR1_TIM2_RM_2;
 
 	TIM2->PSC = 0x0001;
-	TIM2->ATRLR = 299; // XXX TODO Should this be 255 or 256?
+	TIM2->ATRLR = 255; // Confirmed: 255 here = PWM period of 256.
 
 	// for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
 	// enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
@@ -245,7 +247,7 @@ int main()
 		if( subframe == 4 )
 		{
 			if( frame == FRAMECT ) asm volatile( "j 0" );
-			if( frame == 40 )
+			if( frame == 46 )
 			{
 				// Start playing music at frame 37.
 				// Triggered off TIM2UP
