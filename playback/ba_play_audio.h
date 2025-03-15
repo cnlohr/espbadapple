@@ -30,7 +30,7 @@
 
 #define NOTE_RANGE  ( ESPBADAPPLE_SONG_HIGHEST_NOTE - ESPBADAPPLE_SONG_LOWEST_NOTE + 1 )
 
-const BAS_DECORATOR uint16_t frequencies[NOTE_RANGE] = {
+const uint16_t frequencies[NOTE_RANGE] = {
 	SYFN( 0), SYFN( 1), SYFN( 2), SYFN( 3), SYFN( 4), SYFN( 5), SYFN( 6), SYFN( 7), SYFN( 8), SYFN( 9),
 	SYFN(10), SYFN(11), SYFN(12), SYFN(13), SYFN(14), SYFN(15), SYFN(16), SYFN(17), SYFN(18), SYFN(19),
 	SYFN(20), SYFN(21), SYFN(22), SYFN(23), SYFN(24), SYFN(25), SYFN(26), SYFN(27), SYFN(28), SYFN(29),
@@ -270,7 +270,7 @@ int ba_audio_fill_buffer( volatile uint8_t * outbuffer, int outbuffertail )
 			}
 		}
 
-		outbuffer[outbufferhead] = (volatile uint32_t)((sample >> (1+8+1/*Volume reduction*/)));
+		outbuffer[outbufferhead] = (volatile uint32_t)((sample >> (1+8)));
 		//asm volatile( "nop" : : [dirty]"r"(sample) : "memory" );
 		outbufferhead = ( outbufferhead + 1 ) & ( AUDIO_BUFFER_SIZE - 1);
 	}

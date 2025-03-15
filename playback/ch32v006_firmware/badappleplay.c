@@ -1,6 +1,17 @@
 #include "ch32fun.h"
 #include <stdio.h>
 
+// Physical configuration:
+//  
+// PD3/PD4 -> Differential output.
+// 
+// PD3 - 100uF - 220 Ohm -+-- Output +
+//                        |
+// PD4 -+- 220nF ---+-----+-- Output -
+//      |           |
+//      +- 100 Ohm -+
+
+#define F_SPS (48000000/300/2)
 
 #define WARNING(x...)
 
@@ -191,7 +202,7 @@ int main()
 	AFIO->PCFR1 = AFIO_PCFR1_TIM2_RM_0 | AFIO_PCFR1_TIM2_RM_1 | AFIO_PCFR1_TIM2_RM_2;
 
 	TIM2->PSC = 0x0001;
-	TIM2->ATRLR = 511; // XXX TODO Should this be 255 or 256?
+	TIM2->ATRLR = 299; // XXX TODO Should this be 255 or 256?
 
 	// for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
 	// enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
