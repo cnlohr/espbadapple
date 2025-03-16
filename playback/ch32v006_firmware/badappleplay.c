@@ -36,7 +36,7 @@ volatile uint32_t kas = 0;
 #define SSD1306_H (64)
 #define SSD1306_OFFSET 32
 
-#define SSD1306_RST_PIN PC3
+#define SSD1306_RST_PIN PC0
 
 #define I2CDELAY_FUNC( x )
 	//asm volatile( "nop\nnop\n");
@@ -199,6 +199,7 @@ int main()
 	// Setup PD3/PD4 as TIM2_CH1/TIM2_CH2 as output
 	// TIM2_RM=111 (Full)
 	RCC->APB1PCENR |= RCC_APB1Periph_TIM2;
+	RCC->APB2PCENR |= RCC_APB2Periph_TIM1;
 	RCC->AHBPCENR |= RCC_AHBPeriph_DMA1;
 
 	AFIO->PCFR1 = AFIO_PCFR1_TIM2_RM_0 | AFIO_PCFR1_TIM2_RM_1 | AFIO_PCFR1_TIM2_RM_2;
@@ -230,13 +231,38 @@ int main()
 	TIM2->CH2CVR = 128; 
 
 	// Weeeird... PUPD works better than GPIO_CFGLR_OUT_AF_PP
-	funPinMode( PD3, GPIO_CFGLR_IN_PUPD );
-	funPinMode( PD4, GPIO_CFGLR_IN_PUPD );
 	funPinMode( PD3, GPIO_CFGLR_OUT_AF_PP );
 	funPinMode( PD4, GPIO_CFGLR_OUT_AF_PP );
 
+	TIM1->CHCTLR2 = 
+		TIM1_CHCTLR2_OC3M_2 | TIM1_CHCTLR2_OC3M_1 | TIM1_CHCTLR2_OC3PE |
+		TIM1_CHCTLR2_OC4M_2 | TIM1_CHCTLR2_OC4M_1 | TIM1_CHCTLR2_OC4PE;
 
-	funPinMode( PD6, GPIO_CFGLR_OUT_PP );
+	// Enable TIM1 outputs
+	TIM1->BDTR = TIM1_BDTR_MOE;
+
+	TIM1->PSC = 0x0000;
+	TIM1->ATRLR = 31;
+
+	// Enable Channel outputs, set default state (based on TIM2_DEFAULT)
+	TIM1->CCER = TIM1_CCER_CC3E
+	           | TIM1_CCER_CC4E;
+
+	// initialize counter
+	TIM1->SWEVGR = TIM2_SWEVGR_UG;
+
+	TIM1->CTLR1 = TIM2_CTLR1_CEN;
+
+	// Enable TIM2
+
+	TIM1->CH3CVR = 16;
+	TIM1->CH4CVR = 16;
+
+	funPinMode( PC3, GPIO_CFGLR_OUT_AF_PP );
+	funPinMode( PC4, GPIO_CFGLR_OUT_AF_PP );
+
+// Debug pin
+//	funPinMode( PD6, GPIO_CFGLR_OUT_PP );
 
 	while(1)
 	{
@@ -272,13 +298,13 @@ int main()
 			UpdatePixelMap();
 		}
 
-		funDigitalWrite( PD6, 0 );
+		//funDigitalWrite( PD6, 0 );
 
 		while( (int32_t)(SysTick->CNT - nextFrame) < 0 )
 		{
 		}
 
-		funDigitalWrite( PD6, 1 );
+		//funDigitalWrite( PD6, 1 );
 
 		nextFrame += 400000; 
 		// 1600000 is 30Hz
@@ -303,7 +329,7 @@ int main()
 		ssd1306_mini_i2c_sendbyte( SSD1306_I2C_ADDR<<1 );
 		ssd1306_mini_i2c_sendbyte( 0x40 ); // Data
 
-		funDigitalWrite( PD6, 0 );
+		//funDigitalWrite( PD6, 0 );
 
 		if( 1 ) // New, filtered output.
 		{
@@ -388,7 +414,7 @@ int main()
 				//ssd1306_mini_data(ssd1306_buffer, sizeof(ssd1306_buffer));
 			}
 		}
-		funDigitalWrite( PD6, 1 );
+		//funDigitalWrite( PD6, 1 );
 
 		ssd1306_mini_i2c_sendstop();
 
@@ -403,9 +429,9 @@ int main()
 		//if( outbuffertail >= AUDIO_BUFFER_SIZE ) outbuffertail -= AUDIO_BUFFER_SIZE;
 		ba_audio_fill_buffer( out_buffer_data, v );
 
-		funDigitalWrite( PD6, 0 );
+		//funDigitalWrite( PD6, 0 );
 		subframe++;
-		funDigitalWrite( PD6, 1 );
+		//funDigitalWrite( PD6, 1 );
 	}
 }
 
