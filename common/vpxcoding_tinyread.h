@@ -85,9 +85,6 @@ static inline int vpx_read_bit(vpx_reader *r) {
 	return vpx_read(r, 128);  // vpx_prob_half
 }
 
-#define VPXMIN(x, y) (((x) < (y)) ? (x) : (y))
-#define VPXMAX(x, y) (((x) > (y)) ? (x) : (y))
-
 VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer, size_t size )
 {
 #ifdef VPXCODING_AUTOGEN_NORM

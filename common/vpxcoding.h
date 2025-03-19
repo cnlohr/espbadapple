@@ -138,7 +138,6 @@ static inline int vpx_read_tree(vpx_reader *r,
 #ifdef VPXCODING_IMPLEMENTATION
 
 #define VPXMIN(x, y) (((x) < (y)) ? (x) : (y))
-#define VPXMAX(x, y) (((x) > (y)) ? (x) : (y))
 
 VPXCODING_DECORATOR int vpx_reader_init(vpx_reader *r, const uint8_t *buffer,
 	size_t size, vpx_ingest_cb ingest_cb, void * ingest_state ) {

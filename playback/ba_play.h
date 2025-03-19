@@ -56,11 +56,10 @@ static int ba_play_setup( ba_play_context * ctx )
 
 	// Load glyphs into RAM.
 	{
-		vpx_reader r;
 #ifdef _VPX_TINYREAD_SFH_H
-		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata) );
+		vpx_reader_init( &ctx->vpx_changes, ba_glyphdata, sizeof(ba_glyphdata) );
 #else
-		vpx_reader_init( &r, ba_glyphdata, sizeof(ba_glyphdata), 0, 0 );
+		vpx_reader_init( &ctx->vpx_changes, ba_glyphdata, sizeof(ba_glyphdata), 0, 0 );
 #endif
 		int g = 0;
 		int runsofar = 0;
@@ -82,7 +81,7 @@ static int ba_play_setup( ba_play_context * ctx )
 			int ly = ((g/BLOCKSIZE)&(BLOCKSIZE-1))%BLOCKSIZE;
 			for( subpixel = 0; subpixel < BITSETS_TILECOMP; subpixel++ )
 			{
-				int lb = vpx_read( &r, tprob );
+				int lb = vpx_read( &ctx->vpx_changes, tprob );
 				if( subpixel == 0 )
 				{
 					if( lb != is0or1 )
