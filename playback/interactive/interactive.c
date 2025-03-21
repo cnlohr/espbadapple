@@ -1,8 +1,21 @@
 #include <stdio.h>
 
-#define CHECKPOINT ba_i_checkpoint();
+#define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
 
 void ba_i_checkpoint();
+
+// Various set things
+const char * decodephase;
+
+#define FIELDS(x) x(decodeglyph), x(decode_is0or1), x(decode_runsofar), x(decode_prob), x(decode_lb), \
+	x(decode_cellid), x(decode_class), x(decode_run), x(decode_fromglyph), x(decode_probability), \
+	x(decode_tileid), x(decode_level), x(audio_pullbit), x(audio_gotbit), x(audio_last_bitmode), \
+	x(audio_golmb_exp), x(audio_golmb_v), x(audio_golmb_br), x(audio_golmb), x(audio_last_ofs), \
+	x(audio_last_he), x(audio_pullhuff), x(audio_stack_place), x(audio_stack_remain), \
+	x(audio_stack_offset), x(audio_backtrace), x(audio_newnote), x(audio_lenandrun), \
+	x(audio_gotnote)
+
+int FIELDS( );
 
 #include "ba_play.h"
 
@@ -22,10 +35,16 @@ ba_play_context ctx;
 struct checkpoint
 {
 	// Only updated if different.
-	glyphtype    * curmap[BLKY*BLKX];
-	uint8_t      * currun[BLKY*BLKX];
-	graphictype  * glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
-	vpx_reader baplay_vpx;
+	glyphtype    (* curmap)[BLKY*BLKX];
+	uint8_t      (* currun)[BLKY*BLKX];
+	graphictype  (* glyphdata)[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
+	vpx_reader  * baplay_vpx;
+
+	struct ba_audio_player_stack_element (*audio_stack)[ESPBADAPPLE_SONG_MAX_BACK_DEPTH];
+	uint16_t   (*audio_playing_freq)[NUM_VOICES];
+	uint16_t   (*audio_phase)[NUM_VOICES];
+	int        (*audio_tstop)[NUM_VOICES];
+
 
 	// Points to the farme # where the data actually resides.
 	int curmap_frame;
@@ -33,59 +52,65 @@ struct checkpoint
 	int glyphdata_frame;
 	int baplay_vpx_frame;
 
+	int audio_stack_frame;
+	int audio_playing_freq_frame;
+	int audio_phase_frame;
+	int audio_tstop_frame;
+
+	int audio_nexttrel;
+	int audio_ending;
+	int audio_t;
+	int audio_gotnotes;
+	int audio_sub_t_sample;
+	int audio_outbufferhead;
+	int audio_stackplace;
+
+	int FIELDS( );
+
 } * checkpoints;
+
 int nrcheckpoints;
 
 void ba_i_checkpoint()
 {
-	struct checkpoint * cpp = nrcheckpoints ? &checkpoints[nrcheckpoints] : 0;
+	printf( "CHECKPOINT: %d\n", nrcheckpoints );
 	checkpoints = realloc( checkpoints, (nrcheckpoints+1) * sizeof( struct checkpoint ) );
+	struct checkpoint * cpp = nrcheckpoints ? &checkpoints[nrcheckpoints-1] : 0;
 	struct checkpoint * cp = &checkpoints[nrcheckpoints];
 
-	if( !cpp || memcmp( cpp->curmap, ctx.curmap, sizeof( ctx.curmap ) )
-	{
-		cp->curmap_frame = nrcheckpoints;
-		memcpy( cp->curmap, ctx.curmap, sizeof( ctx.curmap ) );
-	}
-	else
-	{
-		cp->curmap_frame = cpp->curmap_frame;
-	}
-
-	if( !cpp || memcmp( cpp->currun, ctx.currun, sizeof( ctx.currun ) )
-	{
-		cp->currun_frame = nrcheckpoints;
-		memcpy( cp->currun, ctx.currun, sizeof( ctx.currun ) );
-	}
-	else
-	{
-		cp->currun_frame = cpp->currun_frame;
+	#define CPFIELD( field, ctf, size ) \
+	if( !cpp || memcmp( cpp->field, ctf, size ) ) \
+	{ \
+		cp->field##_frame = nrcheckpoints; \
+		cp->field = malloc( size ); \
+		memcpy( cp->field, ctf, size ); \
+	} \
+	else \
+	{ \
+		cp->field = checkpoints[cpp->field##_frame].field; \
+		cp->field##_frame = cpp->field##_frame; \
 	}
 
-	if( !cpp || memcmp( cpp->glyphdata, ctx.glyphdata, sizeof( ctx.glyphdata ) )
-	{
-		cp->glyphdata_frame = nrcheckpoints;
-		memcpy( cp->glyphdata, ctx.glyphdata, sizeof( ctx.glyphdata ) );
-	}
-	else
-	{
-		cp->glyphdata_frame = cpp->glyphdata_frame;
-	}
+	CPFIELD( curmap, ctx.curmap, sizeof( ctx.curmap ) );
+	CPFIELD( currun, ctx.currun,  sizeof( ctx.currun ) );
+	CPFIELD( glyphdata, ctx.glyphdata, sizeof( ctx.glyphdata ) );
+	CPFIELD( baplay_vpx, &ctx.vpx_changes, sizeof( ctx.vpx_changes ) );
+	CPFIELD( audio_stack, &ba_player.stack, sizeof( ba_player.stack ) );
+	CPFIELD( audio_playing_freq, ba_player.playing_freq, sizeof( ba_player.playing_freq ) );
+	CPFIELD( audio_phase, ba_player.phase, sizeof( ba_player.phase ) );
+	CPFIELD( audio_tstop, ba_player.tstop, sizeof( ba_player.tstop ) );
 
 
-	if( !cpp || memcmp( cpp->baplay_vpx, ctx.glyphdata, sizeof( ctx.glyphdata ) )
-	{
-		cp->baplay_vpx_frame = nrcheckpoints;
-		memcpy( cp->baplay_vpx, ctx.glyphdata, sizeof( ctx.glyphdata ) );
-	}
-	else
-	{
-		cp->baplay_vpx_frame = cpp->baplay_vpx_frame;
-	}
+	cp->audio_nexttrel = ba_player.nexttrel;
+	cp->audio_ending = ba_player.ending;
+	cp->audio_t = ba_player.t;
+	cp->audio_gotnotes = ba_player.gotnotes;
+	cp->audio_sub_t_sample = ba_player.sub_t_sample;
+	cp->audio_outbufferhead = ba_player.outbufferhead;
+	cp->audio_stackplace = ba_player.stackplace;
 
-
-
-
+	#define x(tf) cp->tf = tf;0
+	int FIELDS(x);
 
 	nrcheckpoints++;
 }
@@ -328,11 +353,10 @@ void EmitSamples8()
 		if( f < 0 ) f = 0; 
 		if( f > 255.5 ) f = 255.5;
 		int v = f;
-		uint8_t * gof = gifout->frame;
 		int zx, zy;
-		for( zx = 0; zx < ZOOM; zx++ )
-		for( zy = 0; zy < ZOOM; zy++ )
-			gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = (f/120);
+		//for( zx = 0; zx < ZOOM; zx++ )
+		//for( zy = 0; zy < ZOOM; zy++ )
+		//	gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = (f/120);
 		uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
 		CNFGColor( color );
 		CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );

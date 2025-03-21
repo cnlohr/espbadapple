@@ -28,6 +28,10 @@
 
 #define DBLOCKSIZE (BLOCKSIZE*BLOCKSIZE*BITSETS_TILECOMP/8)
 
+#ifndef CHECKPOINT
+#define CHECKPOINT(x...)
+#endif
+
 #if TILE_COUNT > 256
 typedef uint16_t glyphtype;
 #else
@@ -41,6 +45,11 @@ typedef uint32_t graphictype;
 #define GRAPHICSIZE_WORDS 2
 typedef uint16_t graphictype;
 #endif
+
+#ifndef CHECKPOINT
+#define CHECKPOINT(x)
+#endif
+
 
 typedef struct ba_play_context_
 {
@@ -64,12 +73,14 @@ static int ba_play_setup( ba_play_context * ctx )
 		int g = 0;
 		int runsofar = 0;
 		int is0or1 = 0;
+		CHECKPOINT( decodephase = "Reading Glyphs" );
 		//graphictype * gd = &ctx->glyphdata[0];
 		//int cpixel = 0;
 		//int writeg = 0;
 		for( g = 0; g < TILE_COUNT*BLOCKSIZE*BLOCKSIZE; g+=1 )
 		{
 			int tprob = ba_vpx_glyph_probability_run_0_or_1[is0or1][runsofar];
+			CHECKPOINT( decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar );
 			if( ((g) & (BLOCKSIZE*BLOCKSIZE-1)) == 0 )
 			{
 				tprob = 128;
@@ -81,7 +92,9 @@ static int ba_play_setup( ba_play_context * ctx )
 			int ly = ((g/BLOCKSIZE)&(BLOCKSIZE-1))%BLOCKSIZE;
 			for( subpixel = 0; subpixel < BITSETS_TILECOMP; subpixel++ )
 			{
+				CHECKPOINT( decode_prob = tprob );
 				int lb = vpx_read( &ctx->vpx_changes, tprob );
+				CHECKPOINT( decode_lb = lb );
 				if( subpixel == 0 )
 				{
 					if( lb != is0or1 )
@@ -100,6 +113,8 @@ static int ba_play_setup( ba_play_context * ctx )
 		}
 	}
 
+	CHECKPOINT(decodephase = "Initializing Cells" );
+
 	int n;
 	for( n = 0; n < BLKX*BLKY; n++ )
 	{
@@ -114,6 +129,9 @@ static int ba_play_setup( ba_play_context * ctx )
 #else
 	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload), 0, 0 );
 #endif
+
+	CHECKPOINT(decodephase = "Initialize Complete" );
+
 	return 0;
 }
 
@@ -127,9 +145,11 @@ static int ba_play_frame( ba_play_context * ctx )
 
 	int bx = 0, by = 0;
 	int n;
+	CHECKPOINT(decodephase = "Advancing Frame");
 
 	for( n = 0; n < BLKY*BLKX; n++ )
 	{
+		CHECKPOINT(decode_cellid = n);
 		// Need to pull off a transition pair.
 		int fromglyph = ctx->curmap[n];
 		int run = ctx->currun[n];
@@ -146,8 +166,11 @@ static int ba_play_frame( ba_play_context * ctx )
 		int level;
 		int tile;
 
+		CHECKPOINT( decode_class = fromclass, decode_fromglyph = fromglyph, decode_run = run, decode_probability = probability, decodephase = "Continue run" );
+
 		if( vpx_read( rctx, probability ) == 1 )
 		{
+			CHECKPOINT( decode_lb = 1, decodephase = "Continue" );
 			// keep going
 			run = run + 1;
 			if( run > RUNCODES_CONTINUOUS-1 )
@@ -156,6 +179,7 @@ static int ba_play_frame( ba_play_context * ctx )
 		}
 		else
 		{
+			CHECKPOINT( decode_lb = 0, decodephase = "Run Stopped" );
 			// Have a new thing.
 			int probplace = 0;
 			tile = 0;
@@ -167,8 +191,11 @@ static int ba_play_frame( ba_play_context * ctx )
 #else
 				probability = ba_chancetable_glyph[probplace];
 #endif
+				CHECKPOINT( decode_level = level, decodephase = "Decoding bit" );
 				int bit = vpx_read( rctx, probability );
+				CHECKPOINT( decode_lb, bit );
 				tile |= bit<<ppo;
+				CHECKPOINT( decode_tileid, tile );
 
 				if( bit )
 					probplace += 1<<ppo;
@@ -176,6 +203,8 @@ static int ba_play_frame( ba_play_context * ctx )
 					probplace++;
 				ppo--;
 			}
+
+			CHECKPOINT( decodephase = "Committing Tile" );
 			ctx->curmap[n] = tile;
 			ctx->currun[n] = 0;
 

@@ -89,6 +89,7 @@ static int ba_audio_internal_pull_bit( struct ba_audio_player_t * player, uint16
 	BITPULL_START;
 	BITPULL;
 	BITPULL_END;
+	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 0 );
 	return bit;
 }
 
@@ -96,9 +97,11 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 {
 	BITPULL_START;
 	int exp = 0;
+	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0 );
 	do
 	{
 		BITPULL;
+		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp );
 		if( bit ) break;
 		exp++;
 	} while( 1 );
@@ -109,9 +112,11 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 	{
 		v = v << 1;
 		BITPULL;
+		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br );
 		v |= bit;
 	}
 	BITPULL_END;
+	CHECKPOINT( audio_golmb = v-1 );
 	return v-1;
 }
 
@@ -123,30 +128,38 @@ int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16
 	{
 		uint16_t he = htree[ofs];
 		BITPULL;
+		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_ofs = ofs, audio_last_he = he );
 		he>>=bit*8;
 		if( he & 0x80 )
 		{
 			BITPULL_END;
+			CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_pullhuff = he & 0x7f, audio_last_he = he );
 			return he & 0x7f;
 		}
 		he &= 0xff;
+		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he );
 		ofs = he + 1 + ofs;
 	} while( 1 );
 }
 
 static void ba_audio_setup()
 {
+	CHECKPOINT( decodephase = "AUDIO: Setup" );
 	struct ba_audio_player_t * player = &ba_player;
 	memset( player, 0, sizeof( *player ) );
 	player->stack[0].remain = ESPBADAPPLE_SONG_LENGTH + 1;
+	CHECKPOINT( audio_stack_place = 0, audio_stack_remain = player->stack[0].remain, audio_stack_offset = player->stack[0].offset );
 }
 
 static int ba_audio_pull_note( struct ba_audio_player_t * player )
 {
+	CHECKPOINT( decodephase = "AUDIO: Pull Note" );
 	int stackplace = player->stackplace;
 	player->stack[stackplace].remain--;
+	CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, decodephase = "AUDIO: Pulling Note" );
 	while( player->stack[stackplace].remain == 0 )
 	{
+		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, decodephase = "Popping back stack" );
 		stackplace--;
 		if( stackplace < 0 ) return -5;
 	}
@@ -156,11 +169,15 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 	do
 	{
 		optr = &player->stack[stackplace].offset;
+		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, decodephase = "Checking if next bit is backtrack" );
 		int bpstart = *optr;
 		int is_backtrace = ba_audio_internal_pull_bit( player, optr );
+		CHECKPOINT( audio_backtrace = is_backtrace, decodephase = is_backtrace ? "AUDIO: Backtrack" : "AUDIO: No Backtrack" );
 		if( !is_backtrace ) break;
 
+		CHECKPOINT( decodephase = "AUDIO: Reading backtrack run length" );
 		int runlen = ba_audio_internal_pull_exp_golomb( player, optr );
+		CHECKPOINT( decodephase = "AUDIO: Reading backtrack offset" );
 		int offset = ba_audio_internal_pull_exp_golomb( player, optr );
 
 		int tremain = runlen + ESPBADAPPLE_SONG_MINRL + 1;
@@ -168,6 +185,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		player->stack[stackplace].remain -= tremain;
 		//printf( "RATCHET IN: %d / LEFT: %d\n", tremain, player->stack[stackplace].remain );
 		stackplace++;
+		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, decodephase = "Committed Backtrack" );
 
 		player->stack[stackplace] = (struct ba_audio_player_stack_element)
 		{ 
@@ -177,8 +195,12 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		//printf( "RTK: %d %d\n", player->stack[stackplace].offset, player->stack[stackplace].remain );
 	} while( 1 );
 
+	CHECKPOINT( decodephase = "AUDIO: Reading Note" );
 	int note = ba_audio_internal_pull_huff( player, espbadapple_song_huffnote, optr );
+	CHECKPOINT( audio_newnote = note, decodephase = "Read Note" );
+	CHECKPOINT( decodephase = "AUDIO: Reading Length and Run" );
 	int lenandrun = ba_audio_internal_pull_huff( player, espbadapple_song_hufflen, optr );
+	CHECKPOINT( audio_lenandrun = lenandrun, decodephase = "AUDIO: Read Len And Run" );
 
 	//printf( "[%02x %02x, %d, %d]\n", note, lenandrun, player->stack[stackplace].remain, stackplace );
 	player->stackplace = stackplace;
@@ -188,19 +210,24 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 static inline void perform_16th_note( struct ba_audio_player_t * player )
 {
 	int i;
+	CHECKPOINT( decodephase = "AUDIO: Perform 16th Note" );
 	for( i = 0; i < NUM_VOICES; i++ )
 	{
 		if( player->playing_freq[i] && player->tstop[i] <= player->t )
 		{
+			CHECKPOINT( decodephase = "AUDIO: Note Complete" );
 			player->playing_freq[i] = 0;
 		}
 	}
 
 	while( player->t >= player->nexttrel && !player->ending )
 	{
+		CHECKPOINT( decodephase = "AUDIO: Pulling New Note" );
 		int note = ba_audio_pull_note( player );
+		CHECKPOINT( audio_gotnote = note, decodephase = "AUDIO: Pulling New Note" );
 		if( note < 0 )
 		{
+			CHECKPOINT( decodephase = "AUDIO: Ending" );
 			player->ending = 1;
 			break;
 		}
@@ -226,6 +253,7 @@ static inline void perform_16th_note( struct ba_audio_player_t * player )
 				player->nexttrel = player->t + endurement;
 				//printf( "%d\n", player->nexttrel );
 				//fprintf( stderr, "NEXT: LEN %d -> %d -> %d (%04x)\n", endurement, t, nexttrel, next_note );
+				CHECKPOINT( decodephase = "AUDIO: Processed Note" );
 			}
 		}
 	}
