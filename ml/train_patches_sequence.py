@@ -41,8 +41,8 @@ def deblocking_filter(img_raw):
      - Soft clamping function to keep this filter differentiable
     """
 
-    # Range scaling
-    img = img_raw * 3
+    # Range scaling to [0..2]
+    img = img_raw * 2
 
     B, C, H, W = img.shape
 
@@ -57,7 +57,7 @@ def deblocking_filter(img_raw):
     mask_y = mask_y.view(1, 1, H, 1)
 
     # Number of samples considered per pixel
-    qty = 1 + 2 * mask_x + 2 * mask_y  # shape (B, 1, H, W)
+    qty = 1 + 1 * mask_x + 1 * mask_y  # shape (B, 1, H, W)
 
     # Pad with replication (equivalent to clamps in c pixel-sampling function)
     padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
@@ -69,18 +69,15 @@ def deblocking_filter(img_raw):
     up = padded[:, :, :-2, 1:-1]
     down = padded[:, :, 2:, 1:-1]
 
-    # Sampled sum
-    neighbor_sum = center + (left + right) * mask_x + (up + down) * mask_y
-    total_sum = center + neighbor_sum
-
-    # Apply clamping
-    filtered = soft_clamp(total_sum - qty - 1, min=0, max=3)
+    # eval transform
+    filtered = center + (left/2 + right/2) * mask_x + (up/2 + down/2) * mask_y - qty
+    filtered = soft_clamp(filtered, min=0, max=2)
 
     # Pass through non-filtered pixels as-is
     result = torch.where(qty == 1, center, filtered)
 
     # Undo scaling
-    result /= 3
+    result /= 2
 
     return result
 
@@ -158,7 +155,7 @@ class ImageReconstruction(nn.Module):
 
             self.sequence = nn.Parameter(torch.zeros((len(data), self.tiles_per_img, nblocks), dtype=torch.float32, device=self.blocks.device), requires_grad=True)
 
-            tau = 0.01  # temperature parameter, controls "peakiness" of resulting distribution
+            tau = 0.002  # temperature parameter, controls "peakiness" of resulting distribution
 
             for imgs, idxs in dl:
                 mse = matcher(self.blocks, imgs)
@@ -277,8 +274,8 @@ class BlockTrainer:
 
         self.optim = torch.optim.Adam(
             [
-                {"params": self.recr.blocks, "lr": 0.001},
-                {"params": self.recr.sequence, "lr": 0.001 * len(self.dataset) / nblocks}  # Scaling: Categorical distributions get fewer gradients than blocks...
+                {"params": self.recr.blocks, "lr": 0.005},
+                {"params": self.recr.sequence, "lr": 0.01}  # Categorical distributions are sampled less often than blocks
             ]
         )
 
