@@ -1,8 +1,10 @@
 import torch
 from torch.utils.data import Dataset
+import av
 import cv2
 import numpy as np
 from blocksettings import *
+
 
 class VideoFrames(Dataset):
     """
@@ -13,19 +15,15 @@ class VideoFrames(Dataset):
         self.frames = []
 
     def load_data(self, video_path):
-        cap = cv2.VideoCapture(video_path)
+        container = av.open(video_path)
 
-        while True:
-            r, frame = cap.read()
-
-            if not r:
-                break
-
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frame = cv2.resize(frame, (img_size[1], img_size[0]), interpolation=cv2.INTER_AREA)
-            frame = frame.astype(np.float32)[None, ...] / 255.0
-            frame = torch.from_numpy(frame).to(self.device)
-            self.frames.append(frame)
+        for frame in container.decode(video=0):
+            frame_np = frame.to_ndarray(format='bgr24')
+            frame_np = cv2.cvtColor(frame_np, cv2.COLOR_BGR2GRAY)
+            frame_np = cv2.resize(frame_np, (img_size[1], img_size[0]), interpolation=cv2.INTER_AREA)
+            frame_np = frame_np.astype(np.float32)[None, ...] / 255.0
+            frame_np = torch.from_numpy(frame_np).to(self.device)
+            self.frames.append(frame_np)
 
     def __len__(self):
         return len(self.frames)
