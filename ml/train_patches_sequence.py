@@ -180,7 +180,7 @@ class ImageReconstruction(nn.Module):
 
         # this only works if we have more than two frames in a batch
         if len(frame_idxs_in) < 2:
-            return torch.Tensor([0.0])
+            return torch.tensor([0.0], dtype=torch.float32, device=device)
 
         frame_idxs = frame_idxs_in[:-1]  # pull only from range sampled by this batch
         frame_idxs_b = torch.clip(frame_idxs+1, min=None, max=self.sequence.shape[0]-1)
