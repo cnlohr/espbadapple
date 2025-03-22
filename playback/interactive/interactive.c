@@ -7,30 +7,37 @@ void ba_i_checkpoint();
 // Various set things
 const char * decodephase;
 
-#define FIELDS(x) x(decodeglyph), x(decode_is0or1), x(decode_runsofar), x(decode_prob), x(decode_lb), \
-	x(decode_cellid), x(decode_class), x(decode_run), x(decode_fromglyph), x(decode_probability), \
-	x(decode_tileid), x(decode_level), x(audio_pullbit), x(audio_gotbit), x(audio_last_bitmode), \
-	x(audio_golmb_exp), x(audio_golmb_v), x(audio_golmb_br), x(audio_golmb), x(audio_last_ofs), \
-	x(audio_last_he), x(audio_pullhuff), x(audio_stack_place), x(audio_stack_remain), \
-	x(audio_stack_offset), x(audio_backtrace), x(audio_newnote), x(audio_lenandrun), \
+#define FIELDS(x) x(decodeglyph) x(decode_is0or1) x(decode_runsofar) x(decode_prob) x(decode_lb) \
+	x(decode_cellid) x(decode_class) x(decode_run) x(decode_fromglyph) x(decode_probability) \
+	x(decode_tileid) x(decode_level) x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) \
+	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
+	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
+	x(audio_stack_offset) x(audio_backtrace) x(audio_newnote) x(audio_lenandrun) \
 	x(audio_gotnote)
 
-int FIELDS( );
+#define xcomma(y) y,
+int FIELDS(xcomma) dummy;
 
 #include "ba_play.h"
 
 #define F_SPS 48000
 #define AUDIO_BUFFER_SIZE 2048
 
+int AS_PER_FRAME = F_SPS/30;
 
 #include "ba_play_audio.h"
 
 
 #define CNFG_IMPLEMENTATION
+#define CNFGOGL
 #include "rawdraw_sf.h"
+
+#include "extradrawing.h"
 
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
+
+int frame = 0;
 
 struct checkpoint
 {
@@ -45,6 +52,8 @@ struct checkpoint
 	uint16_t   (*audio_phase)[NUM_VOICES];
 	int        (*audio_tstop)[NUM_VOICES];
 
+	uint8_t 	* audio_sample_data;
+	int 		audio_sample_data_frame;
 
 	// Points to the farme # where the data actually resides.
 	int curmap_frame;
@@ -65,7 +74,9 @@ struct checkpoint
 	int audio_outbufferhead;
 	int audio_stackplace;
 
-	int FIELDS( );
+	int frame;
+
+	int FIELDS(xcomma) dummy;
 
 } * checkpoints;
 
@@ -100,7 +111,6 @@ void ba_i_checkpoint()
 	CPFIELD( audio_phase, ba_player.phase, sizeof( ba_player.phase ) );
 	CPFIELD( audio_tstop, ba_player.tstop, sizeof( ba_player.tstop ) );
 
-
 	cp->audio_nexttrel = ba_player.nexttrel;
 	cp->audio_ending = ba_player.ending;
 	cp->audio_t = ba_player.t;
@@ -109,17 +119,22 @@ void ba_i_checkpoint()
 	cp->audio_outbufferhead = ba_player.outbufferhead;
 	cp->audio_stackplace = ba_player.stackplace;
 
-	#define x(tf) cp->tf = tf;0
-	int FIELDS(x);
+	cp->audio_sample_data = cpp ? cpp->audio_sample_data : 0 ;
+	cp->audio_sample_data_frame = cpp ? cpp->audio_sample_data_frame : -1;
+
+	cp->frame = frame;
+
+	#define xassign(tf) cp->tf = tf;
+	FIELDS(xassign);
 
 	nrcheckpoints++;
 }
 
-
+int mousePositionX, mousePositionY, isMouseDown;
 
 void HandleKey( int keycode, int bDown ) { }
-void HandleButton( int x, int y, int button, int bDown ) { }
-void HandleMotion( int x, int y, int mask ) { }
+void HandleButton( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
+void HandleMotion( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
 int HandleDestroy() { return 0; }
 
 #define ZOOM 2
@@ -368,9 +383,9 @@ void EmitSamples8()
 int main()
 {
 	int x, y;
-	int frame = 0;
 
-	CNFGSetup( "test", 1024, 768 );
+	CNFGSetup( "test", 1920/2, 1080/2 );
+	ExtraDrawingInit( 1920/2, 1080/2 );
 
 #ifdef VPX_GREY4
 	static uint8_t palette[48] = { 0, 0, 0, 85, 85, 85, 171, 171, 171, 255, 255, 255 };
@@ -386,59 +401,97 @@ int main()
 	int outbuffertail = 0;
 	int lasttail = 0;
 
-	while( CNFGHandleInput() && frame < FRAMECT )
+	while( CNFGHandleInput() )
 	{
-		CNFGClearFrame();
 
-		if( ba_play_frame( &ctx ) ) break;
-
-#ifdef FAKESAMPLE8
-		EmitSamples8();
-#else
-		for( y = 0; y < RESY; y++ )
+		if( frame < FRAMECT )
 		{
-			for( x = 0; x < RESX; )
+
+			if( ba_play_frame( &ctx ) ) break;
+
+
+			frame++;
+
+			lasttail = outbuffertail;
+
+			outbuffertail = (AS_PER_FRAME + outbuffertail) % AUDIO_BUFFER_SIZE;
+			ba_audio_fill_buffer( out_buffer_data, outbuffertail );
+
+			struct checkpoint * cp = &checkpoints[nrcheckpoints-1];
+			uint8_t * ad = cp->audio_sample_data = malloc( AS_PER_FRAME );
+			cp->audio_sample_data_frame = nrcheckpoints;
+			for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
 			{
-				{
-					int sample = SampleValueAt( x, y );
-					int f = sample;
-#ifdef VPX_GREY4
-					f = f * 85;
-#elif defined( VPX_GREY3 )
-					f = f * 128;
-#endif
-					if( f < 0 ) f = 0; 
-					if( f > 255.5 ) f = 255.5;
-					int v = f;
-					uint8_t * gof = gifout->frame;
-					int zx, zy;
-					for( zx = 0; zx < ZOOM; zx++ )
-					for( zy = 0; zy < ZOOM; zy++ )
-						gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = sample;
-					uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
-					CNFGColor( color );
-					CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
-				}
+				*(ad++) = out_buffer_data[n];
+				float fo = out_buffer_data[n] / 128.0 - 1.0;
+				fwrite( &fo, 1, 4, fAudioDump );
 			}
 		}
 
-#endif
+		CNFGClearFrame();
+        Clay_SetPointerState((Clay_Vector2) { mousePositionX, mousePositionY }, isMouseDown);
+		Clay_BeginLayout();
 
-		frame++;
+		Clay_ElementDeclaration sidebarItemConfig = (Clay_ElementDeclaration) {
+			.layout = {
+				.sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50) }
+			},
+			.backgroundColor = COLOR_ORANGE
+		};
 
-		lasttail = outbuffertail;
-		outbuffertail = (F_SPS/30*frame) % AUDIO_BUFFER_SIZE;
-		ba_audio_fill_buffer( out_buffer_data, outbuffertail );
-
-		for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
+		//EmitSamples8();
+		CLAY({ .id = CLAY_ID("OuterContainer"), .layout = { .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(16), .childGap = 16 }, .backgroundColor = {250,250,255,255} })
 		{
-			float fo = out_buffer_data[n] / 128.0 - 1.0;
-			fwrite( &fo, 1, 4, fAudioDump );
+			CLAY({
+				.id = CLAY_ID("SideBar"),
+				.layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIXED(300), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16 },
+				.backgroundColor = COLOR_LIGHT
+			})
+			{
+
+
+// .image = { .imageData = &profilePicture, .sourceDimensions = {60, 60} }
+				CLAY({ .id = CLAY_ID("ProfilePictureOuter"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } }, .backgroundColor = COLOR_RED })
+				{
+					CLAY({ .id = CLAY_ID("ProfilePicture"), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_FIXED(60) }}, }) {}
+					CLAY_TEXT(CLAY_STRING("Clay - UI Library"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));
+				}
+
+				// Standard C code like loops etc work inside components
+				for (int i = 0; i < 5; i++) {
+					//SidebarItemComponent();
+						CLAY(sidebarItemConfig) {
+					}
+				}
+
+				CLAY({ .id = CLAY_ID("MainContent"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_LIGHT }) {}
+			}
 		}
+
+		// All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
+		Clay_RenderCommandArray renderCommands = Clay_EndLayout();
+
+
+        // More comprehensive rendering examples can be found in the renderers/ directory
+        for (int i = 0; i < renderCommands.length; i++) {
+            Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
+
+            switch (renderCommand->commandType) {
+                case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
+                    DrawRectangle( renderCommand->boundingBox, renderCommand->renderData.rectangle.backgroundColor);
+					break;
+				case CLAY_RENDER_COMMAND_TYPE_TEXT:
+				{
+					DrawTextClay( renderCommand );
+					break;
+				}
+            }
+        }
+
+		DrawFormat( 50, 200, 2, 0xffffffff, "Test %d\n", frame );
 
 		CNFGSwapBuffers();
 	}
-
 	return 0;
 }
 
