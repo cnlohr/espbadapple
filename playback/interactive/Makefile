@@ -1,5 +1,7 @@
 all : interactive
 
+CFLAGS:=-O2 -g
+
 include ../../common/make.inc
 
 CFLAGS+=-I. -I.. -I../../common -I../../vpxtest

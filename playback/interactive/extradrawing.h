@@ -79,6 +79,11 @@ void ExtraDrawingInit( int screenWidth, int screenHeight )
 		labelDoneTime[j] = 0;
 }
 
+int inBox( Clay_BoundingBox b )
+{
+	Clay_Vector2 rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+	return ( rel.x < b.width && rel.y < b.height && rel.x >= 0 && rel.y >= 0 );
+}
 
 void SetColor( Clay_Color c )
 {

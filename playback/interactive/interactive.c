@@ -10,7 +10,12 @@ int frame = 0;
 
 double bitsperframe_audio[FRAMECT];
 double bitsperframe_video[FRAMECT];
-int    checkpoint_offset_by_frame[FRAMECT];
+
+#define MAX_PREFRAMES 8192
+int checkpoint_offset_by_frame[FRAMECT];
+int checkpoint_offset_by_frame_virtual[FRAMECT+MAX_PREFRAMES];
+int vframe, vframe_offset;
+
 void ba_i_checkpoint();
 
 // Various set things
@@ -48,6 +53,8 @@ ba_play_context ctx;
 
 
 int cursor = 0;
+int midCursor = 0;
+int topCursor = 0;
 
 struct checkpoint
 {
@@ -85,6 +92,8 @@ struct checkpoint
 	int audio_stackplace;
 
 	int frame;
+	int vframe;
+	int frameChanged;
 
 	int FIELDS(xcomma) dummy;
 
@@ -132,9 +141,16 @@ void ba_i_checkpoint()
 	cp->audio_sample_data = cpp ? cpp->audio_sample_data : 0 ;
 	cp->audio_sample_data_frame = cpp ? cpp->audio_sample_data_frame : -1;
 
+	cp->frameChanged = cpp ? ( frame != cpp->frame ) ? 1 : 0 : 0;
 	cp->frame = frame;
+	
+	if( cp->frameChanged ) vframe++;
+	if( frame == 0 && ( nrcheckpoints % 500 == 0 ) && vframe < MAX_PREFRAMES ) vframe++;
+	if( frame && !vframe_offset ) vframe_offset = vframe;
+	cp->vframe = vframe;
 
 	checkpoint_offset_by_frame[frame] = nrcheckpoints;
+	checkpoint_offset_by_frame_virtual[vframe] = nrcheckpoints;
 	#define xassign(tf) cp->tf = tf;
 	FIELDS(xassign);
 
@@ -317,11 +333,9 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 	KOut( tg );
 }
 
-void EmitSamples8()
+void EmitSamples8( float ofsx, float ofsy, float fzoom, glyphtype * gm, graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
 {
 	int bx, by;
-
-	glyphtype * gm = ctx.curmap;
 	int subframe;
 	memset( fba, 0, sizeof( fba ) );
 
@@ -334,13 +348,13 @@ void EmitSamples8()
 			{
 				// Happens per-column-in-block
 				glyphtype gindex = gm[gmi];
-				graphictype * g = ctx.glyphdata[gindex];
+				graphictype * g = glyphdata[gindex];
 				int sx = 0;
 				if( bx > 0 )
 				{
 					graphictype tgnext = g[1];
 					graphictype tg = g[0];
-					graphictype tgprev = (bx > 0 ) ? ctx.glyphdata[gm[gmi-1]][7] : tgnext;
+					graphictype tgprev = (bx > 0 ) ? glyphdata[gm[gmi-1]][7] : tgnext;
 
 					EmitPartial( tgprev, tg, tgnext, subframe );
 					sx = 1;
@@ -356,7 +370,7 @@ void EmitSamples8()
 					// Blend last.
 					graphictype tgprev = g[6];
 					graphictype tg = g[7];
-					graphictype tgnext = (bx<RESX/BLOCKSIZE-1)?ctx.glyphdata[gm[gmi-1]][0] : tgprev;
+					graphictype tgnext = (bx<RESX/BLOCKSIZE-1)?glyphdata[gm[gmi+1]][0] : tgprev;
 					EmitPartial( tgprev, tg, tgnext, subframe );
 				}
 				gmi++;
@@ -378,25 +392,173 @@ void EmitSamples8()
 		//	gof[zx+x*ZOOM + (zy+y*ZOOM)*RESX*ZOOM] = (f/120);
 		uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
 		CNFGColor( color );
-		CNFGTackRectangle( x*ZOOM, y*ZOOM, x*ZOOM+ZOOM, y*ZOOM+ZOOM );
+		CNFGTackRectangle( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
 	}
 }
 
 #endif
 
-void DrawBottomGraph( Clay_RenderCommand * render )
+
+void DrawTopGraph( Clay_RenderCommand * render )
 {
+	if( !checkpoints ) return;
+
+	Clay_BoundingBox b = render->boundingBox;
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+	float nindex = 0;
+	int index = 0;
+	int x;
+	static int has_down_focus;
+
+	if( mouseDownThisFrame ) has_down_focus = inBox(b);
+	if( !isMouseDown ) has_down_focus = false;
+
+	int did_scroll = 0;
+
+	if( has_down_focus )
+	{
+		if( cursor_rel.x < 0 )
+		{
+			cursor += cursor_rel.x;
+			did_scroll = 1;
+		}
+		if( cursor_rel.x >= b.width )
+		{
+			cursor += cursor_rel.x - b.width;
+			did_scroll = 1;
+		}
+
+		if( cursor < 0 ) cursor = 0;
+		if( cursor >= nrcheckpoints ) cursor = nrcheckpoints-1;
+		if( did_scroll ) topCursor = cursor;
+	}
+
+	int centerCursor = topCursor;
+
+	int baseZoom = 1;
+	int frameWidth = b.width/baseZoom;
+	int f = centerCursor - frameWidth/2;
+
+	for( x = 0; x < frameWidth; x++ )
+	{
+		if( x+f >= nrcheckpoints || x+f < 0 ) continue;
+		struct checkpoint * cp = &checkpoints[x+f];
+
+		int vSt = 0;
+
+		if( cp->frameChanged )
+		{
+			CNFGColor( 0x808080ff );
+			CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-vSt-2, b.x+x*baseZoom, b.y+b.height-vSt );
+		}
+
+		//CNFGColor( 0xc0c0c0ff );
+		//CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height, b.x+x*baseZoom, b.y+b.height-bitsA/fMaxBits*b.height );
+		if( ( inBox(b) || has_down_focus ) && (int)(x) == (int)(cursor_rel.x/baseZoom) )
+		{
+		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
+			CNFGColor( 0xffffff80 );
+			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height );
+			if( has_down_focus && !did_scroll )
+			{
+				cursor = x+f;
+			}
+		}
+
+		if( (int)(x+f) == (int)(cursor) )
+		{
+			CNFGColor( 0xffffff30 );
+			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height );
+		}
+	}
+}
+
+
+void DrawMidGraph( Clay_RenderCommand * render )
+{
+	if( !checkpoints ) return;
+
 	Clay_BoundingBox b = render->boundingBox;
 	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
 	float nindex = 0;
 	float iadv = FRAMECT/b.width;
 	int index = 0;
+	int x;
+	static int has_down_focus;
+
+	if( mouseDownThisFrame ) has_down_focus = inBox(b);
+	if( !isMouseDown ) has_down_focus = false;
+
+	int centerFrame = checkpoints[midCursor].vframe;
+
+	int baseZoom = 2;
+	int frameWidth = b.width/baseZoom;
+	int f = centerFrame - frameWidth/2;
+
+	float fMaxBits = 0;
+	for( x = 0; x < frameWidth; x++ )
+	{
+		float bitsA = (x+f-vframe_offset>=0)?bitsperframe_audio[x+f-vframe_offset]:10;
+		float bitsV = (x+f-vframe_offset>=0)?bitsperframe_video[x+f-vframe_offset]:10;
+		float bits = bitsA + bitsV;
+		if( bits > fMaxBits ) fMaxBits = bits;
+	}
+
+	int gotcframe = 0;
+
+	for( x = 0; x < frameWidth; x++ )
+	{
+		if( x+f >= FRAMECT ) continue;
+		if( x+f < 0 ) continue;
+		float bitsA = (x+f-vframe_offset>=0)?bitsperframe_audio[x+f-vframe_offset]:10;
+		float bitsV = (x+f-vframe_offset>=0)?bitsperframe_video[x+f-vframe_offset]:10;
+		float bits = bitsA + bitsV;
+
+		CNFGColor( 0x808080ff );
+		CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-bitsA/fMaxBits*b.height, b.x+x*baseZoom, b.y+b.height );
+		CNFGColor( 0xc0c0c0ff );
+		CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height, b.x+x*baseZoom, b.y+b.height-bitsA/fMaxBits*b.height );
+		if( ( inBox(b) || has_down_focus ) && (int)(x) == (int)(cursor_rel.x/baseZoom) )
+		{
+		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
+			CNFGColor( 0xffffffff );
+			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height );
+			if( has_down_focus )
+			{
+				topCursor = cursor = checkpoint_offset_by_frame_virtual[x+f];
+			}
+		}
+
+
+		int thiscframe = checkpoint_offset_by_frame_virtual[x+f];
+		if( thiscframe >= cursor && !gotcframe )
+		{
+			gotcframe = 1;
+			CNFGColor( 0xffffff30 );
+			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height );
+		}
+	}
+}
+
+void DrawBottomGraph( Clay_RenderCommand * render )
+{
+	if( !checkpoints ) return;
+	Clay_BoundingBox b = render->boundingBox;
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+	float nindex = 0;
+	float iadv = vframe/b.width;
+	int index = 0;
 	float x;
+	int bh = b.height;
+	int bhm = b.height * 1.0;
 	static float mbv = 1.0;
 	static int has_down_focus;
 
-	if( mouseDownThisFrame ) has_down_focus = Clay_Hovered();
+	if( mouseDownThisFrame ) has_down_focus = inBox(b);
 	if( !isMouseDown ) has_down_focus = false;
+
+
+	int gotcframe = 0;
 
 	for( x = 0; x < b.width; x++ )
 	{
@@ -405,27 +567,52 @@ void DrawBottomGraph( Clay_RenderCommand * render )
 		float bitsV = 0;
 		for( ; index < nindex; index++ )
 		{
-			bitsA += bitsperframe_audio[index];
-			bitsV += bitsperframe_video[index];
+			bitsA += (index-vframe_offset>=0)?bitsperframe_audio[index-vframe_offset]:10;
+			bitsV += (index-vframe_offset>=0)?bitsperframe_video[index-vframe_offset]:10;
 		}
 		CNFGColor( 0x808080ff );
-		CNFGTackSegment( b.x + x, b.y+b.height-bitsA/mbv*b.height, b.x+x, b.y+b.height );
+		CNFGTackSegment( b.x + x, b.y+bh-bitsA/mbv*bhm, b.x+x, b.y+bh );
 		CNFGColor( 0xc0c0c0ff );
-		CNFGTackSegment( b.x + x, b.y+b.height-(bitsA+bitsV)/mbv*b.height, b.x+x, b.y+b.height-bitsA/mbv*b.height );
-		if( ( Clay_Hovered() || has_down_focus ) && (int)x == (int)cursor_rel.x )
+		CNFGTackSegment( b.x + x, b.y+bh-(bitsA+bitsV)/mbv*bhm, b.x+x, b.y+bh-bitsA/mbv*bh );
+		if( ( inBox(b) || has_down_focus ) && (int)x == (int)cursor_rel.x )
 		{
 		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
 			CNFGColor( 0xffffffff );
-			CNFGTackSegment( b.x + x, b.y, b.x+x, b.y+b.height-(bitsA+bitsV)/mbv*b.height );
+			CNFGTackSegment( b.x + x, b.y, b.x+x, b.y+bh-(bitsA+bitsV)/mbv*bhm );
 			if( has_down_focus )
 			{
-				cursor = checkpoint_offset_by_frame[(int)nindex];
+				topCursor = midCursor = cursor = checkpoint_offset_by_frame_virtual[(int)nindex];
 			}
 		}
 		if( bitsA+bitsV > mbv ) mbv = bitsA+bitsV;
+
+		int thiscframe = checkpoint_offset_by_frame_virtual[index];
+		if( thiscframe >= cursor && !gotcframe )
+		{
+			gotcframe = 1;
+			CNFGColor( 0xffffff30 );
+			CNFGTackSegment( b.x+x, b.y, b.x+x, b.y+bh );
+		}
 	}
 }
 
+void DrawGeneral( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+
+	float fx, fy, fzoom;
+
+	fx = b.x;
+	fy = b.y;
+	fzoom = CLAY__MIN( b.width / RESX, b.height / RESY );
+
+	EmitSamples8( fx, fy, fzoom, (glyphtype *)cp->curmap, (void*)cp->glyphdata );
+}
 
 int main()
 {
@@ -539,6 +726,17 @@ int main()
 					{
 						CLAY_TEXT(saprintf_g( 1, "Badder Apple" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
+					int tframe = checkpoints?checkpoints[cursor].frame:0;
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */ } )
+					{
+						CLAY_TEXT(saprintf( "%d/%d (Frame %d)", cursor, nrcheckpoints, tframe ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */} )
+					{
+						CLAY_TEXT(saprintf( "A:%3.0f b, V:%3.0f b", bitsperframe_audio[tframe], bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 					{
 						CLAY_TEXT(saprintf_g( (frame < FRAMECT), "Dec %d", frame), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
@@ -555,29 +753,24 @@ int main()
 					{
 						CLAY_TEXT(saprintf_g( 1, "Main Body" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_LEFT, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
+
+					CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(300), .height = CLAY_SIZING_GROW(300) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+					{
+						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
 				}
-
-
-
-
+#if 0
 				CLAY({
 					.id = CLAY_ID("Bottom Mid"),
 					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
-					int tframe = checkpoints?checkpoints[cursor].frame:0;
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
-					{
-						CLAY_TEXT(saprintf( "Event %d / %d (Frame %d)", cursor, nrcheckpoints, tframe ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
-					}
 
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
-					{
-						CLAY_TEXT(saprintf( "Audio: %.0f bits, Video: %.0f bits", bitsperframe_audio[tframe], bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
-					}
 				}
 
+#endif
 
 				CLAY({
 					.id = CLAY_ID("Mid Bottom Bar"),
@@ -587,16 +780,16 @@ int main()
 				{
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING("<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) { if( cursor > 0 ) cursor--; }
+					if( btnClicked ) { if( cursor > 0 ) cursor--; topCursor = cursor; }
 
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					CLAY({ .custom = { .customData = DrawTopGraph } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 					{
 						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) { if( cursor < nrcheckpoints-1 ) cursor++; }
+					if( btnClicked ) { if( cursor < nrcheckpoints-1 ) cursor++; topCursor = cursor; }
 				}
 
 
@@ -608,36 +801,38 @@ int main()
 				{
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING("<<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
+					if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; for( ; cursor > 0; cursor-- ) if( checkpoints[cursor].frame < tframe - 150 ) { break; } midCursor = topCursor = cursor; }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING("|<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; int k = cursor; for( ; k >= 0; k-- ) if( checkpoints[k].frame != tframe ) { cursor = k; break; } }
+					if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; for( ; cursor > 0; cursor-- ) if( checkpoints[cursor].frame != tframe ) { break; } midCursor = topCursor = cursor; }
 
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					CLAY({ .custom = { .customData = DrawMidGraph } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 					{
 						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">|"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked && checkpoints ) { int tframe = checkpoints[cursor].frame; int k = cursor; for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame != tframe ) { for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame == tframe+1 ) cursor = k; else break; break; } }
+					if( btnClicked && checkpoints ) { int tframe = checkpoints[cursor].frame; int k = cursor; for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame != tframe ) { for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame == tframe+1 ) cursor = k; else break; break; } midCursor = topCursor = cursor; }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">>"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
+					if( btnClicked && checkpoints ) { int tframe = checkpoints[cursor].frame; int k = cursor; for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame > tframe + 150 ) { cursor = k-1; break; } midCursor = topCursor = cursor; }
 				}
 
 				CLAY({
+					.id = CLAY_ID("Final Bottom Bar Holder"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) } },
+					.backgroundColor = COLOR_PADGREY
+				})
+				CLAY({
 					.id = CLAY_ID("Final Bottom Bar"),
-					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.custom = { .customData = DrawBottomGraph },
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(32), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
-					CLAY({ .custom = { .customData = DrawBottomGraph } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
-					{
-						CLAY({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(16) } } }) {}
-					}
 				}
 
 			}
