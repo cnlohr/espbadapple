@@ -36,9 +36,8 @@ def soft_clamp(x, min, max, hardness=10.0):
 
 def deblocking_filter(img_raw):
     """
-    Runs Charles' custom deblocking filter on inputs, with some modifications:
-     - Our inputs are float 0-1; we scale these up to 0-3 to match the int range, but otherwise stay floating point
-     - Soft clamping function to keep this filter differentiable
+    Runs Charles' custom deblocking filter on inputs.
+    This math is floating point with a clamp, but otherwise performs a similar operation.
     """
 
     # Range scaling to [0..2]
@@ -70,7 +69,7 @@ def deblocking_filter(img_raw):
     down = padded[:, :, 2:, 1:-1]
 
     # eval transform
-    filtered = center + (left/2 + right/2) * mask_x + (up/2 + down/2) * mask_y - qty
+    filtered = center + (left + right + 1) / 2 * mask_x + (up + down + 1) / 2 * mask_y - qty
     filtered = soft_clamp(filtered, min=0, max=2)
 
     # Pass through non-filtered pixels as-is
