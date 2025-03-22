@@ -42,15 +42,15 @@ int frame = 0;
 struct checkpoint
 {
 	// Only updated if different.
-	glyphtype    (* curmap)[BLKY*BLKX];
-	uint8_t      (* currun)[BLKY*BLKX];
+	glyphtype	(* curmap)[BLKY*BLKX];
+	uint8_t	  (* currun)[BLKY*BLKX];
 	graphictype  (* glyphdata)[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS];
 	vpx_reader  * baplay_vpx;
 
 	struct ba_audio_player_stack_element (*audio_stack)[ESPBADAPPLE_SONG_MAX_BACK_DEPTH];
 	uint16_t   (*audio_playing_freq)[NUM_VOICES];
 	uint16_t   (*audio_phase)[NUM_VOICES];
-	int        (*audio_tstop)[NUM_VOICES];
+	int		(*audio_tstop)[NUM_VOICES];
 
 	uint8_t 	* audio_sample_data;
 	int 		audio_sample_data_frame;
@@ -84,7 +84,7 @@ int nrcheckpoints;
 
 void ba_i_checkpoint()
 {
-	printf( "CHECKPOINT: %d\n", nrcheckpoints );
+	//printf( "CHECKPOINT: %d\n", nrcheckpoints );
 	checkpoints = realloc( checkpoints, (nrcheckpoints+1) * sizeof( struct checkpoint ) );
 	struct checkpoint * cpp = nrcheckpoints ? &checkpoints[nrcheckpoints-1] : 0;
 	struct checkpoint * cp = &checkpoints[nrcheckpoints];
@@ -130,13 +130,6 @@ void ba_i_checkpoint()
 	nrcheckpoints++;
 }
 
-int mousePositionX, mousePositionY, isMouseDown;
-
-void HandleKey( int keycode, int bDown ) { }
-void HandleButton( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
-void HandleMotion( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
-int HandleDestroy() { return 0; }
-
 #define ZOOM 2
 
 #ifdef VPX_GREY4
@@ -151,9 +144,9 @@ int PValueAt( int x, int y, int * edge )
 
 	int tileplace = (x/BLOCKSIZE)+(y/BLOCKSIZE)*(RESX/BLOCKSIZE);
 
-	glyphtype     tileid = ctx.curmap[tileplace];
+	glyphtype	 tileid = ctx.curmap[tileplace];
 	graphictype * sprite = (graphictype*)ctx.glyphdata[tileid];
-	graphictype   g      = sprite[x&(BLOCKSIZE-1)];
+	graphictype   g	  = sprite[x&(BLOCKSIZE-1)];
 
 	uint32_t v = (g>>((y%BLOCKSIZE)));
 	int vout = (v & 1) | (( v & 0x100)>>7);
@@ -207,9 +200,9 @@ int PValueAt( int x, int y, int * edge )
 
 	int tileplace = (x/BLOCKSIZE)+(y/BLOCKSIZE)*(RESX/BLOCKSIZE);
 
-	glyphtype     tileid = ctx.curmap[tileplace];
+	glyphtype	 tileid = ctx.curmap[tileplace];
 	graphictype * sprite = (graphictype*)ctx.glyphdata[tileid];
-	graphictype   g      = sprite[x&(BLOCKSIZE-1)];
+	graphictype   g	  = sprite[x&(BLOCKSIZE-1)];
 
 	uint32_t v = (g>>((y%BLOCKSIZE)));
 	int vout = (v & 1) | (( v & 0x100)>>7);
@@ -295,20 +288,20 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
 	// (so all should fit in working reg space)
 	graphictype A = tgprev >> 8;
-	graphictype B = tgprev;      // implied & 0xff
+	graphictype B = tgprev;	  // implied & 0xff
 	graphictype C = tgnext >> 8;
-	graphictype D = tgnext;      // implied & 0xff
+	graphictype D = tgnext;	  // implied & 0xff
 
 	graphictype E = (B&C)|(A&D); // 8 bits worth of MSB of (next+prev+1)/2
-	graphictype F = D|B;         // 8 bits worth of LSB of (next+prev+1)/2
+	graphictype F = D|B;		 // 8 bits worth of LSB of (next+prev+1)/2
 
 	graphictype G = tg >> 8;
-	graphictype H = tg;          // implied & 0xff
+	graphictype H = tg;		  // implied & 0xff
 
 	if( subframe )
-		tg = (F&G)|(E&H);     // 8 bits worth of MSB of this+(next+prev+1)/2-1
+		tg = (F&G)|(E&H);	 // 8 bits worth of MSB of this+(next+prev+1)/2-1
 	else
-		tg = G|E|(F&H);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+		tg = G|E|(F&H);	   // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
 
 	KOut( tg );
 }
@@ -380,10 +373,16 @@ void EmitSamples8()
 
 #endif
 
+
+void ClickTest( void * v )
+{
+	printf( "CICK\n" );
+}
+
 int main()
 {
 	int x, y;
-
+	short w, h;
 	CNFGSetup( "test", 1920/2, 1080/2 );
 	ExtraDrawingInit( 1920/2, 1080/2 );
 
@@ -403,7 +402,6 @@ int main()
 
 	while( CNFGHandleInput() )
 	{
-
 		if( frame < FRAMECT )
 		{
 
@@ -427,34 +425,31 @@ int main()
 				fwrite( &fo, 1, 4, fAudioDump );
 			}
 		}
-
 		CNFGClearFrame();
-        Clay_SetPointerState((Clay_Vector2) { mousePositionX, mousePositionY }, isMouseDown);
+		Clay_SetPointerState((Clay_Vector2) { mousePositionX, mousePositionY }, isMouseDown);
 		Clay_BeginLayout();
 
+#if 0
 		Clay_ElementDeclaration sidebarItemConfig = (Clay_ElementDeclaration) {
 			.layout = {
 				.sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50) }
 			},
-			.backgroundColor = COLOR_ORANGE
+			.backgroundColor = COLOR_PADGREY
 		};
 
 		//EmitSamples8();
-		CLAY({ .id = CLAY_ID("OuterContainer"), .layout = { .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(16), .childGap = 16 }, .backgroundColor = {250,250,255,255} })
+		CLAY({ .id = CLAY_ID("OuterContainer"), .layout = { .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(16), .childGap = 16 }, .backgroundColor = COLOR_BACKGROUND })
 		{
 			CLAY({
 				.id = CLAY_ID("SideBar"),
 				.layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIXED(300), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16 },
-				.backgroundColor = COLOR_LIGHT
+				.backgroundColor = COLOR_BTNGREY
 			})
 			{
-
-
-// .image = { .imageData = &profilePicture, .sourceDimensions = {60, 60} }
-				CLAY({ .id = CLAY_ID("ProfilePictureOuter"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } }, .backgroundColor = COLOR_RED })
+				CLAY({ .id = CLAY_ID("ProfilePictureOuter"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } }, .backgroundColor = COLOR_BTNGREY2 })
 				{
-					CLAY({ .id = CLAY_ID("ProfilePicture"), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_FIXED(60) }}, }) {}
-					CLAY_TEXT(CLAY_STRING("Clay - UI Library"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));
+					//CLAY({ .id = CLAY_ID("ProfilePicture"), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_FIXED(60) }}, }) {}
+					CLAY_TEXT(CLAY_STRING("Clay - UI Library 1234"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));
 				}
 
 				// Standard C code like loops etc work inside components
@@ -464,7 +459,109 @@ int main()
 					}
 				}
 
-				CLAY({ .id = CLAY_ID("MainContent"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_LIGHT }) {}
+				CLAY({ .id = CLAY_ID("SideBottom"), .layout = {  .padding = CLAY_PADDING_ALL(16), .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_PADGREY })
+				{
+					CLAY_TEXT(CLAY_STRING("Bottom Text"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));	
+				}
+			}
+
+
+			CLAY({ .id = CLAY_ID("MainContent"), .layout = {  .padding = CLAY_PADDING_ALL(16),  .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_PADGREY })
+			{
+				CLAY_TEXT(CLAY_STRING("Right Text"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));	
+			}
+		}
+#endif
+
+		int padding = 4;
+		int paddingChild = 4;
+
+		LayoutStart();
+		{
+			CLAY({ .id = CLAY_ID("OuterContainer"), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_BACKGROUND })
+			{
+
+				CLAY({
+					.id = CLAY_ID("Top Bar"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf_g( 1, "Badder Apple" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf_g( (frame < FRAMECT), "Dec %d", frame), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					}
+				}
+
+				CLAY({
+					.id = CLAY_ID("Main Body"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf_g( 1, "Main Body" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_LEFT, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+				}
+
+
+
+				CLAY({
+					.id = CLAY_ID("Mid Bottom Bar"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING("<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(CLAY_STRING( "Detail Scrub" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING(">"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+
+				}
+
+				CLAY({
+					.id = CLAY_ID("Bottom Bar"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING("<<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING("|<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(CLAY_STRING( "Scrub Bar" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING(">|"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING(">>"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked ) printf( "CLICKED\n" );
+
+				}
 			}
 		}
 
@@ -472,23 +569,22 @@ int main()
 		Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
 
-        // More comprehensive rendering examples can be found in the renderers/ directory
-        for (int i = 0; i < renderCommands.length; i++) {
-            Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
-
-            switch (renderCommand->commandType) {
-                case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
-                    DrawRectangle( renderCommand->boundingBox, renderCommand->renderData.rectangle.backgroundColor);
+		// More comprehensive rendering examples can be found in the renderers/ directory
+		for (int i = 0; i < renderCommands.length; i++) {
+			Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
+			switch (renderCommand->commandType) {
+				case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
+					DrawRectangle( renderCommand->boundingBox, renderCommand->renderData.rectangle.backgroundColor);
 					break;
 				case CLAY_RENDER_COMMAND_TYPE_TEXT:
-				{
 					DrawTextClay( renderCommand );
 					break;
-				}
-            }
-        }
+			}
+		}
 
-		DrawFormat( 50, 200, 2, 0xffffffff, "Test %d\n", frame );
+		//DrawFormat( 50, 200, 2, 0xffffffff, "Test %d\n", frame );
+		CNFGGetDimensions( &w, &h );
+		Clay_SetLayoutDimensions((Clay_Dimensions) { w, h });
 
 		CNFGSwapBuffers();
 	}
