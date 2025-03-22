@@ -32,6 +32,10 @@
 #define CHECKPOINT(x...)
 #endif
 
+#ifndef CHECKBITS_VIDEO
+#define CHECKBITS_VIDEO(x...)
+#endif
+
 #if TILE_COUNT > 256
 typedef uint16_t glyphtype;
 #else
@@ -143,6 +147,8 @@ static int ba_play_frame( ba_play_context * ctx )
 
 	vpx_reader * rctx = &ctx->vpx_changes;
 
+	const uint8_t * byteplace_at_start = rctx->buffer;
+
 	int bx = 0, by = 0;
 	int n;
 	CHECKPOINT(decodephase = "Advancing Frame");
@@ -228,6 +234,9 @@ static int ba_play_frame( ba_play_context * ctx )
 			by++;
 		}
 	}
+
+	const uint8_t * byteplace_at_end = rctx->buffer;
+	CHECKBITS_VIDEO( (byteplace_at_end-byteplace_at_start)*8 );
 	return 0;
 }
 

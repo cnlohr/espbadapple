@@ -22,6 +22,14 @@
 #define AUDIO_BUFFER_SIZE 1024
 #endif
 
+#ifndef CHECKPOINT
+#define CHECKPOINT(x...)
+#endif
+
+#ifndef CHECKBITS_AUDIO
+#define CHECKBITS_AUDIO(x...)
+#endif
+
 // Note 0 in MIDI is -69 from A 440.  We are offset at 47, because the lowest note in our stream is note 47.
 #define LOWEST_NOTE (47.0) // Could tune up or down to taste.
 
@@ -87,7 +95,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player );
 static int ba_audio_internal_pull_bit( struct ba_audio_player_t * player, uint16_t * optr )
 {
 	BITPULL_START;
-	BITPULL;
+	BITPULL; CHECKBITS_AUDIO( 1 );
 	BITPULL_END;
 	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 0 );
 	return bit;
@@ -100,7 +108,7 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0 );
 	do
 	{
-		BITPULL;
+		BITPULL; CHECKBITS_AUDIO( 1 );
 		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp );
 		if( bit ) break;
 		exp++;
@@ -111,7 +119,7 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 	for( br = 0; br < exp; br++ )
 	{
 		v = v << 1;
-		BITPULL;
+		BITPULL; CHECKBITS_AUDIO( 1 );
 		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br );
 		v |= bit;
 	}
@@ -127,7 +135,7 @@ int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16
 	do
 	{
 		uint16_t he = htree[ofs];
-		BITPULL;
+		BITPULL; CHECKBITS_AUDIO( 1 );
 		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_ofs = ofs, audio_last_he = he );
 		he>>=bit*8;
 		if( he & 0x80 )

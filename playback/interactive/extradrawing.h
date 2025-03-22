@@ -21,7 +21,10 @@ const Clay_Color COLOR_BTNGREY2 = (Clay_Color) {200, 200, 200, 255};
 const Clay_Color COLOR_WHITE = (Clay_Color) {255, 255, 255, 255};
 #define MAX_BUTTONS 100
 
-int didClickLastFrame[MAX_BUTTONS];
+
+int buttonHasDownFocus[MAX_BUTTONS];
+int buttonHoveredLastFrame[MAX_BUTTONS];
+
 float hoverStates[MAX_BUTTONS];
 int btnNo = 0;
 float fDeltaTime = 0.0;
@@ -29,13 +32,13 @@ double fLast = 0.0;
 
 int lastMouseDown;
 int mouseUpThisFrame = 0;
+int mouseDownThisFrame = 0;
 
 #define MAX_LABELS 1024
 char * labels[MAX_LABELS];
 double labelDoneTime[MAX_LABELS];
 int labelct = 0;
 int btnClicked = 0;
-
 
 int mousePositionX, mousePositionY, isMouseDown;
 
@@ -48,7 +51,6 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 	// See the Clay_ErrorData struct for more information
 	fprintf( stderr, "%s", errorData.errorText.chars);
 }
-
 
 Clay_Dimensions clayTextDim(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
 {
@@ -139,6 +141,7 @@ void LayoutStart()
 
 	btnNo = 0;
 	mouseUpThisFrame = !isMouseDown && lastMouseDown;
+	mouseDownThisFrame = isMouseDown && !lastMouseDown;
 	lastMouseDown = isMouseDown;
 	labelct = 0;
 	btnClicked = 0;
@@ -153,8 +156,28 @@ Clay_String saprintf( const char * fmt, ... )
 	va_start (va, fmt);
 	int len = vsprintf (buf, fmt, va);
 	va_end (va);
+
+	double ldt = 0;
+	//if( !done ) ldt = labelDoneTime[labelct] = CLAY__MIN( CLAY__MAX( labelDoneTime[labelct] - fDeltaTime*15, 0.0 ), len );
+	ldt = labelDoneTime[labelct] += fDeltaTime*15;
+
+	double roundup = ceilf( ldt );
+
+	if( len > roundup )
+	{
+		len = roundup;
+	}
+
 	char * r = labels[labelct] = realloc( labels[labelct], len+1 );
-	memcpy( r, buf, len+1 );
+	memcpy( r, buf, len );
+	r[len] = 0;
+
+	float partial = ldt - (int)ldt;
+	if( partial > 0.001 && roundup < len )
+	{
+		r[len-1] = partial * 96+32;
+	}
+
 	labelct++;
 	return (Clay_String){ .length = len, .chars = r };
 }
@@ -202,7 +225,9 @@ void HandleButtonHover(Clay_ElementId elementId, Clay_PointerData pointerInfo, i
 	if( f > 0.5 ) f = 0.5;
 	if( isMouseDown ) f = 0.0;
 	hoverStates[bn] = f;
-	didClickLastFrame[bn] = mouseUpThisFrame;
+
+	if( mouseDownThisFrame ) buttonHasDownFocus[bn] = 1;
+	buttonHoveredLastFrame[bn] = 1;
 }
 
 
@@ -217,17 +242,12 @@ Clay_Color ClayButton()
 	Clay_OnHover( HandleButtonHover, btnNo );
 	f = hoverStates[btnNo];
 
-	if( didClickLastFrame[btnNo] )
+	if( mouseUpThisFrame )
 	{
-		didClickLastFrame[btnNo] = 0;
-		btnClicked = 1;
+		btnClicked = buttonHasDownFocus[btnNo] && buttonHoveredLastFrame[btnNo];
+		buttonHasDownFocus[btnNo] = 0;
 	}
-	else
-	{
-		btnClicked = 0;
-	}
-
-
+	buttonHoveredLastFrame[btnNo] = 0;
 	btnNo++;
 	return (Clay_Color){ fs*255.0, fs*255.0, fs*255.0, 255.0 };
 }

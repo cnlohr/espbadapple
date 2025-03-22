@@ -1,7 +1,16 @@
 #include <stdio.h>
 
-#define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
+// XXX TODO: Handle partial bits in ba_play.h
 
+#define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
+#define CHECKBITS_AUDIO(x) { bitsperframe_audio[frame] += x;}
+#define CHECKBITS_VIDEO(x) { bitsperframe_video[frame] += x;}
+
+int frame = 0;
+
+double bitsperframe_audio[FRAMECT];
+double bitsperframe_video[FRAMECT];
+int    checkpoint_offset_by_frame[FRAMECT];
 void ba_i_checkpoint();
 
 // Various set things
@@ -37,7 +46,8 @@ int AS_PER_FRAME = F_SPS/30;
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
 
-int frame = 0;
+
+int cursor = 0;
 
 struct checkpoint
 {
@@ -124,6 +134,7 @@ void ba_i_checkpoint()
 
 	cp->frame = frame;
 
+	checkpoint_offset_by_frame[frame] = nrcheckpoints;
 	#define xassign(tf) cp->tf = tf;
 	FIELDS(xassign);
 
@@ -373,11 +384,48 @@ void EmitSamples8()
 
 #endif
 
-
-void ClickTest( void * v )
+void DrawBottomGraph( Clay_RenderCommand * render )
 {
-	printf( "CICK\n" );
+	Clay_BoundingBox b = render->boundingBox;
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+	float nindex = 0;
+	float iadv = FRAMECT/b.width;
+	int index = 0;
+	float x;
+	static float mbv = 1.0;
+	static int has_down_focus;
+
+	if( mouseDownThisFrame ) has_down_focus = Clay_Hovered();
+	if( !isMouseDown ) has_down_focus = false;
+
+	for( x = 0; x < b.width; x++ )
+	{
+		nindex += iadv;
+		float bitsA = 0;
+		float bitsV = 0;
+		for( ; index < nindex; index++ )
+		{
+			bitsA += bitsperframe_audio[index];
+			bitsV += bitsperframe_video[index];
+		}
+		CNFGColor( 0x808080ff );
+		CNFGTackSegment( b.x + x, b.y+b.height-bitsA/mbv*b.height, b.x+x, b.y+b.height );
+		CNFGColor( 0xc0c0c0ff );
+		CNFGTackSegment( b.x + x, b.y+b.height-(bitsA+bitsV)/mbv*b.height, b.x+x, b.y+b.height-bitsA/mbv*b.height );
+		if( ( Clay_Hovered() || has_down_focus ) && (int)x == (int)cursor_rel.x )
+		{
+		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
+			CNFGColor( 0xffffffff );
+			CNFGTackSegment( b.x + x, b.y, b.x+x, b.y+b.height-(bitsA+bitsV)/mbv*b.height );
+			if( has_down_focus )
+			{
+				cursor = checkpoint_offset_by_frame[(int)nindex];
+			}
+		}
+		if( bitsA+bitsV > mbv ) mbv = bitsA+bitsV;
+	}
 }
+
 
 int main()
 {
@@ -511,6 +559,26 @@ int main()
 
 
 
+
+				CLAY({
+					.id = CLAY_ID("Bottom Mid"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					int tframe = checkpoints?checkpoints[cursor].frame:0;
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf( "Event %d / %d (Frame %d)", cursor, nrcheckpoints, tframe ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf( "Audio: %.0f bits, Video: %.0f bits", bitsperframe_audio[tframe], bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
+				}
+
+
 				CLAY({
 					.id = CLAY_ID("Mid Bottom Bar"),
 					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
@@ -519,19 +587,18 @@ int main()
 				{
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING("<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
+					if( btnClicked ) { if( cursor > 0 ) cursor--; }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 					{
-						CLAY_TEXT(CLAY_STRING( "Detail Scrub" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
-
-
+					if( btnClicked ) { if( cursor < nrcheckpoints-1 ) cursor++; }
 				}
+
 
 				CLAY({
 					.id = CLAY_ID("Bottom Bar"),
@@ -545,23 +612,34 @@ int main()
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING("|<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
+					if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; int k = cursor; for( ; k >= 0; k-- ) if( checkpoints[k].frame != tframe ) { cursor = k; break; } }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 					{
-						CLAY_TEXT(CLAY_STRING( "Scrub Bar" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">|"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
-					if( btnClicked ) printf( "CLICKED\n" );
-
+					if( btnClicked && checkpoints ) { int tframe = checkpoints[cursor].frame; int k = cursor; for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame != tframe ) { for( ; k < nrcheckpoints; k++ ) if( checkpoints[k].frame == tframe+1 ) cursor = k; else break; break; } }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">>"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 					if( btnClicked ) printf( "CLICKED\n" );
-
 				}
+
+				CLAY({
+					.id = CLAY_ID("Final Bottom Bar"),
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.backgroundColor = COLOR_PADGREY
+				})
+				{
+					CLAY({ .custom = { .customData = DrawBottomGraph } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+					{
+						CLAY({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(16) } } }) {}
+					}
+				}
+
 			}
 		}
 
@@ -578,6 +656,9 @@ int main()
 					break;
 				case CLAY_RENDER_COMMAND_TYPE_TEXT:
 					DrawTextClay( renderCommand );
+					break;
+				case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+					((void (*)( Clay_RenderCommand *))(renderCommand->renderData.custom.customData))(renderCommand);
 					break;
 			}
 		}
