@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torchvision.utils
 from ttools.modules.losses import LPIPS
-from video_data import VideoFrames
+from video_data import VideoFrames, ContigChunkSampler
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import math
@@ -154,7 +154,7 @@ class ImageReconstruction(nn.Module):
 
             self.sequence = nn.Parameter(torch.zeros((len(data), self.tiles_per_img, nblocks), dtype=torch.float32, device=self.blocks.device), requires_grad=True)
 
-            tau = 0.002  # temperature parameter, controls "peakiness" of resulting distribution
+            tau = 0.003  # temperature parameter, controls "peakiness" of resulting distribution
 
             for imgs, idxs in dl:
                 mse = matcher(self.blocks, imgs)
@@ -169,17 +169,20 @@ class ImageReconstruction(nn.Module):
         # negative -> we want to encourage separation
         return -1 * torch.mean(diffs)
 
-    def tile_f2f_penalty(self, frame_idxs):
+    def tile_f2f_penalty(self, frame_idxs_in):
         """
         A regularization that penalizes changes in tiles between frames. This represents a quality desirable for video
         compression - if tiles change less, we can compress the video more.
 
-        Mathematically, this term wants to minimize the KL-divergence between a given tile's categorical distributions
-        between frames i and i+1. This allows gradients for a given pair of tiles/frames to flow into all blocks.
-
         Note that this penalty is directly against the concept of a movie, as in "moving picture." If you give this loss
         too much weight, you might end up with a slideshow or a single static image.
         """
+
+        # this only works if we have more than two frames in a batch
+        if len(frame_idxs_in) < 2:
+            return torch.Tensor([0.0], device=self.device)
+
+        frame_idxs = frame_idxs_in[:-1]  # pull only from range sampled by this batch
         frame_idxs_b = torch.clip(frame_idxs+1, min=None, max=self.sequence.shape[0]-1)
 
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
@@ -267,14 +270,19 @@ class BlockTrainer:
 
         self.recr.init_sequence_matching(self.dataset)
 
+        # sampe contiguous chunks with random offset
+        # we want the tile-frame-to-frame loss to cover only frames also evaluated for sematic loss
+        self.sampler = ContigChunkSampler(self.dataset,
+                                          batch_size=32,
+                                          random_offset=True,
+                                          shuffle=True)
         self.data_loader = DataLoader(self.dataset,
-                                      batch_size=32,
-                                      shuffle=True)
+                                      batch_sampler=self.sampler)
 
         self.optim = torch.optim.Adam(
             [
-                {"params": self.recr.blocks, "lr": 0.005},
-                {"params": self.recr.sequence, "lr": 0.01}  # Categorical distributions are sampled less often than blocks
+                {"params": self.recr.blocks, "lr": 0.002},
+                {"params": self.recr.sequence, "lr": 0.002 * len(self.dataset) / nblocks}  # Categorical distributions are sampled less often than blocks
             ]
         )
 
@@ -327,7 +335,10 @@ class BlockTrainer:
 
             epoch_n = 0
 
+            self.sampler.set_epoch(epoch)  # update sampler offset and shuffle
+
             for batch_n, (target_img, idx) in enumerate(self.data_loader, start=0):
+
                 self.optim.zero_grad()
 
                 reconstructed_img = self.recr(idx)
@@ -337,12 +348,12 @@ class BlockTrainer:
                 rcd_us = nn.functional.interpolate(reconstructed_img, size=(192, 256), mode='nearest')
 
                 loss_percep = self.perceptual_loss(rcd_us, tgt_us)
-                #loss_change = self.recr.tile_f2f_penalty(idx)  # DISABLED: Not training w/ frame2frame penalty
-                loss_change = torch.tensor(0.0)
+                loss_change = self.recr.tile_f2f_penalty(idx)
 
                 loss = loss_percep + self.change_lambda * loss_change
 
                 loss.backward()
+
                 self.optim.step()
 
                 # clamp block weight range
@@ -355,7 +366,7 @@ class BlockTrainer:
                 epoch_n += 1
 
                 if epoch < 3:
-                    print("Epoch %d Batch %d: Loss %f (percep %f choice %f)" % (epoch, batch_n, loss.item(), loss_percep.item(), loss_change.item()))
+                    print("Epoch %d Batch %d: frames (%d - %d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
 
             epoch_loss /= epoch_n
             epoch_loss_percep /= epoch_n
