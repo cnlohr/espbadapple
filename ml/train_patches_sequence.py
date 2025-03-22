@@ -281,8 +281,8 @@ class BlockTrainer:
 
         self.optim = torch.optim.Adam(
             [
-                {"params": self.recr.blocks, "lr": 0.002},
-                {"params": self.recr.sequence, "lr": 0.002 * len(self.dataset) / nblocks}  # Categorical distributions are sampled less often than blocks
+                {"params": self.recr.blocks, "lr": 0.001},
+                {"params": self.recr.sequence, "lr": 0.001 * len(self.dataset) / nblocks}  # Categorical distributions are sampled less often than blocks
             ]
         )
 
