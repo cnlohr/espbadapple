@@ -154,7 +154,7 @@ class ImageReconstruction(nn.Module):
 
             self.sequence = nn.Parameter(torch.zeros((len(data), self.tiles_per_img, nblocks), dtype=torch.float32, device=self.blocks.device), requires_grad=True)
 
-            tau = 0.003  # temperature parameter, controls "peakiness" of resulting distribution
+            tau = 0.002  # temperature parameter, controls "peakiness" of resulting distribution
 
             for imgs, idxs in dl:
                 mse = matcher(self.blocks, imgs)
@@ -326,6 +326,8 @@ class BlockTrainer:
         self.recr.train_sequence = True
         self.recr.sequence.requires_grad = True
 
+        best_loss = 1e9
+
         for epoch in range(1000000):
             self.recr.train()
 
@@ -366,25 +368,28 @@ class BlockTrainer:
                 epoch_n += 1
 
                 if epoch < 3:
-                    print("Epoch %d Batch %d: frames (%d - %d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
+                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
 
             epoch_loss /= epoch_n
             epoch_loss_percep /= epoch_n
             epoch_loss_change /= epoch_n
 
-            self.recr.eval()
+            if epoch_loss < best_loss:
+                self.recr.eval()
 
-            # write binary video data
-            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
-            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+                # write binary video data
+                self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+                self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
 
-            # write visualization for humans
-            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+                # write visualization for humans
+                self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
-            for vi, vd in zip(self.viz_frames, self.viz_dirs):
-                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
+                for vi, vd in zip(self.viz_frames, self.viz_dirs):
+                    self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
 
-            self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+                self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+
+                best_loss = epoch_loss
 
             print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
 
