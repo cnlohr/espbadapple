@@ -1,6 +1,8 @@
 #include <stdio.h>
 
 // XXX TODO: Handle partial bits in ba_play.h
+// TODO: Add buttons to toggle on and off each filtering axis.
+// TODO: Update hardware with new logic code.
 
 #define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
 #define CHECKBITS_AUDIO(x) { bitsperframe_audio[frame] += x;}
@@ -23,7 +25,8 @@ const char * decodephase;
 
 #define FIELDS(x) x(decodeglyph) x(decode_is0or1) x(decode_runsofar) x(decode_prob) x(decode_lb) \
 	x(decode_cellid) x(decode_class) x(decode_run) x(decode_fromglyph) x(decode_probability) \
-	x(decode_tileid) x(decode_level) x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) \
+	x(decode_tileid) x(decode_level) x(decoding_glyphs) \
+	x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) \
 	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
 	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
 	x(audio_stack_offset) x(audio_backtrace) x(audio_newnote) x(audio_lenandrun) \
@@ -46,7 +49,6 @@ int AS_PER_FRAME = F_SPS/30;
 #define CNFGOGL
 #include "rawdraw_sf.h"
 
-#include "extradrawing.h"
 
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
@@ -100,6 +102,10 @@ struct checkpoint
 } * checkpoints;
 
 int nrcheckpoints;
+int inPlayMode;
+double fFrameElapse;
+
+#include "extradrawing.h"
 
 void ba_i_checkpoint()
 {
@@ -144,20 +150,21 @@ void ba_i_checkpoint()
 	cp->frameChanged = cpp ? ( frame != cpp->frame ) ? 1 : 0 : 0;
 	cp->frame = frame;
 	
-	if( cp->frameChanged ) vframe++;
-	if( frame == 0 && ( nrcheckpoints % 500 == 0 ) && vframe < MAX_PREFRAMES ) vframe++;
-	if( frame && !vframe_offset ) vframe_offset = vframe;
-	cp->vframe = vframe;
-
 	checkpoint_offset_by_frame[frame] = nrcheckpoints;
 	checkpoint_offset_by_frame_virtual[vframe] = nrcheckpoints;
+
+
+	if( cp->frameChanged ) vframe++;
+	if( frame == 0 && ( nrcheckpoints % 500 == 0 ) && vframe < MAX_PREFRAMES ) vframe++;
+	if( frame && !vframe_offset ) vframe_offset = vframe-1;
+	cp->vframe = vframe;
+
 	#define xassign(tf) cp->tf = tf;
 	FIELDS(xassign);
 
 	nrcheckpoints++;
 }
 
-#define ZOOM 2
 
 #ifdef VPX_GREY4
 
@@ -315,22 +322,32 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
 	// (so all should fit in working reg space)
 	graphictype A = tgprev >> 8;
-	graphictype B = tgprev;	  // implied & 0xff
+	graphictype B = tgprev;      // implied & 0xff
 	graphictype C = tgnext >> 8;
-	graphictype D = tgnext;	  // implied & 0xff
-
-	graphictype E = (B&C)|(A&D); // 8 bits worth of MSB of (next+prev+1)/2
-	graphictype F = D|B;		 // 8 bits worth of LSB of (next+prev+1)/2
-
-	graphictype G = tg >> 8;
-	graphictype H = tg;		  // implied & 0xff
+	graphictype D = tgnext;      // implied & 0xff
+	graphictype E = tg >> 8;
+	graphictype F = tg;          // implied & 0xff
 
 	if( subframe )
-		tg = (F&G)|(E&H);	 // 8 bits worth of MSB of this+(next+prev+1)/2-1
+		tg = (D&E)|(B&E)|(B&C&F)|(A&D&F);     // 8 bits worth of MSB of this+(next+prev+1)/2-1 (Assuming values of 0,1,3)
 	else
-		tg = G|E|(F&H);	   // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+		tg = E|C|A|(D&F)|(B&F)|(B&D);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
 
 	KOut( tg );
+}
+
+// one pixel at a time.
+int PixelBlend( int tgprev, int tg, int tgnext )
+{
+	if( tg == 2 ) tg = 3;
+	if( tgprev == 2 ) tgprev = 3;
+	if( tgnext == 2 ) tgnext = 3;
+	// this+(next+prev+1)/2-1 assuming 0..3, skip 2.
+	//printf( "%d\n", tg );
+	tg = (tg + (tgprev+tgnext+1)/2-1);
+	if( tg < 0 ) tg = 0;
+	if( tg > 2 ) tg = 2;
+	return tg;
 }
 
 void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, glyphtype * gm, graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
@@ -382,7 +399,21 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 	for( y = 0; y < RESY; y++ )
 	for( x = 0; x < RESX; x++ )
 	{
-		float f = fba[y][x] * 128;
+		int vi = 0;
+		if( ( y & 7 ) == 0 )
+		{
+			vi = PixelBlend( fba[y+1][x], fba[y][x], (y>0)?fba[y-1][x]:fba[y+1][x] );
+		}
+		else if( ( y & 7 ) == 7 )
+		{
+			vi = PixelBlend( (y < RESY-1)?fba[y+1][x]:fba[y-1][x], fba[y][x], fba[y-1][x] );
+		}
+		else
+		{
+			vi = fba[y][x];
+		}
+
+		float f = vi * 128;
 		if( f < 0 ) f = 0; 
 		if( f > 255.5 ) f = 255.5;
 		int v = f;
@@ -416,8 +447,8 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 
 		int bx = x / BLOCKSIZE;
 		int by = y / BLOCKSIZE;
-		DrawFormat( x*fzoom+ofsx+2*fzoom, y*fzoom+ofsy+1*fzoom, 3, 0xc0c0c030, "%02x", gm[bx+by*(RESX/BLOCKSIZE)] );
-		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+5*fzoom,-2, 0xc0c0c040, "%d", (*cp->currun)[bx+by*(RESX/BLOCKSIZE)] );
+		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+1*fzoom,-.45*fzoom, 0xc0c0c030, "%02x", gm[bx+by*(RESX/BLOCKSIZE)] );
+		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+5*fzoom,-.3*fzoom, 0xc0c0c040, "%d", (*cp->currun)[bx+by*(RESX/BLOCKSIZE)] );
 		// TODO: Write out per cell data.
 	}
 }
@@ -460,7 +491,11 @@ void DrawTopGraph( Clay_RenderCommand * render )
 		if( cursor >= nrcheckpoints ) cursor = nrcheckpoints-1;
 		if( topCursor < 0 ) topCursor = 0;
 		if( topCursor >= nrcheckpoints ) topCursor = nrcheckpoints-1;
-		if( did_scroll ) midCursor = cursor;
+		if( did_scroll )
+		{
+			midCursor = cursor;
+			inPlayMode = 0;
+		}
 	}
 
 	int centerCursor = topCursor;
@@ -492,6 +527,7 @@ void DrawTopGraph( Clay_RenderCommand * render )
 			if( has_down_focus && !did_scroll )
 			{
 				midCursor = cursor = x+f;
+				inPlayMode = 0;
 			}
 		}
 
@@ -533,15 +569,15 @@ void DrawMidGraph( Clay_RenderCommand * render )
 		float bits = bitsA + bitsV;
 		if( bits > fMaxBits ) fMaxBits = bits;
 	}
-printf( "%f\n", fMaxBits );
+
 	int gotcframe = 0;
 
 	for( x = 0; x < frameWidth; x++ )
 	{
 		//if( x+f-vframe_offset >= FRAMECT ) continue;
 		//if( x+f-vframe_offset < 0 ) continue;
-		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_audio[x+f-vframe_offset]:10;
-		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_video[x+f-vframe_offset]:10;
+		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_audio[x+f-vframe_offset]:1;
+		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_video[x+f-vframe_offset]:1;
 		float bits = bitsA + bitsV;
 
 		CNFGColor( 0x808080ff );
@@ -553,14 +589,14 @@ printf( "%f\n", fMaxBits );
 		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
 			CNFGColor( 0xffffffff );
 			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height );
-			if( has_down_focus && x+f >= 0 && x+f < FRAMECT )
+			if( has_down_focus && x+f >= 0 && x+f-vframe_offset < FRAMECT )
 			{
+				inPlayMode = 0;
 				topCursor = cursor = checkpoint_offset_by_frame_virtual[x+f];
 			}
 		}
 
-
-		int thiscframe = checkpoint_offset_by_frame_virtual[x+f];
+		int thiscframe = (x+f>=0)?checkpoint_offset_by_frame_virtual[x+f]:0;
 		if( thiscframe >= cursor && !gotcframe )
 		{
 			gotcframe = 1;
@@ -611,6 +647,7 @@ void DrawBottomGraph( Clay_RenderCommand * render )
 			CNFGTackSegment( b.x + x, b.y, b.x+x, b.y+bh-(bitsA+bitsV)/mbv*bhm );
 			if( has_down_focus )
 			{
+				inPlayMode = 0;
 				topCursor = midCursor = cursor = checkpoint_offset_by_frame_virtual[(int)nindex];
 			}
 		}
@@ -623,6 +660,42 @@ void DrawBottomGraph( Clay_RenderCommand * render )
 			CNFGColor( 0xffffff30 );
 			CNFGTackSegment( b.x+x, b.y, b.x+x, b.y+bh );
 		}
+	}
+}
+
+void DrawMemory( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+
+	const uint8_t * base = cp->decoding_glyphs?ba_glyphdata:ba_video_payload;
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+	int dlen = v->buffer_end - base;
+
+	float fx = b.x;
+	float fy = b.y;
+
+	int bo;
+	float pairsize = 32;
+	int bol = b.width / pairsize;
+	int bofs = 0;
+	for( bo = -bol/2; bo < bol/2; bo++ )
+	{
+		int tp = bo + v->buffer - base;
+		if( tp >= 0 && tp < dlen )
+			DrawFormat( bofs*pairsize+fx+pairsize/2, fy+2, -2, 0xffffffff, "%02x", base[tp] );
+		if( bo == 0 )
+		{
+			CNFGColor( 0xffffffff );
+			CNFGDrawBox( bofs*pairsize+fx, fy-1, bofs*pairsize+fx+pairsize, fy + pairsize );
+			CNFGTackSegment( bofs*pairsize+fx-pairsize*3, fy + pairsize, bofs*pairsize+fx-5, fy + pairsize );
+		}
+		bofs++;
 	}
 }
 
@@ -664,9 +737,13 @@ int main()
 
 	int outbuffertail = 0;
 	int lasttail = 0;
-
+	double Now = OGGetAbsoluteTime();
+	double Last = Now;
 	while( CNFGHandleInput() )
 	{
+		Now = OGGetAbsoluteTime();
+		double dTime = Now - Last;
+		Last = Now;
 		if( frame < FRAMECT )
 		{
 
@@ -693,50 +770,6 @@ int main()
 		CNFGClearFrame();
 		Clay_SetPointerState((Clay_Vector2) { mousePositionX, mousePositionY }, isMouseDown);
 		Clay_BeginLayout();
-
-#if 0
-		Clay_ElementDeclaration sidebarItemConfig = (Clay_ElementDeclaration) {
-			.layout = {
-				.sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50) }
-			},
-			.backgroundColor = COLOR_PADGREY
-		};
-
-		//EmitSamples8();
-		CLAY({ .id = CLAY_ID("OuterContainer"), .layout = { .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(16), .childGap = 16 }, .backgroundColor = COLOR_BACKGROUND })
-		{
-			CLAY({
-				.id = CLAY_ID("SideBar"),
-				.layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIXED(300), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16 },
-				.backgroundColor = COLOR_BTNGREY
-			})
-			{
-				CLAY({ .id = CLAY_ID("ProfilePictureOuter"), .layout = { .sizing = { .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(16), .childGap = 16, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } }, .backgroundColor = COLOR_BTNGREY2 })
-				{
-					//CLAY({ .id = CLAY_ID("ProfilePicture"), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_FIXED(60) }}, }) {}
-					CLAY_TEXT(CLAY_STRING("Clay - UI Library 1234"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));
-				}
-
-				// Standard C code like loops etc work inside components
-				for (int i = 0; i < 5; i++) {
-					//SidebarItemComponent();
-						CLAY(sidebarItemConfig) {
-					}
-				}
-
-				CLAY({ .id = CLAY_ID("SideBottom"), .layout = {  .padding = CLAY_PADDING_ALL(16), .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_PADGREY })
-				{
-					CLAY_TEXT(CLAY_STRING("Bottom Text"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));	
-				}
-			}
-
-
-			CLAY({ .id = CLAY_ID("MainContent"), .layout = {  .padding = CLAY_PADDING_ALL(16),  .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) } }, .backgroundColor = COLOR_PADGREY })
-			{
-				CLAY_TEXT(CLAY_STRING("Right Text"), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255, 255, 255, 255} }));	
-			}
-		}
-#endif
 
 		int padding = 4;
 		int paddingChild = 4;
@@ -779,9 +812,16 @@ int main()
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					
+					CLAY({
+						.layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+						.backgroundColor = COLOR_PADGREY
+					})
 					{
-						CLAY_TEXT(saprintf_g( 1, "Main Body" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_LEFT, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY({ .custom = { .customData = DrawMemory } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+						{
+							CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						}
 					}
 
 					CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(300), .height = CLAY_SIZING_GROW(300) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
@@ -837,10 +877,18 @@ int main()
 						CLAY_TEXT(CLAY_STRING("|<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 					if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; for( ; cursor > 0; cursor-- ) if( checkpoints[cursor].frame != tframe ) { break; } midCursor = topCursor = cursor; }
 
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING("\x0f"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked && checkpoints ) { inPlayMode = 0; }
+
 					CLAY({ .custom = { .customData = DrawMidGraph } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 					{
 						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
+
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						CLAY_TEXT(CLAY_STRING("\x10"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+					if( btnClicked && checkpoints ) { inPlayMode = !inPlayMode; }
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 						CLAY_TEXT(CLAY_STRING(">|"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
@@ -867,6 +915,21 @@ int main()
 
 			}
 		}
+
+
+		if( inPlayMode )
+		{
+			fFrameElapse += dTime;
+			if( fFrameElapse > 1.0/30.0 )
+			{
+				if( fFrameElapse > 3.0/30.0 ) fFrameElapse = 3.0/30.0;
+				fFrameElapse -= 1.0/30.0;
+				int tFrame = checkpoints[cursor].frame-1;
+				if( tFrame + 1 < FRAMECT && checkpoint_offset_by_frame[tFrame+1]+1 > 0 && checkpoint_offset_by_frame[tFrame+1]+1 < nrcheckpoints 	)
+					midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame+1]+1;
+			}
+		}
+
 
 		// All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
 		Clay_RenderCommandArray renderCommands = Clay_EndLayout();

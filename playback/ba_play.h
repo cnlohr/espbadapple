@@ -50,10 +50,6 @@ typedef uint32_t graphictype;
 typedef uint16_t graphictype;
 #endif
 
-#ifndef CHECKPOINT
-#define CHECKPOINT(x)
-#endif
-
 
 typedef struct ba_play_context_
 {
@@ -77,7 +73,7 @@ static int ba_play_setup( ba_play_context * ctx )
 		int g = 0;
 		int runsofar = 0;
 		int is0or1 = 0;
-		CHECKPOINT( decodephase = "Reading Glyphs" );
+		CHECKPOINT( decodephase = "Reading Glyphs", decoding_glyphs = 1 );
 		//graphictype * gd = &ctx->glyphdata[0];
 		//int cpixel = 0;
 		//int writeg = 0;
@@ -134,7 +130,7 @@ static int ba_play_setup( ba_play_context * ctx )
 	vpx_reader_init( rctx, ba_video_payload, sizeof(ba_video_payload), 0, 0 );
 #endif
 
-	CHECKPOINT(decodephase = "Initialize Complete" );
+	CHECKPOINT(decodephase = "Initialize Complete", decoding_glyphs = 0 );
 
 	return 0;
 }
@@ -226,6 +222,7 @@ static int ba_play_frame( ba_play_context * ctx )
 			}
 #endif
 		}
+		CHECKPOINT(decode_cellid = -1);
 
 		bx++;
 		if( bx >= BLKX )

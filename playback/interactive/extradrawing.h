@@ -42,7 +42,38 @@ int btnClicked = 0;
 
 int mousePositionX, mousePositionY, isMouseDown;
 
-void HandleKey( int keycode, int bDown ) { }
+void HandleKey( int keycode, int bDown ) {
+	if( keycode == ' ' && bDown ) inPlayMode = !inPlayMode;
+	// 65366 page down, or advance frame
+	// 65365 page up, or previous frame
+	// 65361 left or previous check
+	// 65363 left or next check
+	if( bDown )
+	{
+		if( keycode == 65366 )
+		{
+			int tFrame = checkpoints[cursor].frame - 1;
+			if( tFrame + 1 < FRAMECT && checkpoint_offset_by_frame[tFrame+1]+1 > 0 && checkpoint_offset_by_frame[tFrame+1]+1 < nrcheckpoints 	)
+				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame+1]+1;
+		}
+		if( keycode == 65365 )
+		{
+			int tFrame = checkpoints[cursor].frame - 1;
+			if( tFrame - 1 >= 0 && checkpoint_offset_by_frame[tFrame-1]+1 > 0 && checkpoint_offset_by_frame[tFrame-1]+1 < nrcheckpoints 	)
+				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame-1]+1;
+		}
+		if( keycode == 65361 )
+		{
+			if( cursor-1 > 0 )
+			midCursor = topCursor = cursor = cursor-1;
+		}
+		if( keycode == 65363 )
+		{
+			if( cursor+1 < nrcheckpoints )
+			midCursor = topCursor = cursor = cursor+1;
+		}
+	}
+}
 void HandleButton( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
 void HandleMotion( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
 int HandleDestroy() { return 0; }
@@ -108,7 +139,7 @@ void DrawTextClay( Clay_RenderCommand * renderCommand )
 {
 	Clay_TextRenderData * tr = (Clay_TextRenderData*)&renderCommand->renderData;
 	CNFGPenX = renderCommand->boundingBox.x + 1;
-	CNFGPenY = renderCommand->boundingBox.y + 1;
+	CNFGPenY = renderCommand->boundingBox.y + 2;
 	char * stt = alloca( tr->stringContents.length + 1 );
 	memcpy( stt, tr->stringContents.chars, tr->stringContents.length );
 	stt[tr->stringContents.length] = 0;
@@ -139,6 +170,36 @@ void DrawFormat( int x, int y, int size, uint32_t color, const char * fmt, ... )
 		CNFGPenX -= w/2;
 	}
 	CNFGSetLineWidth( size );
+	CNFGPenY += 1;
+	CNFGColor( color );
+	CNFGDrawText( buf, size*2 );
+}
+
+void DrawFormatShadow( int x, int y, int size, uint32_t color, const char * fmt, ... )
+{
+	char buf[4096];
+	va_list va;
+	va_start (va, fmt);
+	vsprintf (buf, fmt, va);
+	va_end (va);
+	CNFGPenX = x;
+	CNFGPenY = y;
+	CNFGColor( color );
+	if( size < 0 )
+	{
+		size = -size;
+		int w, h;
+		CNFGGetTextExtents( buf, &w, &h, size*2 );
+		CNFGPenX -= w/2;
+	}
+	CNFGSetLineWidth( size );
+	CNFGPenX += 1;
+	CNFGPenY += 2;
+	CNFGColor( 0x000000ff );
+	CNFGDrawText( buf, size*2 );
+	CNFGPenX -= 1;
+	CNFGPenY -= 1;
+	CNFGColor( color );
 	CNFGDrawText( buf, size*2 );
 }
 

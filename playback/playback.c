@@ -179,6 +179,9 @@ int KOut( uint16_t tg )
 
 
 /* Tricky, blend function:
+//
+// PLEASE NOTE This section is right now unused, use section below.
+//
 
 	tgadd = (tgnext + tgprev)>>1;
 	tgtot = tg + tgadd - 2;
@@ -275,7 +278,7 @@ int KOut( uint16_t tg )
 //printf( "%02x %02x %02x %02x  %02x %02x / %02x %02x  %02x %02x\n", A, B, C, D, E, F, G, H, (F&G)|(E&H), G|E|(F&H) );
 
 */
-
+#if 0
 void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int subframe )
 {
 	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
@@ -295,6 +298,64 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 		tg = (F&G)|(E&H);     // 8 bits worth of MSB of this+(next+prev+1)/2-1
 	else
 		tg = G|E|(F&H);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+
+	KOut( tg );
+}
+#endif
+
+// New rules:
+//
+// [ 0 + 0 ] + 0 = 0
+// [ 0 + 0 ] + 1 = 0
+// [ 0 + 0 ] + 3 = 1
+// [ 0 + 1 ] + 0 = 0
+// [ 0 + 1 ] + 1 = 1
+// [ 0 + 1 ] + 3 = 3
+// [ 0 + 3 ] + 0 = 1
+// [ 0 + 3 ] + 1 = 1 <<< This is an interesting one.
+// [ 0 + 3 ] + 3 = 3
+// [ 1 + 0 ] + 0 = 0
+// [ 1 + 0 ] + 1 = 1
+// [ 1 + 0 ] + 3 = 3
+// [ 1 + 1 ] + 0 = 1 << Interesting section.  TODO: Try it both ways.  NOTE SENSITIVE
+// [ 1 + 1 ] + 1 = 1
+// [ 1 + 1 ] + 3 = 3
+// [ 1 + 3 ] + 0 = 1
+// [ 1 + 3 ] + 1 = 3 <<< Interesting one
+// [ 1 + 3 ] + 3 = 3
+// [ 3 + 0 ] + 0 = 1
+// [ 3 + 0 ] + 1 = 1
+// [ 3 + 0 ] + 3 = 3
+// [ 3 + 1 ] + 0 = 1
+// [ 3 + 1 ] + 1 = 3 <<< Interesting one
+// [ 3 + 1 ] + 3 = 3
+// [ 3 + 3 ] + 0 = 1
+// [ 3 + 3 ] + 1 = 3
+// [ 3 + 3 ] + 3 = 3
+// Where it goes [AB+CD]+EF = output
+//http://www.32x8.com/sop6_____A-B-C-D-E-F_____m_7-15-19-23-29-31-51-53-55-61-63_____d_2-6-8-9-10-11-14-18-22-24-25-26-27-30-32-33-34-35-36-37-38-39-40-41-42-43-44-45-46-47-50-54-56-57-58-59-62_____option-0_____899781960074855695700
+// MSB: y = DE + BE + BCF + ADF
+//http://www.32x8.com/sop6_____A-B-C-D-E-F_____m_3-5-7-12-13-15-17-19-20-21-23-28-29-31-48-49-51-52-53-55-60-61-63_____d_2-6-8-9-10-11-14-18-22-24-25-26-27-30-32-33-34-35-36-37-38-39-40-41-42-43-44-45-46-47-50-54-56-57-58-59-62_____option-0_____999781976475857595733
+// LSB: y = E + C + A + DF + BF + BD
+// If you go the other way with the sensitive one...
+//http://www.32x8.com/sop6_____A-B-C-D-E-F_____m_3-5-7-12-13-15-17-19-21-23-28-29-31-48-49-51-52-53-55-60-61-63_____d_2-6-8-9-10-11-14-18-22-24-25-26-27-30-32-33-34-35-36-37-38-39-40-41-42-43-44-45-46-47-50-54-56-57-58-59-62_____option-0_____999781866975857595711
+// LSB: y = E + C + A + DF + BF
+
+void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int subframe )
+{
+	// This should only need +2 regs (or 3 depending on how the optimizer slices it)
+	// (so all should fit in working reg space)
+	graphictype A = tgprev >> 8;
+	graphictype B = tgprev;      // implied & 0xff
+	graphictype C = tgnext >> 8;
+	graphictype D = tgnext;      // implied & 0xff
+	graphictype E = tg >> 8;
+	graphictype F = tg;          // implied & 0xff
+
+	if( subframe )
+		tg = (D&E)|(B&E)|(B&C&F)|(A&D&F);     // 8 bits worth of MSB of this+(next+prev+1)/2-1 (Assuming values of 0,1,3)
+	else
+		tg = E|C|A|(D&F)|(B&F)/*|(B&D)*/;       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
 
 	KOut( tg );
 }
@@ -338,7 +399,7 @@ void EmitSamples8()
 					// Blend last.
 					graphictype tgprev = g[6];
 					graphictype tg = g[7];
-					graphictype tgnext = (bx<RESX/BLOCKSIZE-1)?ctx.glyphdata[gm[gmi-1]][0] : tgprev;
+					graphictype tgnext = (bx<RESX/BLOCKSIZE-1)?ctx.glyphdata[gm[gmi+1]][0] : tgprev;
 					EmitPartial( tgprev, tg, tgnext, subframe );
 				}
 				gmi++;
