@@ -131,6 +131,13 @@ void DrawFormat( int x, int y, int size, uint32_t color, const char * fmt, ... )
 	CNFGPenX = x;
 	CNFGPenY = y;
 	CNFGColor( color );
+	if( size < 0 )
+	{
+		size = -size;
+		int w, h;
+		CNFGGetTextExtents( buf, &w, &h, size*2 );
+		CNFGPenX -= w/2;
+	}
 	CNFGSetLineWidth( size );
 	CNFGDrawText( buf, size*2 );
 }

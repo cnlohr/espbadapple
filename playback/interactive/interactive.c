@@ -333,7 +333,7 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 	KOut( tg );
 }
 
-void EmitSamples8( float ofsx, float ofsy, float fzoom, glyphtype * gm, graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
+void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, glyphtype * gm, graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
 {
 	int bx, by;
 	int subframe;
@@ -394,6 +394,32 @@ void EmitSamples8( float ofsx, float ofsy, float fzoom, glyphtype * gm, graphict
 		CNFGColor( color );
 		CNFGTackRectangle( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
 	}
+	CNFGSetLineWidth(1.0);
+	CNFGColor( 0xc0c0c010 );
+	for( y = 0; y < RESY; y++ )
+	for( x = 0; x < RESX; x++ )
+	{
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+ofsy );
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+ofsx, y*fzoom+ofsy );
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
+		CNFGTackSegment( x*fzoom+fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
+	}
+	for( y = 0; y < RESY; y+=BLOCKSIZE )
+	for( x = 0; x < RESX; x+=BLOCKSIZE )
+	{
+		CNFGSetLineWidth(3.0);
+		CNFGColor( 0xc0c0c020 );
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+ofsy );
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
+		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
+		CNFGTackSegment( x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
+
+		int bx = x / BLOCKSIZE;
+		int by = y / BLOCKSIZE;
+		DrawFormat( x*fzoom+ofsx+2*fzoom, y*fzoom+ofsy+1*fzoom, 3, 0xc0c0c030, "%02x", gm[bx+by*(RESX/BLOCKSIZE)] );
+		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+5*fzoom,-2, 0xc0c0c040, "%d", (*cp->currun)[bx+by*(RESX/BLOCKSIZE)] );
+		// TODO: Write out per cell data.
+	}
 }
 
 #endif
@@ -420,17 +446,21 @@ void DrawTopGraph( Clay_RenderCommand * render )
 		if( cursor_rel.x < 0 )
 		{
 			cursor += cursor_rel.x;
+			topCursor += cursor_rel.x;
 			did_scroll = 1;
 		}
 		if( cursor_rel.x >= b.width )
 		{
 			cursor += cursor_rel.x - b.width;
+			topCursor += cursor_rel.x - b.width;
 			did_scroll = 1;
 		}
 
 		if( cursor < 0 ) cursor = 0;
 		if( cursor >= nrcheckpoints ) cursor = nrcheckpoints-1;
-		if( did_scroll ) topCursor = cursor;
+		if( topCursor < 0 ) topCursor = 0;
+		if( topCursor >= nrcheckpoints ) topCursor = nrcheckpoints-1;
+		if( did_scroll ) midCursor = cursor;
 	}
 
 	int centerCursor = topCursor;
@@ -461,7 +491,7 @@ void DrawTopGraph( Clay_RenderCommand * render )
 			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height );
 			if( has_down_focus && !did_scroll )
 			{
-				cursor = x+f;
+				midCursor = cursor = x+f;
 			}
 		}
 
@@ -508,10 +538,10 @@ void DrawMidGraph( Clay_RenderCommand * render )
 
 	for( x = 0; x < frameWidth; x++ )
 	{
-		if( x+f >= FRAMECT ) continue;
-		if( x+f < 0 ) continue;
-		float bitsA = (x+f-vframe_offset>=0)?bitsperframe_audio[x+f-vframe_offset]:10;
-		float bitsV = (x+f-vframe_offset>=0)?bitsperframe_video[x+f-vframe_offset]:10;
+		//if( x+f-vframe_offset >= FRAMECT ) continue;
+		//if( x+f-vframe_offset < 0 ) continue;
+		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < nrcheckpoints )?bitsperframe_audio[x+f-vframe_offset]:10;
+		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < nrcheckpoints )?bitsperframe_video[x+f-vframe_offset]:10;
 		float bits = bitsA + bitsV;
 
 		CNFGColor( 0x808080ff );
@@ -523,7 +553,7 @@ void DrawMidGraph( Clay_RenderCommand * render )
 		    Clay_LayoutElement *openLayoutElement = Clay__GetOpenLayoutElement();
 			CNFGColor( 0xffffffff );
 			CNFGTackSegment( b.x + x*baseZoom, b.y, b.x+x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height );
-			if( has_down_focus )
+			if( has_down_focus && x+f >= 0 && x+f < FRAMECT )
 			{
 				topCursor = cursor = checkpoint_offset_by_frame_virtual[x+f];
 			}
@@ -611,7 +641,7 @@ void DrawGeneral( Clay_RenderCommand * render )
 	fy = b.y;
 	fzoom = CLAY__MIN( b.width / RESX, b.height / RESY );
 
-	EmitSamples8( fx, fy, fzoom, (glyphtype *)cp->curmap, (void*)cp->glyphdata );
+	EmitSamples8( cp, fx, fy, fzoom, (glyphtype *)cp->curmap, (void*)cp->glyphdata );
 }
 
 int main()
