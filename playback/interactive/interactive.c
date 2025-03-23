@@ -528,20 +528,20 @@ void DrawMidGraph( Clay_RenderCommand * render )
 	float fMaxBits = 0;
 	for( x = 0; x < frameWidth; x++ )
 	{
-		float bitsA = (x+f-vframe_offset>=0)?bitsperframe_audio[x+f-vframe_offset]:10;
-		float bitsV = (x+f-vframe_offset>=0)?bitsperframe_video[x+f-vframe_offset]:10;
+		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_audio[x+f-vframe_offset]:1;
+		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_video[x+f-vframe_offset]:1;
 		float bits = bitsA + bitsV;
 		if( bits > fMaxBits ) fMaxBits = bits;
 	}
-
+printf( "%f\n", fMaxBits );
 	int gotcframe = 0;
 
 	for( x = 0; x < frameWidth; x++ )
 	{
 		//if( x+f-vframe_offset >= FRAMECT ) continue;
 		//if( x+f-vframe_offset < 0 ) continue;
-		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < nrcheckpoints )?bitsperframe_audio[x+f-vframe_offset]:10;
-		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < nrcheckpoints )?bitsperframe_video[x+f-vframe_offset]:10;
+		float bitsA = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_audio[x+f-vframe_offset]:10;
+		float bitsV = (x+f-vframe_offset>=0 && x+f-vframe_offset < FRAMECT )?bitsperframe_video[x+f-vframe_offset]:10;
 		float bits = bitsA + bitsV;
 
 		CNFGColor( 0x808080ff );
