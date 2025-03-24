@@ -1,14 +1,16 @@
 //Portions of code from zNoctum and redline2466
 
+var mem;
 let toUtf8Decoder = new TextDecoder( "utf-8" );
 function toUTF8(ptr) {
+	HEAPU8 = new Uint8Array(mem.buffer);
 	let len = 0|0; ptr |= 0;
 	for( let i = ptr; HEAPU8[i] != 0; i++) len++;
 	return toUtf8Decoder.decode(HEAPU8.subarray(ptr, ptr+len));
 }
 
 let wasmExports;
-const DATA_ADDR = 16|0; // Where the unwind/rewind data structure will live.
+//const DATA_ADDR = 16|0; // Where the unwind/rewind data structure will live.
 let rendering = false;
 let fullscreen = false;
 
@@ -55,7 +57,7 @@ function wgl_makeShader( vertText, fragText )
 	//We load two shaders, one is a solid-color shader, for most rawdraw objects.
 	wglShader = wgl_makeShader( 
 		"uniform vec4 xfrm; attribute vec3 a0; attribute vec4 a1; varying vec4 vc; void main() { gl_Position = vec4( a0.xy*xfrm.xy+xfrm.zw, a0.z, 0.5 ); vc = a1; }",
-		"precision mediump float; varying vec4 vc; void main() { gl_FragColor = vec4(vc.xyzw); }" );
+		"precision mediump float; varying vec4 vc; void main() { gl_FragColor = vec4(vc.wzyx); }" );
 
 	wglUXFRM = wgl.getUniformLocation(wglShader, "xfrm" );
 
@@ -126,6 +128,8 @@ let imports = {
 		//Various draw-functions.
 		CNFGEmitBackendTriangles : (vertsF, colorsI, vertcount )=>
 		{
+			HEAPU8 = new Uint8Array(mem.buffer);
+			HEAPF32 = new Float32Array(mem.buffer);
 			//Take a float* and uint32_t* of vertices, and flat-render them.
 			CNFGEmitBackendTrianglesJS(
 				HEAPF32.slice(vertsF>>2,(vertsF>>2)+vertcount*3),
@@ -147,10 +151,11 @@ let imports = {
 			wgl.clear( wgl.COLOR_BUFFER_BIT | wgl.COLOR_DEPTH_BIT );
 		},
 		CNFGGetDimensions: (pw, ph) => {
+			HEAP16 = new Int16Array(mem.buffer);
 			HEAP16[pw>>1] = canvas.width;
 			HEAP16[ph>>1] = canvas.height;
 		},
-		OGGetAbsoluteTime : () => { return performance.now() * 1000;  },
+		OGGetAbsoluteTime : () => { return performance.now() / 1000.0;  },
 
 		Add1 : (i) => { return i+1; }, //Super simple function for speed testing.
 
@@ -177,18 +182,19 @@ if( !RAWDRAW_USE_LOOP_FUNCTION )
 		//Any javascript functions which may unwind the stack should be placed here.
 		CNFGSwapBuffersInternal: () => {
 			if (!rendering) {
+				HEAPU32 = new Uint32Array(mem.buffer);
 				// We are called in order to start a sleep/unwind.
 				// Fill in the data structure. The first value has the stack location,
 				// which for simplicity we can start right after the data structure itself.
-				HEAPU32[DATA_ADDR >> 2] = DATA_ADDR + 8;
+				HEAPU32[instance.exports.asyncify_struct >> 2] = instance.exports.asyncify_struct+8;
 				// The end of the stack will not be reached here anyhow.
-				HEAPU32[DATA_ADDR + 4 >> 2] = 2048|0;
-				wasmExports.asyncify_start_unwind(DATA_ADDR);
+				HEAPU32[(instance.exports.asyncify_struct + 4) >> 2] = instance.exports.asyncify_struct+8192|0;
+				wasmExports.asyncify_start_unwind(instance.exports.asyncify_struct);
 				rendering = true;
 				// Resume after the proper delay.
 				requestAnimationFrame(function() {
 					FrameStart();
-					wasmExports.asyncify_start_rewind(DATA_ADDR);
+					wasmExports.asyncify_start_rewind(instance.exports.asyncify_struct);
 					// The code is now ready to rewind; to start the process, enter the
 					// first function that should be on the call stack.
 					wasmExports.main();
@@ -239,7 +245,7 @@ if( RAWDRAW_NEED_BLITTER )
 			wgl.texParameteri(t2d, wgl.TEXTURE_MIN_FILTER, wgl.NEAREST);
 
 			wgl.texImage2D(t2d, 0, wgl.RGBA, w, h, 0, wgl.RGBA,
-				wgl.UNSIGNED_BYTE, new Uint8Array(memory.buffer,memptr,w*h*4) );
+				wgl.UNSIGNED_BYTE, new Uint8Array(mem.buffer,memptr,w*h*4) );
 
 			CNFGEmitBackendTrianglesJS( 
 				new Float32Array( [0,0,0, w,0,0,     w,h,0,       0,0,0,   w,h,0,       0,h,0 ] ),
@@ -249,7 +255,6 @@ if( RAWDRAW_NEED_BLITTER )
 			wgl.useProgram(wglShader);
 		};
 }
-
 
 startup = async () => {
 	// Actually load the WASM blob.
@@ -264,17 +269,16 @@ startup = async () => {
 	blob2 = await response.blob();
 	let array = new Uint8Array(await blob2.arrayBuffer());
 
+	mem = imports.env.memory = new WebAssembly.Memory({
+			initial: 12288,
+			maximum: 12288,
+			shared: false,
+		});
 
 	WebAssembly.instantiate(array, imports).then(
 		(wa) => { 
 			instance = wa.instance;
 			wasmExports = instance.exports;
-			memory = instance.exports.memory;
-			HEAPU8 = new Uint8Array(memory.buffer);
-			HEAP16 = new Int16Array(memory.buffer);
-			HEAPU32 = new Uint32Array(memory.buffer);
-			HEAPF32 = new Float32Array(memory.buffer);
-
 
 			//Attach inputs.
 			if( instance.exports.HandleMotion )
@@ -295,7 +299,6 @@ startup = async () => {
 				document.addEventListener('keydown', e => { instance.exports.HandleKey( e.keyCode, 1 ); } );
 				document.addEventListener('keyup', e => { instance.exports.HandleKey( e.keyCode, 0 ); } );
 			}
-
 
 			//Actually invoke main().  Note that, upon "CNFGSwapBuffers" this will 'exit'
 			//But, will get re-entered from the swapbuffers animation callback.

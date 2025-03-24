@@ -105,6 +105,7 @@ WEAK int wctomb(char *s, wchar_t wc)
 #endif
 WEAK size_t strlen(const char *s)
 {
+	if( !s ) return 0;
 	const char *a = s;
 	for (; *s; s++);
 	return s-a;

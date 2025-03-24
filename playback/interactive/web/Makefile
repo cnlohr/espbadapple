@@ -17,13 +17,22 @@ WASMOPT?=wasm-opt
 TERSER?=terser
 TERSERFLAGS?=--module --ecma 2017 -d RAWDRAW_USE_LOOP_FUNCTION=false -d RAWDRAW_NEED_BLITTER=true
 
+# Add -g3 here for debug in CFLAGS
 CFLAGS+=-DWASM -nostdlib --target=wasm32 \
-		-flto -Oz \
+		-flto -Oz  \
 		-Wl,--lto-O3 \
 		-Wl,--no-entry \
 		-Wl,--allow-undefined \
-		-mbulk-memory
-#		-Wl,--import-memory
+		-matomics \
+		-Wl,--initial-memory=805306368,--max-memory=805306368 \
+		-mbulk-memory \
+		-Wl,--import-memory \
+		-Wl,--export=__heap_base,--export=__data_end,--export=asyncify_struct
+
+# Not sure why I can't use shared memory 
+#		-Wl,--shared-memory
+
+#-g # For debug in WOFLAGS
 
 WOFLAGS:=--asyncify #  --pass-arg=asyncify-ignore-indirect
 #--pass-arg=asyncify-imports@bynsyncify.* 

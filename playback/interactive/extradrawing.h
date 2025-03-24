@@ -60,27 +60,27 @@ void WXPORT(HandleKey)( int keycode, int bDown ) {
 	// 65363 left or next check
 	if( bDown )
 	{
-		if( keycode == 65366 )
+		if( keycode == 65366 || keycode == 34 )
 		{
 			int tFrame = checkpoints[cursor].frame - 1;
 			if( tFrame + 1 < FRAMECT && checkpoint_offset_by_frame[tFrame+1]+1 > 0 && checkpoint_offset_by_frame[tFrame+1]+1 < nrcheckpoints 	)
 				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame+1]+1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65365 )
+		if( keycode == 65365 || keycode == 33 )
 		{
 			int tFrame = checkpoints[cursor].frame - 1;
 			if( tFrame - 1 >= 0 && checkpoint_offset_by_frame[tFrame-1]+1 > 0 && checkpoint_offset_by_frame[tFrame-1]+1 < nrcheckpoints 	)
 				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame-1]+1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65361 )
+		if( keycode == 65361 || keycode == 37 )
 		{
 			if( cursor-1 > 0 )
 			midCursor = topCursor = cursor = cursor-1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65363 )
+		if( keycode == 65363 || keycode == 39 )
 		{
 			if( cursor+1 < nrcheckpoints )
 			midCursor = topCursor = cursor = cursor+1;

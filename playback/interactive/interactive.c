@@ -885,30 +885,28 @@ void DrawCellState( Clay_RenderCommand * render )
 	char vs[37] = { 0 };
 
 	int i;
-
 	if( cp->decodephase == "Running" || cp->decodephase == "Run Stopped" )
 	{
 		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x RUN:%3d",
 			cp->decode_fromglyph, cp->decode_class, cp->decode_run );
-
-
-		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %s", 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decodephase );
+		float fPerthou = (100.0-cp->decode_prob/2.55f)*10.0;
+		int perh = ((int)fPerthou/10);
+		int perd = (int)(((int)fPerthou)%10);
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s", perh, perd , cp->decode_lb, cp->decodephase?cp->decodephase:"(Unknown)" );
 	}
 	else if( cp->decodephase == "Decoding Bit" )
 	{
 		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x LEVEL:%3d",
 			cp->decode_fromglyph, cp->decode_class, cp->decode_level );
-
-
-//				CHECKPOINT( decode_tileid = tile, decode_lb = bit, vpxcheck = 0, decode_level = level, decode_prob = probability, decodephase = "Decoding Bit" );
-
-		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %02x", 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decode_tileid );
-
-		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+		float fPerthou = (100.0-cp->decode_prob/2.55f)*10.0;
+		int perh = ((int)fPerthou/10);
+		int perd = (int)(((int)fPerthou)%10);
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %02x", perh, perd , 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decode_tileid );
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)");
 	}
 	else
 	{
-		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)" );
 	}
 }
 
@@ -954,7 +952,7 @@ void DrawCellStateAudio( Clay_RenderCommand * render )
 	else
 #endif
 	{
-		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)" );
 	}
 }
 
