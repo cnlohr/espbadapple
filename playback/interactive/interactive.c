@@ -990,8 +990,6 @@ int main()
 	ba_play_setup( &ctx );
 	ba_audio_setup();
 
-	FILE * fAudioDump = fopen( "audio.dump", "wb" );
-
 	int outbuffertail = 0;
 	int lasttail = 0;
 	double Now = OGGetAbsoluteTime();
@@ -1022,7 +1020,7 @@ int main()
 			{
 				*(ad++) = out_buffer_data[n];
 				float fo = out_buffer_data[n] / 128.0 - 1.0;
-				fwrite( &fo, 1, 4, fAudioDump );
+				//fwrite( &fo, 1, 4, fAudioDump );
 			}
 		}
 		CNFGClearFrame();
@@ -1233,6 +1231,12 @@ int main()
 					break;
 				case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
 					((void (*)( Clay_RenderCommand *))(renderCommand->renderData.custom.customData))(renderCommand);
+					break;
+				case CLAY_RENDER_COMMAND_TYPE_NONE:
+				case CLAY_RENDER_COMMAND_TYPE_BORDER:
+				case CLAY_RENDER_COMMAND_TYPE_IMAGE:
+				case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+				case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
 					break;
 			}
 		}

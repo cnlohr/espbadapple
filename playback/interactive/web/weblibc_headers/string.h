@@ -2,9 +2,7 @@
 #define _STRING_H
 
 #include <stdint.h>
-
-#define size_t uint64_t
-#define ssize_t int64_t
+#include <stddef.h>
 
 #define WEAK static
 

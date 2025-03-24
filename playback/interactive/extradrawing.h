@@ -81,7 +81,8 @@ int HandleDestroy() { return 0; }
 
 void HandleClayErrors(Clay_ErrorData errorData) {
 	// See the Clay_ErrorData struct for more information
-	fprintf( stderr, "%s", errorData.errorText.chars);
+	//fprintf( stderr, "%s", errorData.errorText.chars);
+	printf( "%s\n", errorData.errorText.chars );
 }
 
 Clay_Dimensions clayTextDim(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
