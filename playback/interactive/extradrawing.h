@@ -8,8 +8,7 @@
 #include <malloc.h>
 #define WXPORT( x ) __attribute__((export_name(#x))) x
 #else
-void __attribute__((export_name("HandleKey"))) 
-#define WXPORT( x )
+#define WXPORT( x ) x
 #endif
 
 #include "os_generic.h"
