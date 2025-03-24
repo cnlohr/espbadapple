@@ -320,6 +320,7 @@ int KOut( uint16_t tg )
 			}
 		}
 	}
+	return 0;
 }
 
 void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int subframe )
@@ -975,7 +976,7 @@ void DrawGeneral( Clay_RenderCommand * render )
 	EmitSamples8( cp, fx, fy, fzoom, (glyphtype *)cp->curmap, (void*)cp->glyphdata );
 }
 
-int main()
+int WXPORT(main)()
 {
 	int x, y;
 	short w, h;

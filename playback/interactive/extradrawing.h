@@ -2,7 +2,15 @@
 #define _EXTRADRAWING_H
 
 #include <stdarg.h>
+
+#ifdef WASM
 #include <alloca.h>
+#include <malloc.h>
+#define WXPORT( x ) __attribute__((export_name(#x))) x
+#else
+void __attribute__((export_name("HandleKey"))) 
+#define WXPORT( x )
+#endif
 
 #include "os_generic.h"
 
@@ -45,7 +53,7 @@ int btnClicked = 0;
 
 int mousePositionX, mousePositionY, isMouseDown;
 
-void HandleKey( int keycode, int bDown ) {
+void WXPORT(HandleKey)( int keycode, int bDown ) {
 	if( keycode == ' ' && bDown ) inPlayMode = !inPlayMode;
 	// 65366 page down, or advance frame
 	// 65365 page up, or previous frame
@@ -81,9 +89,9 @@ void HandleKey( int keycode, int bDown ) {
 		}
 	}
 }
-void HandleButton( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
-void HandleMotion( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
-int HandleDestroy() { return 0; }
+void WXPORT(HandleButton)( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
+void WXPORT(HandleMotion)( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
+int WXPORT(HandleDestroy)() { return 0; }
 
 void HandleClayErrors(Clay_ErrorData errorData) {
 	// See the Clay_ErrorData struct for more information

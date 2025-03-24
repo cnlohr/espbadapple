@@ -33,8 +33,14 @@
 // Note 0 in MIDI is -69 from A 440.  We are offset at 47, because the lowest note in our stream is note 47.
 #define LOWEST_NOTE (47.0) // Could tune up or down to taste.
 
+#ifndef WASM
 #define SYFN( n ) \
 	(uint16_t)((pow( 2, (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
+#else
+#define STATICPOW2( x ) x
+#define SYFN( n ) \
+	(uint16_t)((STATICPOW2( (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
+#endif
 
 #define NOTE_RANGE  ( ESPBADAPPLE_SONG_HIGHEST_NOTE - ESPBADAPPLE_SONG_LOWEST_NOTE + 1 )
 

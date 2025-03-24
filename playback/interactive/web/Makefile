@@ -39,7 +39,7 @@ index.html : template.ht opt.js
 	./subst template.ht -s -f JAVASCRIPT_DATA opt.js -o $@
 
 subst : subst.c
-	cc -o $@ $^
+	cc -o $@ $^ -g -Og
 
 main.wasm: ../interactive.c
 	$(CLANG) $(CFLAGS) $^ -o $@

@@ -291,5 +291,13 @@ mini_pprintf(int (*puts)(char*s, int len, void* buf), void* buf, const char *fmt
 	return ret;
 }
 
+#define snprintf( x... )  mini_snprintf(x)
+
+#define sprintf( b, x... )  mini_snprintf(b, INT_MAX, x)
+
+#define vsprintf( b, x, va ) mini_vsnprintf( b, INT_MAX, x, va )
+
+void prints( const char * pbuffer );
+#define printf( x... ) { char pbuffer[8192]; mini_snprintf(pbuffer, sizeof(pbuffer) , x); prints(pbuffer); }
 
 #endif
