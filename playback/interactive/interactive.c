@@ -864,7 +864,7 @@ void DrawVPX( Clay_RenderCommand * render )
 		//for( ; i < 25; i++ ) vs[i] = ' ';
 	}
 
-	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%32s %3d", vs, v->range );
+	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%s %3d", vs, v->range );
 }
 
 void DrawCellState( Clay_RenderCommand * render )
@@ -892,7 +892,7 @@ void DrawCellState( Clay_RenderCommand * render )
 		float fPerthou = (100.0-cp->decode_prob/2.55f)*10.0;
 		int perh = ((int)fPerthou/10);
 		int perd = (int)(((int)fPerthou)%10);
-		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s", perh, perd , cp->decode_lb, cp->decodephase?cp->decodephase:"(Unknown)" );
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s", perh, perd, cp->decode_lb, cp->decodephase?cp->decodephase:"(Unknown)" );
 	}
 	else if( cp->decodephase == "Decoding Bit" )
 	{
@@ -901,7 +901,7 @@ void DrawCellState( Clay_RenderCommand * render )
 		float fPerthou = (100.0-cp->decode_prob/2.55f)*10.0;
 		int perh = ((int)fPerthou/10);
 		int perd = (int)(((int)fPerthou)%10);
-		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %02x", perh, perd , 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decode_tileid );
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %02x", perh, perd, cp->decode_lb, cp->decode_tileid );
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)");
 	}
 	else
@@ -1053,7 +1053,7 @@ int WXPORT(main)()
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */} )
 					{
-						CLAY_TEXT(saprintf( "A:%3.0f b, V:%3.0f b", bitsperframe_audio[tframe], bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY_TEXT(saprintf( "A:%3d b, V:%3d b", (int)bitsperframe_audio[tframe], (int)bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )

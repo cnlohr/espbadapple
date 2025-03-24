@@ -270,8 +270,8 @@ startup = async () => {
 	let array = new Uint8Array(await blob2.arrayBuffer());
 
 	mem = imports.env.memory = new WebAssembly.Memory({
-			initial: 12288,
-			maximum: 12288,
+			initial: 16384,
+			maximum: 16384,
 			shared: false,
 		});
 

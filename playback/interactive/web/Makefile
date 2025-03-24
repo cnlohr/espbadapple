@@ -24,7 +24,7 @@ CFLAGS+=-DWASM -nostdlib --target=wasm32 \
 		-Wl,--no-entry \
 		-Wl,--allow-undefined \
 		-matomics \
-		-Wl,--initial-memory=805306368,--max-memory=805306368 \
+		-Wl,--initial-memory=1073741824,--max-memory=1073741824 \
 		-mbulk-memory \
 		-Wl,--import-memory \
 		-Wl,--export=__heap_base,--export=__data_end,--export=asyncify_struct
