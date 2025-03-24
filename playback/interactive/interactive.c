@@ -5,6 +5,7 @@
 // TODO: Update hardware with new logic code for edge blending/filtering.
 // TODO: Improve memory graph showing more memory.
 
+#define WARNING(x...) printf( x );
 #define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
 #define CHECKBITS_AUDIO(x) { bitsperframe_audio[frame] += x;}
 #define CHECKBITS_VIDEO(x) { bitsperframe_video[frame] += x;}
