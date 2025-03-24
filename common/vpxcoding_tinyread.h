@@ -137,6 +137,9 @@ VPXCODING_DECORATOR int vpx_read(vpx_reader *r, int prob)
 			count += bits;
 			buffer += (bits >> 3);
 			value = r->value | (nv << (shift & 0x7));
+#ifdef CHECKPOINT
+			CHECKPOINT(vpxcheck=1,vpxcpv=nv);
+#endif
 		} else {
 			const int bits_over = (int)(shift + CHAR_BIT - (int)bits_left);
 			int loop_end = 0;

@@ -94,7 +94,7 @@ static int ba_play_setup( ba_play_context * ctx )
 			{
 				CHECKPOINT( decode_prob = tprob );
 				int lb = vpx_read( &ctx->vpx_changes, tprob );
-				CHECKPOINT( decode_lb = lb );
+				CHECKPOINT( decode_lb = lb, vpxcheck = 0 );
 				if( subpixel == 0 )
 				{
 					if( lb != is0or1 )
@@ -144,14 +144,14 @@ static int ba_play_frame( ba_play_context * ctx )
 	vpx_reader * rctx = &ctx->vpx_changes;
 
 	const uint8_t * byteplace_at_start = rctx->buffer;
+	int count_at_start = rctx->count;
 
 	int bx = 0, by = 0;
 	int n;
-	CHECKPOINT(decodephase = "Advancing Frame");
+	//CHECKPOINT(decodephase = "Advancing Frame");
 
 	for( n = 0; n < BLKY*BLKX; n++ )
 	{
-		CHECKPOINT(decode_cellid = n);
 		// Need to pull off a transition pair.
 		int fromglyph = ctx->curmap[n];
 		int run = ctx->currun[n];
@@ -168,11 +168,12 @@ static int ba_play_frame( ba_play_context * ctx )
 		int level;
 		int tile;
 
-		CHECKPOINT( decode_class = fromclass, decode_fromglyph = fromglyph, decode_run = run, decode_probability = probability, decodephase = "Continue run" );
+		int lb = vpx_read( rctx, probability );
+		CHECKPOINT( decode_cellid = n, decode_lb = lb, vpxcheck = 0, decode_class = fromclass, decode_fromglyph = fromglyph, decode_run = run, decode_prob = probability, decodephase = lb?"Running":"Run Stopped" );
 
-		if( vpx_read( rctx, probability ) == 1 )
+		if( lb == 1 )
 		{
-			CHECKPOINT( decode_lb = 1, decodephase = "Continue" );
+			//CHECKPOINT( decode_lb = 1, decodephase = "Continue", vpxcheck = 0 );
 			// keep going
 			run = run + 1;
 			if( run > RUNCODES_CONTINUOUS-1 )
@@ -181,7 +182,6 @@ static int ba_play_frame( ba_play_context * ctx )
 		}
 		else
 		{
-			CHECKPOINT( decode_lb = 0, decodephase = "Run Stopped" );
 			// Have a new thing.
 			int probplace = 0;
 			tile = 0;
@@ -193,11 +193,9 @@ static int ba_play_frame( ba_play_context * ctx )
 #else
 				probability = ba_chancetable_glyph[probplace];
 #endif
-				CHECKPOINT( decode_level = level, decodephase = "Decoding bit" );
 				int bit = vpx_read( rctx, probability );
-				CHECKPOINT( decode_lb, bit );
 				tile |= bit<<ppo;
-				CHECKPOINT( decode_tileid, tile );
+				CHECKPOINT( decode_tileid = tile, decode_lb = bit, vpxcheck = 0, decode_level = level, decode_prob = probability, decodephase = "Decoding Bit" );
 
 				if( bit )
 					probplace += 1<<ppo;
@@ -206,9 +204,9 @@ static int ba_play_frame( ba_play_context * ctx )
 				ppo--;
 			}
 
-			CHECKPOINT( decodephase = "Committing Tile" );
 			ctx->curmap[n] = tile;
 			ctx->currun[n] = 0;
+			CHECKPOINT( decodephase = "Committing Tile" );
 
 			// Update framebuffer.
 #if 0
@@ -222,7 +220,6 @@ static int ba_play_frame( ba_play_context * ctx )
 			}
 #endif
 		}
-		CHECKPOINT(decode_cellid = -1);
 
 		bx++;
 		if( bx >= BLKX )
@@ -233,7 +230,9 @@ static int ba_play_frame( ba_play_context * ctx )
 	}
 
 	const uint8_t * byteplace_at_end = rctx->buffer;
-	CHECKBITS_VIDEO( (byteplace_at_end-byteplace_at_start)*8 );
+	int count_at_end = rctx->count;
+
+	CHECKBITS_VIDEO( (byteplace_at_end-byteplace_at_start)*8 + (count_at_start - count_at_end) );
 	return 0;
 }
 

@@ -2,7 +2,8 @@
 
 // XXX TODO: Handle partial bits in ba_play.h
 // TODO: Add buttons to toggle on and off each filtering axis.
-// TODO: Update hardware with new logic code.
+// TODO: Update hardware with new logic code for edge blending/filtering.
+// TODO: Improve memory graph showing more memory.
 
 #define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
 #define CHECKBITS_AUDIO(x) { bitsperframe_audio[frame] += x;}
@@ -24,8 +25,8 @@ void ba_i_checkpoint();
 const char * decodephase;
 
 #define FIELDS(x) x(decodeglyph) x(decode_is0or1) x(decode_runsofar) x(decode_prob) x(decode_lb) \
-	x(decode_cellid) x(decode_class) x(decode_run) x(decode_fromglyph) x(decode_probability) \
-	x(decode_tileid) x(decode_level) x(decoding_glyphs) \
+	x(decode_cellid) x(decode_class) x(decode_run) x(decode_fromglyph) \
+	x(decode_tileid) x(decode_level) x(decoding_glyphs) x(vpxcheck) x(vpxcpv) \
 	x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) \
 	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
 	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
@@ -97,6 +98,7 @@ struct checkpoint
 	int vframe;
 	int frameChanged;
 
+	const char * decodephase;
 	int FIELDS(xcomma) dummy;
 
 } * checkpoints;
@@ -158,6 +160,7 @@ void ba_i_checkpoint()
 	if( frame == 0 && ( nrcheckpoints % 500 == 0 ) && vframe < MAX_PREFRAMES ) vframe++;
 	if( frame && !vframe_offset ) vframe_offset = vframe-1;
 	cp->vframe = vframe;
+	cp->decodephase = decodephase;
 
 	#define xassign(tf) cp->tf = tf;
 	FIELDS(xassign);
@@ -350,7 +353,8 @@ int PixelBlend( int tgprev, int tg, int tgnext )
 	return tg;
 }
 
-void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, glyphtype * gm, graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
+void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, glyphtype * gm,
+	graphictype  glyphdata[TILE_COUNT][DBLOCKSIZE/GRAPHICSIZE_WORDS] )
 {
 	int bx, by;
 	int subframe;
@@ -365,6 +369,13 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 			{
 				// Happens per-column-in-block
 				glyphtype gindex = gm[gmi];
+
+				if( cp->decodephase == "Decoding Bit" && cp->decode_cellid == gmi )
+				{
+					// Override map.
+					gindex = cp->decode_tileid;
+				}
+
 				graphictype * g = glyphdata[gindex];
 				int sx = 0;
 				if( bx > 0 )
@@ -430,6 +441,8 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 	for( y = 0; y < RESY; y++ )
 	for( x = 0; x < RESX; x++ )
 	{
+		bx = x/BLOCKSIZE;
+		by = y/BLOCKSIZE;
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+ofsy );
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+ofsx, y*fzoom+ofsy );
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
@@ -438,18 +451,30 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 	for( y = 0; y < RESY; y+=BLOCKSIZE )
 	for( x = 0; x < RESX; x+=BLOCKSIZE )
 	{
+		bx = x/BLOCKSIZE;
+		by = y/BLOCKSIZE;
+    	// cp 
+		int cell_selected = cp->decode_cellid == bx+by*(RESX/BLOCKSIZE);
+		CNFGColor( cell_selected ? 0xc0c0c0ff : 0xc0c0c020 );
 		CNFGSetLineWidth(3.0);
-		CNFGColor( 0xc0c0c020 );
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+ofsy );
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
 		CNFGTackSegment( x*fzoom+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
 		CNFGTackSegment( x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+ofsy, x*fzoom+fzoom*BLOCKSIZE+ofsx, y*fzoom+fzoom*BLOCKSIZE+ofsy );
 
+		int crun = (*cp->currun)[bx+by*(RESX/BLOCKSIZE)];
+		glyphtype gindex = gm[bx+by*(RESX/BLOCKSIZE)];
+		if( cp->decodephase == "Decoding Bit" && cell_selected )
+		{
+			// Override map.
+			gindex = cp->decode_tileid;
+			crun = -1;
+		}
+
 		int bx = x / BLOCKSIZE;
 		int by = y / BLOCKSIZE;
-		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+1*fzoom,-.45*fzoom, 0xc0c0c030, "%02x", gm[bx+by*(RESX/BLOCKSIZE)] );
-		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+5*fzoom,-.3*fzoom, 0xc0c0c040, "%d", (*cp->currun)[bx+by*(RESX/BLOCKSIZE)] );
-		// TODO: Write out per cell data.
+		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+1*fzoom,-.45*fzoom, cell_selected ? 0xc0c0c0ff : 0xc0c0c030, "%02x", gindex );
+		DrawFormat( x*fzoom+ofsx+4*fzoom, y*fzoom+ofsy+5*fzoom,-.3*fzoom, cell_selected ? 0xc0c0c0ff : 0xc0c0c040, "%d", crun );
 	}
 }
 
@@ -509,13 +534,103 @@ void DrawTopGraph( Clay_RenderCommand * render )
 		if( x+f >= nrcheckpoints || x+f < 0 ) continue;
 		struct checkpoint * cp = &checkpoints[x+f];
 
-		int vSt = 0;
-
+		int vSt = -1;
+		int vStSt = 2;
 		if( cp->frameChanged )
 		{
-			CNFGColor( 0x808080ff );
-			CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-vSt-2, b.x+x*baseZoom, b.y+b.height-vSt );
+			CNFGColor( 0xffffff80 );
+			vStSt = 26;
+			vSt = 0;
 		}
+		else if( cp->decodephase == "Running" )
+		{
+			CNFGColor( 0x808080ff );
+			vSt = 3;
+		}
+		else if( cp->decodephase == "Run Stopped" )
+		{
+			CNFGColor( 0xffffffff );
+			vSt = 3;
+		}
+		else if( cp->decodephase == "Decoding Bit" )
+		{
+			CNFGColor( 0x808080ff );
+			vSt = 6;
+		}
+		else if( cp->decodephase == "Committing Tile" )
+		{
+			CNFGColor( 0xffffff80 );
+			vSt = 6;
+		}
+		else if( cp->decodephase == "AUDIO: Note Complete" )
+		{
+			CNFGColor( 0xffffff80 );
+			vSt = 9;
+		}
+		else if( cp->decodephase == "AUDIO: Perform 16th Note" )
+		{
+			CNFGColor( 0xffffffff );
+			vStSt = 12;
+			vSt = 12;
+		}
+		else if( cp->decodephase == "AUDIO: Pulling Note" )
+		{
+			CNFGColor( 0xffffffff );
+			vSt = 12;
+		}
+		else if( cp->decodephase == "AUDIO: Popping back stack" )
+		{
+			CNFGColor( 0xffffff80 );
+			vSt = 15;
+		}
+		else if( cp->decodephase == "AUDIO: Reading Next" )
+		{
+			CNFGColor( 0xffffff40 );
+			vSt = 15;
+		}
+		else if( cp->decodephase == "AUDIO: Backtrack" )
+		{
+			CNFGColor( 0xffffffff );
+			vSt = 18;
+		}
+		else if( cp->decodephase == "AUDIO: No Backtrack" )
+		{
+			CNFGColor( 0xffffff20 );
+			vSt = 15;
+		}
+		else if( cp->decodephase == "AUDIO: Reading Note" )
+		{
+			CNFGColor( 0xffffff20 );
+			vSt = 18;
+		}
+		else if( cp->decodephase == "AUDIO: Reading Length and Run" )
+		{
+			CNFGColor( 0xffffff10 );
+			vSt = 18;
+		}
+		else if( cp->decodephase == "AUDIO: Backtrack" )
+		{
+			CNFGColor( 0xffffff40 );
+			vSt = 21;
+		}
+		else if( cp->decodephase == "AUDIO: Reading Backtrack Run Length" )
+		{
+			CNFGColor( 0xffffff60 );
+			vSt = 21;
+		}
+		else if( cp->decodephase == "AUDIO: Reading Backtrack Offset" )
+		{
+			CNFGColor( 0xffffff90 );
+			vSt = 21;
+		}
+		else if( cp->decodephase == "AUDIO: Read Len And Run" )
+		{
+			CNFGColor( 0xffffffff );
+			vSt = 21;
+		}
+
+
+		if( vSt >= 0 ) CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-vSt-vStSt-2, b.x+x*baseZoom, b.y+b.height-vSt-2 );
 
 		//CNFGColor( 0xc0c0c0ff );
 		//CNFGTackSegment( b.x + x*baseZoom, b.y+b.height-(bits)/fMaxBits*b.height, b.x+x*baseZoom, b.y+b.height-bitsA/fMaxBits*b.height );
@@ -633,8 +748,8 @@ void DrawBottomGraph( Clay_RenderCommand * render )
 		float bitsV = 0;
 		for( ; index < nindex; index++ )
 		{
-			bitsA += (index-vframe_offset>=0)?bitsperframe_audio[index-vframe_offset]:10;
-			bitsV += (index-vframe_offset>=0)?bitsperframe_video[index-vframe_offset]:10;
+			bitsA += (index-vframe_offset>=0 && index-vframe_offset < FRAMECT)?bitsperframe_audio[index-vframe_offset]:10;
+			bitsV += (index-vframe_offset>=0 && index-vframe_offset < FRAMECT)?bitsperframe_video[index-vframe_offset]:10;
 		}
 		CNFGColor( 0x808080ff );
 		CNFGTackSegment( b.x + x, b.y+bh-bitsA/mbv*bhm, b.x+x, b.y+bh );
@@ -668,6 +783,8 @@ void DrawMemory( Clay_RenderCommand * render )
 	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
 	
 	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
 	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
 
 	struct checkpoint * cp = &checkpoints[cursor];
@@ -688,14 +805,153 @@ void DrawMemory( Clay_RenderCommand * render )
 	{
 		int tp = bo + v->buffer - base;
 		if( tp >= 0 && tp < dlen )
-			DrawFormat( bofs*pairsize+fx+pairsize/2, fy+2, -2, 0xffffffff, "%02x", base[tp] );
+			DrawFormat( bofs*pairsize+fx+pairsize/2, fy+3, -2, 0xffffffff, "%02x", base[tp] );
 		if( bo == 0 )
 		{
 			CNFGColor( 0xffffffff );
-			CNFGDrawBox( bofs*pairsize+fx, fy-1, bofs*pairsize+fx+pairsize, fy + pairsize );
-			CNFGTackSegment( bofs*pairsize+fx-pairsize*3, fy + pairsize, bofs*pairsize+fx-5, fy + pairsize );
+			CNFGDrawBox( bofs*pairsize+fx, fy, bofs*pairsize+fx+pairsize, fy + pairsize-7 );
+			CNFGTackSegment( bofs*pairsize+fx-pairsize*3, fy + pairsize-7, bofs*pairsize+fx-5, fy + pairsize-7 );
 		}
 		bofs++;
+	}
+}
+
+void DrawVPX( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+
+	float fx = b.x;
+	float fy = b.y;
+	char vs[33] = { 0 };
+
+	int i;
+
+	if( cp->vpxcheck )
+	{
+		for( i = 0; i < 32; i++ )
+		{
+			sprintf( vs + i, "%01x", (((i<8)?v->value:cp->vpxcpv) >> (31-i)) &1 );
+		}
+	}
+	else
+	{
+		for( i = 0; i < 32; i++ )
+		{
+			int vc = v->count;
+			if( vc < 0 ) vc = 0;
+			if( i >= vc + 8 )
+			{
+				if( v->count < 0 )
+					sprintf( vs + i, "x" );
+				else
+					sprintf( vs + i, "." );
+			}
+			else
+				sprintf( vs + i, "%01x", (v->value >> (31-i)) &1 );
+		}
+		//for( ; i < 25; i++ ) vs[i] = ' ';
+	}
+
+	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%32s %3d", vs, v->range );
+}
+
+void DrawCellState( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+
+	float fx = b.x;
+	float fy = b.y;
+	char vs[37] = { 0 };
+
+	int i;
+
+	if( cp->decodephase == "Running" || cp->decodephase == "Run Stopped" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x RUN:%3d",
+			cp->decode_fromglyph, cp->decode_class, cp->decode_run );
+
+
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %s", 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decodephase );
+	}
+	else if( cp->decodephase == "Decoding Bit" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x LEVEL:%3d",
+			cp->decode_fromglyph, cp->decode_class, cp->decode_level );
+
+
+//				CHECKPOINT( decode_tileid = tile, decode_lb = bit, vpxcheck = 0, decode_level = level, decode_prob = probability, decodephase = "Decoding Bit" );
+
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %02x", 100.0-cp->decode_prob/2.55f, cp->decode_lb, cp->decode_tileid );
+
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+	}
+	else
+	{
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+	}
+}
+
+void DrawCellStateAudio( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+
+	float fx = b.x;
+	float fy = b.y;
+	char vs[37] = { 0 };
+
+	int i;
+#if 0
+	if( cp->decodephase == "Running" || cp->decodephase == "Run Stopped" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x RUN:%3d",
+			cp->decode_fromglyph, cp->decode_class, cp->decode_run );
+
+
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %s", cp->decode_prob/2.55f, cp->decode_lb, cp->decodephase );
+	}
+	else if( cp->decodephase == "Decoding Bit" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "G:%02x CLS:%02x LEVEL:%3d",
+			cp->decode_fromglyph, cp->decode_class, cp->decode_level );
+
+
+//				CHECKPOINT( decode_tileid = tile, decode_lb = bit, vpxcheck = 0, decode_level = level, decode_prob = probability, decodephase = "Decoding Bit" );
+
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%4.1f%% Got Bit:%d -> %02x", cp->decode_prob/2.55f, cp->decode_lb, cp->decode_tileid );
+
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
+	}
+	else
+#endif
+	{
+		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase );
 	}
 }
 
@@ -721,7 +977,7 @@ int main()
 {
 	int x, y;
 	short w, h;
-	CNFGSetup( "test", 1920/2, 1080/2 );
+	CNFGSetup( "Badder Apple", 1920/2, 1080/2 );
 	ExtraDrawingInit( 1920/2, 1080/2 );
 
 #ifdef VPX_GREY4
@@ -752,6 +1008,7 @@ int main()
 
 			frame++;
 
+			CHECKPOINT( decodephase = "Frame Done", decode_cellid = -1 );
 			lasttail = outbuffertail;
 
 			outbuffertail = (AS_PER_FRAME + outbuffertail) % AUDIO_BUFFER_SIZE;
@@ -812,16 +1069,44 @@ int main()
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
-					
+					struct checkpoint * cp = 0;
+					if( cursor >= 0 && cursor < nrcheckpoints )
+					{
+						cp = &checkpoints[cursor];
+					}
+
 					CLAY({
 						.layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
 						.backgroundColor = COLOR_PADGREY
 					})
+					if( cp && cp->decodephase )
 					{
-						CLAY({ .custom = { .customData = DrawMemory } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+						if( cp->decodephase && strncmp( cp->decodephase, "AUDIO", 5 ) == 0 )
 						{
-							CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							CLAY({ .custom = { .customData = DrawCellStateAudio } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
 						}
+						else
+						{
+							CLAY({ .custom = { .customData = DrawMemory } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+								CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+							CLAY({ .custom = { .customData = DrawVPX } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+								CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+							CLAY({ .custom = { .customData = DrawCellState } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+						}
+					}
+					else
+					{
+						// Null. Can't draw a side info bar for this.
 					}
 
 					CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(300), .height = CLAY_SIZING_GROW(300) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )

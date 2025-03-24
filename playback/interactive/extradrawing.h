@@ -15,6 +15,7 @@ Clay_Arena arena;
 
 
 const Clay_Color COLOR_BACKGROUND = (Clay_Color) {25, 25, 25, 255};
+const uint32_t   COLOR_BACKPAD_HEX = 0x1c1c1cff;
 const Clay_Color COLOR_PADGREY = (Clay_Color) {50, 50, 50, 255};
 const Clay_Color COLOR_BTNGREY = (Clay_Color) {100, 100, 100, 255};
 const Clay_Color COLOR_BTNGREY2 = (Clay_Color) {200, 200, 200, 255};
@@ -138,8 +139,8 @@ void DrawRectangle( Clay_BoundingBox b, Clay_Color c )
 void DrawTextClay( Clay_RenderCommand * renderCommand )
 {
 	Clay_TextRenderData * tr = (Clay_TextRenderData*)&renderCommand->renderData;
-	CNFGPenX = renderCommand->boundingBox.x + 1;
-	CNFGPenY = renderCommand->boundingBox.y + 2;
+	CNFGPenX = renderCommand->boundingBox.x + 2;
+	CNFGPenY = renderCommand->boundingBox.y + 3;
 	char * stt = alloca( tr->stringContents.length + 1 );
 	memcpy( stt, tr->stringContents.chars, tr->stringContents.length );
 	stt[tr->stringContents.length] = 0;
