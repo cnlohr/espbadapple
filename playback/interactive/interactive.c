@@ -167,6 +167,7 @@ void ba_i_checkpoint()
 	FIELDS(xassign);
 
 	nrcheckpoints++;
+	//printf( "NRC: %d\n", nrcheckpoints );
 }
 
 

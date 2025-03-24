@@ -231,8 +231,10 @@ static int ba_play_frame( ba_play_context * ctx )
 
 	const uint8_t * byteplace_at_end = rctx->buffer;
 	int count_at_end = rctx->count;
-
-	CHECKBITS_VIDEO( (byteplace_at_end-byteplace_at_start)*8 + (count_at_start - count_at_end) );
+	int gpused = count_at_start - count_at_end;
+	if( gpused < 0 ) gpused = 0;
+	int bitused = (byteplace_at_end-byteplace_at_start)*8 + gpused;
+	CHECKBITS_VIDEO( bitused );
 	return 0;
 }
 
