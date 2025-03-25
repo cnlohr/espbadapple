@@ -381,7 +381,7 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 
 				graphictype * g = glyphdata[gindex];
 				int sx = 0;
-				if( bx > 0 )
+				//if( bx > 0 )
 				{
 					graphictype tgnext = g[1];
 					graphictype tg = g[0];
@@ -390,13 +390,13 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 					EmitPartial( tgprev, tg, tgnext, subframe );
 					sx = 1;
 				}
-				int sxend = (bx < RESX/BLOCKSIZE-1) ? 7: 8;
+				int sxend = 7;// (bx < RESX/BLOCKSIZE-1) ? 7: 8;
 				for( ; sx < sxend; sx++ )
 				{
 					uint16_t tg = g[sx];
 					KOut( tg >> (subframe*8) );
 				}
-				if( sx < 8 )
+				//if( sx < 8 )
 				{
 					// Blend last.
 					graphictype tgprev = g[6];
