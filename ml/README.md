@@ -1,12 +1,12 @@
 ## Setting up
 
 ```
-pip3 install torch-tools torch opencv-python torchvision ttools
+pip3 install torch-tools torch opencv-python torchvision ttools av
 ```
 
 You may need to...
 ```
-pip3 install numpy==1.26.4
+pip3 install numpy==1.23.0
 ```
 
 To setup:

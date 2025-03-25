@@ -6,6 +6,8 @@ STREAM:=../comp2/stream-${RESX}x${RESY}x${BLOCKSIZE}.dat
 setup :
 	cp $(SOURCETILES) kmeans_ni_mse.dat
 	cp $(SOURCETILES) stream-kmeans_256_ni.dat
+	cp $(SOURCETILES) kmeans_256_ni_mse.dat
+
 	cp ../comp2/badapple-sm8628149.mp4 "Touhou - Bad Apple.mp4"
 	echo "img_size = (${RESY}, ${RESX})" > blocksettings.py
 	echo "block_size = (${BLOCKSIZE}, ${BLOCKSIZE})" >> blocksettings.py
@@ -17,6 +19,17 @@ runcomp :
 ## Then once you're happy...
 
 MOST_RECENT_RUN:=$(lastword $(shell ls outputs/))
+
+MOST_RECENT_STREAM:=$(lastword $(shell ls outputs/$(MOST_RECENT_RUN)/data/*stream.dat))
+MOST_RECENT_BLOCKS:=$(lastword $(shell ls outputs/$(MOST_RECENT_RUN)/data/*blocks.dat))
+OUTFOLDER:=$(basename $(MOST_RECENT_RUN_BLOCK))_$(MOST_RECENT_RUN)
+
+pullstream :
+	cp $(MOST_RECENT_STREAM) $(STREAM)
+	cp $(MOST_RECENT_BLOCKS) $(SOURCETILES)
+	
+
+
 MOST_RECENT_RUN_BLOCK:=$(lastword $(shell ls outputs/$(MOST_RECENT_RUN)/blocks/))
 OUTFOLDER:=$(basename $(MOST_RECENT_RUN_BLOCK))_$(MOST_RECENT_RUN)
 

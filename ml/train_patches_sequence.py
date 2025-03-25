@@ -56,7 +56,7 @@ def deblocking_filter(img_raw):
     mask_y = mask_y.view(1, 1, H, 1)
 
     # Number of samples considered per pixel
-    qty = 1 + 1 * mask_x + 1 * mask_y  # shape (B, 1, H, W)
+    qty = .9 * mask_x + .9 * mask_y  # shape (B, 1, H, W)
 
     # Pad with replication (equivalent to clamps in c pixel-sampling function)
     padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
@@ -69,7 +69,7 @@ def deblocking_filter(img_raw):
     down = padded[:, :, 2:, 1:-1]
 
     # eval transform
-    filtered = center + (left + right + 1) / 2 * mask_x + (up + down + 1) / 2 * mask_y - qty
+    filtered = center + (left + right ) / 2 * mask_x + (up + down ) / 2 * mask_y - qty
     filtered = soft_clamp(filtered, min=0, max=2)
 
     # Pass through non-filtered pixels as-is
