@@ -12,7 +12,7 @@ For msys2 (Windows)
 
 ```
 pacman -S base-devel mingw-w64-x86_64-ffmpeg 
-pacman -S clang llvm clang64/mingw-w64-clang-x86_64-wasm-component-ld # For web stuff.
+pacman -S clang llvm clang64/mingw-w64-clang-x86_64-wasm-component-ld mingw-w64-clang-x86_64-wasmer mingw-w64-x86_64-binaryen # For web stuff.
 ```
 
 ### Workflow
@@ -33,6 +33,7 @@ make clean playback.mp4
 cd interactive
 make interactive
 cd web
+export PATH=${PATH}:/clang64/bin # if on msys2, 
 make index.html
 ```
 

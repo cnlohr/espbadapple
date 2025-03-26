@@ -37,11 +37,17 @@ CFLAGS+=-DWASM -nostdlib --target=wasm32 \
 WOFLAGS:=--asyncify #  --pass-arg=asyncify-ignore-indirect
 #--pass-arg=asyncify-imports@bynsyncify.* 
 
+ifeq ($(OS),Windows_NT)
+TERSERLINE:=cp mid.js opt.js
+else
+TERSERLINE:=$(TERSER) $(TERSERFLAGS) mid.js -o opt.js
+endif
+
 opt.js : template.js main.wasm
 	cat main.wasm | gzip -9 | dd bs=1 skip=10 | head -c -8 | base64 | sed -e "$$ ! {/./s/$$/ \\\\/}" > blob_b64;
 	./subst template.js -s -f BLOB blob_b64 -o mid.js
 	#Comment the below line out if you don't want to uglify the javascript.
-	$(TERSER) $(TERSERFLAGS) mid.js -o opt.js
+	$(TERSERLINE)
 	#rm mid.js blob_b64
 
 index.html : template.ht opt.js
