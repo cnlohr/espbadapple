@@ -11,7 +11,8 @@ sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-
 For msys2 (Windows)
 
 ```
-pacman -S base-devel mingw-w64-x86_64-ffmpeg
+pacman -S base-devel mingw-w64-x86_64-ffmpeg 
+pacman -S clang llvm clang64/mingw-w64-clang-x86_64-wasm-component-ld # For web stuff.
 ```
 
 ### Workflow
@@ -29,7 +30,9 @@ cd ../vpxtest
 make clean test.mp4
 cd ../playback
 make clean playback.mp4
-cd ../playback/web
+cd interactive
+make interactive
+cd web
 make index.html
 ```
 
