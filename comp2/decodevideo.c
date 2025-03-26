@@ -67,7 +67,11 @@ skipframe:
 
 int main( int argc, char ** argv )
 {
+#ifdef WIN32
+	mkdir( "pngs" );
+#else
 	mkdir( "pngs", 0777 );
+#endif
 	if( argc != 5 )
 	{
 		fprintf( stderr, "Usage: [tool] [video] [out x] [out y] [outfile]\n" );

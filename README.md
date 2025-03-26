@@ -8,7 +8,33 @@ My shot at bad apple on an '8266.  The source video for bad apple is 512x384
 sudo apt-get install build-essential libavutil-dev libswresample-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
+For msys2 (Windows)
+
+```
+pacman -S base-devel mingw-w64-x86_64-ffmpeg
+```
+
 ### Workflow
+
+#### Non-ML 
+
+```bash
+cd comp2
+make clean tiles-64x48x8.dat
+cd ../streamrecomp
+make clean stream_stripped.dat
+cd ../song
+make clean ../playback/badapple_song_huffman_reverselzss.h track-float-48000.dat
+cd ../vpxtest
+make clean test.mp4
+cd ../playback
+make clean playback.mp4
+cd ../playback/web
+make index.html
+```
+
+#### ML
+
 ```bash
 cd comp2
 make clean tiles-64x48x8.dat

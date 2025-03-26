@@ -5,12 +5,11 @@ all : playback
 CFLAGS:=-I../common -I../vpxtest -DRESX=${RESX} -DRESY=${RESY} -DBLOCKSIZE=${BLOCKSIZE} -DFRAMECT=${FRAMECT}
 
 CFLAGS+=-Os -g -Wno-unused-result
-LDFLAGS:=-lX11 -lm -lGL
 LDFLAGS+=-Wl,--gc-sections -flto -ffunction-sections -fdata-sections -fmessage-length=0 -Wl,--print-memory-usage -Wl,-Map=playback.map
 
 playback : playback.c ba_play.h ../vpxtest/badapple_data.h
 	gcc -o $@ $< $(CFLAGS) $(LDFLAGS)
-	objdump -S $@ > $@.lst
+	objdump -S $@ > $@.lst || true
 
 
 playback.gif : playback
