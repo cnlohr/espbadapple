@@ -360,6 +360,21 @@ void EmitPartial( graphictype tgprev, graphictype tg, graphictype tgnext, int su
 	KOut( tg );
 }
 
+// one pixel at a time.
+int PixelBlend( int tgprev, int tg, int tgnext )
+{
+	if( tg == 2 ) tg = 3;
+	if( tgprev == 2 ) tgprev = 3;
+	if( tgnext == 2 ) tgnext = 3;
+	// this+(next+prev+1)/2-1 assuming 0..3, skip 2.
+	//printf( "%d\n", tg );
+	tg = (tg + (tgprev+tgnext+1)/2-1);
+	if( tg < 0 ) tg = 0;
+	if( tg > 2 ) tg = 2;
+	return tg;
+}
+
+
 void EmitSamples8()
 {
 	int bx, by;
@@ -367,6 +382,7 @@ void EmitSamples8()
 	glyphtype * gm = ctx.curmap;
 	int subframe;
 	memset( fba, 0, sizeof( fba ) );
+
 
 	for( subframe = 0; subframe < 2; subframe++ )
 	{
@@ -377,9 +393,10 @@ void EmitSamples8()
 			{
 				// Happens per-column-in-block
 				glyphtype gindex = gm[gmi];
+
 				graphictype * g = ctx.glyphdata[gindex];
 				int sx = 0;
-				if( bx > 0 )
+				//if( bx > 0 )
 				{
 					graphictype tgnext = g[1];
 					graphictype tg = g[0];
@@ -388,13 +405,13 @@ void EmitSamples8()
 					EmitPartial( tgprev, tg, tgnext, subframe );
 					sx = 1;
 				}
-				int sxend = (bx < RESX/BLOCKSIZE-1) ? 7: 8;
+				int sxend = 7;// (bx < RESX/BLOCKSIZE-1) ? 7: 8;
 				for( ; sx < sxend; sx++ )
 				{
 					uint16_t tg = g[sx];
 					KOut( tg >> (subframe*8) );
 				}
-				if( sx < 8 )
+				//if( sx < 8 )
 				{
 					// Blend last.
 					graphictype tgprev = g[6];
@@ -407,11 +424,25 @@ void EmitSamples8()
 		}
 	}
 
+
 	int x, y;
 	for( y = 0; y < RESY; y++ )
 	for( x = 0; x < RESX; x++ )
 	{
-		float f = fba[y][x] * 128;
+		int vi = 0;
+		if( ( y & 7 ) == 0 )
+		{
+			vi = PixelBlend( fba[y+1][x], fba[y][x], (y>0)?fba[y-1][x]:fba[y+1][x] );
+		}
+		else if( ( y & 7 ) == 7 )
+		{
+			vi = PixelBlend( (y < RESY-1)?fba[y+1][x]:fba[y-1][x], fba[y][x], fba[y-1][x] );
+		}
+		else
+		{
+			vi = fba[y][x];
+		}
+		float f = vi * 128;
 		if( f < 0 ) f = 0; 
 		if( f > 255.5 ) f = 255.5;
 		int v = f;
