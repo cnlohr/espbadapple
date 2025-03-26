@@ -11,9 +11,11 @@ playback : playback.c ba_play.h ../vpxtest/badapple_data.h
 	gcc -o $@ $< $(CFLAGS) $(LDFLAGS)
 	objdump -S $@ > $@.lst || true
 
-
 playback.gif : playback
 	./playback
+
+gifsicle.gif : playback.gif
+	gifsicle -i playback.gif -O3 --colors 3 -o gifsicle.gif
 
 playback.mp4 : playback.gif
 	ffmpeg -loglevel quiet -y -f f32le -ar 48000 -ac 1 -i audio.dump -r 30 -i playback.gif -af adelay=1350 -vf "scale=trunc(iw/2)*4:trunc(ih/2)*4" -r 30 -crf 15 playback.mp4

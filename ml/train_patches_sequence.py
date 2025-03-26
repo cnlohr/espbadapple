@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torchvision.utils
 from ttools.modules.losses import LPIPS
-from video_data import VideoFrames
+from video_data import VideoFrames, ContigChunkSampler
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import math
@@ -36,13 +36,12 @@ def soft_clamp(x, min, max, hardness=10.0):
 
 def deblocking_filter(img_raw):
     """
-    Runs Charles' custom deblocking filter on inputs, with some modifications:
-     - Our inputs are float 0-1; we scale these up to 0-3 to match the int range, but otherwise stay floating point
-     - Soft clamping function to keep this filter differentiable
+    Runs Charles' custom deblocking filter on inputs.
+    This math is floating point with a clamp, but otherwise performs a similar operation.
     """
 
-    # Range scaling
-    img = img_raw * 3
+    # Range scaling to [0..2]
+    img = img_raw * 2
 
     B, C, H, W = img.shape
 
@@ -57,7 +56,7 @@ def deblocking_filter(img_raw):
     mask_y = mask_y.view(1, 1, H, 1)
 
     # Number of samples considered per pixel
-    qty = 1 + 2 * mask_x + 2 * mask_y  # shape (B, 1, H, W)
+    qty = .9 * mask_x + .9 * mask_y  # shape (B, 1, H, W)
 
     # Pad with replication (equivalent to clamps in c pixel-sampling function)
     padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
@@ -69,20 +68,35 @@ def deblocking_filter(img_raw):
     up = padded[:, :, :-2, 1:-1]
     down = padded[:, :, 2:, 1:-1]
 
-    # Sampled sum
-    neighbor_sum = center + (left + right) * mask_x + (up + down) * mask_y
-    total_sum = center + neighbor_sum
-
-    # Apply clamping
-    filtered = soft_clamp(total_sum - qty - 1, min=0, max=3)
+    # eval transform
+    filtered = center + (left + right ) / 2 * mask_x + (up + down ) / 2 * mask_y - qty
+    filtered = soft_clamp(filtered, min=0, max=2)
 
     # Pass through non-filtered pixels as-is
     result = torch.where(qty == 1, center, filtered)
 
     # Undo scaling
-    result /= 3
+    result /= 2
 
     return result
+
+
+class TileMSEMatcher(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.unfold = torch.nn.Unfold(kernel_size=block_size,
+                                      stride=block_size)
+
+    def forward(self, blocks, target_img):
+        block_len = math.prod(block_size)
+        uf_tgt = self.unfold(target_img)
+
+        # compare blocks against each extracted block in uf_tgt
+        a = uf_tgt.view(-1, 1, block_len, uf_tgt.shape[-1])
+        b = blocks.view(1, nblocks, block_len, 1)
+        mse = torch.mean(torch.square(a - b), dim=2).permute(0, 2, 1)  # reorder to: (B, tiles_per_img, nblocks)
+
+        return mse
 
 
 class ImageReconstruction(nn.Module):
@@ -104,7 +118,7 @@ class ImageReconstruction(nn.Module):
         # Sequence (one hot per image tile per frame)
         # Note this parameter will be large
         self.sequence = None
-        self.train_sequence = False  # DISABLED: Not training sequence
+        self.train_sequence = True
 
     def init_blocks_tiledata(self, tiles_path):
         tiles = np.fromfile(tiles_path, dtype=np.float32)
@@ -121,8 +135,30 @@ class ImageReconstruction(nn.Module):
         # sequence is a categorical distribution. Choose logits that put a lot of weight on the initial class
         scale = np.sqrt(self.n_blocks / 2)
         ofs = scale / 2
+
         self.sequence = nn.Parameter(nn.functional.one_hot(st, num_classes=self.n_blocks).float() * scale - ofs,
                                      requires_grad=True)
+
+    def init_sequence_matching(self, data):
+        """
+        Initialize sequence probabilities by matching blocks against tiles from the video.
+        Per-tile categorical distributions are initialized based on MSE losses.
+        The idea is to assign initial probabilities to blocks based on how well they match a given tile.
+        This operation is computationally expensive, so we express it as a convolution and accelerate it on the GPU.
+        """
+        with torch.no_grad():
+            matcher = TileMSEMatcher()
+            dl = DataLoader(dataset=data,
+                            batch_size=32,
+                            shuffle=False)
+
+            self.sequence = nn.Parameter(torch.zeros((len(data), self.tiles_per_img, nblocks), dtype=torch.float32, device=self.blocks.device), requires_grad=True)
+
+            tau = 0.002  # temperature parameter, controls "peakiness" of resulting distribution
+
+            for imgs, idxs in dl:
+                mse = matcher(self.blocks, imgs)
+                self.sequence[idxs] = -mse/tau
 
     def self_similarity_regularization(self):
         fb = self.blocks.view(self.n_blocks, -1)
@@ -133,17 +169,20 @@ class ImageReconstruction(nn.Module):
         # negative -> we want to encourage separation
         return -1 * torch.mean(diffs)
 
-    def tile_f2f_penalty(self, frame_idxs):
+    def tile_f2f_penalty(self, frame_idxs_in):
         """
         A regularization that penalizes changes in tiles between frames. This represents a quality desirable for video
         compression - if tiles change less, we can compress the video more.
 
-        Mathematically, this term wants to minimize the KL-divergence between a given tile's categorical distributions
-        between frames i and i+1. This allows gradients for a given pair of tiles/frames to flow into all blocks.
-
         Note that this penalty is directly against the concept of a movie, as in "moving picture." If you give this loss
         too much weight, you might end up with a slideshow or a single static image.
         """
+
+        # this only works if we have more than two frames in a batch
+        if len(frame_idxs_in) < 2:
+            return torch.tensor([0.0], dtype=torch.float32, device=device)
+
+        frame_idxs = frame_idxs_in[:-1]  # pull only from range sampled by this batch
         frame_idxs_b = torch.clip(frame_idxs+1, min=None, max=self.sequence.shape[0]-1)
 
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
@@ -170,7 +209,7 @@ class ImageReconstruction(nn.Module):
         if self.training and self.train_sequence:
             # Use the gumbel-softmax trick to sample our tiles
             block_weights = F.gumbel_softmax(logits=self.sequence[frame_idxs, ...],
-                                             tau=0.1,  # TODO tune me
+                                             tau=1.0,  # TODO tune me
                                              hard=False)
         else:
             # Use argmax
@@ -225,18 +264,25 @@ class BlockTrainer:
         #self.recr.init_sequence("start_20250223/stream_stripped.dat")
 
         self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
-        self.recr.init_sequence("stream-kmeans_256_ni.dat")
+        # self.recr.init_sequence("stream-kmeans_256_ni.dat")
 
         self.recr.to(device)
 
+        self.recr.init_sequence_matching(self.dataset)
+
+        # sampe contiguous chunks with random offset
+        # we want the tile-frame-to-frame loss to cover only frames also evaluated for sematic loss
+        self.sampler = ContigChunkSampler(self.dataset,
+                                          batch_size=32,
+                                          random_offset=True,
+                                          shuffle=True)
         self.data_loader = DataLoader(self.dataset,
-                                      batch_size=32,
-                                      shuffle=True)
+                                      batch_sampler=self.sampler)
 
         self.optim = torch.optim.Adam(
             [
-                {"params": self.recr.blocks, "lr": 0.002},
-                # {"params": self.recr.sequence, "lr": 0.01}  # DISABLED: Not training sequence
+                {"params": self.recr.blocks, "lr": 0.001},
+                {"params": self.recr.sequence, "lr": 0.001 * len(self.dataset) / nblocks}  # Categorical distributions are sampled less often than blocks
             ]
         )
 
@@ -272,14 +318,15 @@ class BlockTrainer:
 
     def train(self):
         self.recr.eval()
-        self.recr.dump_grid(os.path.join(self.out_blocks_dir, "0000_init_blocks.png"))
+        self.recr.dump_grid(os.path.join(self.out_blocks_dir, "000000_init_blocks.png"))
         for vi, vd in zip(self.viz_frames, self.viz_dirs):
-            self.dump_reconstructed_frame(os.path.join(vd, "0000_init_img_%04d.png" % vi), vi)
-        # self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "0000_init_probs.png" ))
+            self.dump_reconstructed_frame(os.path.join(vd, "000000_init_img_%04d.png" % vi), vi)
+        self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "000000_init_probs.png" ))
 
-        # Not training sequence
-        self.recr.train_sequence = False
-        self.recr.sequence.requires_grad = False
+        self.recr.train_sequence = True
+        self.recr.sequence.requires_grad = True
+
+        best_loss = 1e9
 
         for epoch in range(1000000):
             self.recr.train()
@@ -290,7 +337,10 @@ class BlockTrainer:
 
             epoch_n = 0
 
+            self.sampler.set_epoch(epoch)  # update sampler offset and shuffle
+
             for batch_n, (target_img, idx) in enumerate(self.data_loader, start=0):
+
                 self.optim.zero_grad()
 
                 reconstructed_img = self.recr(idx)
@@ -300,12 +350,12 @@ class BlockTrainer:
                 rcd_us = nn.functional.interpolate(reconstructed_img, size=(192, 256), mode='nearest')
 
                 loss_percep = self.perceptual_loss(rcd_us, tgt_us)
-                #loss_change = self.recr.tile_f2f_penalty(idx)  # DISABLED: Not training w/ frame2frame penalty
-                loss_change = torch.tensor(0.0)
+                loss_change = self.recr.tile_f2f_penalty(idx)
 
                 loss = loss_percep + self.change_lambda * loss_change
 
                 loss.backward()
+
                 self.optim.step()
 
                 # clamp block weight range
@@ -318,26 +368,28 @@ class BlockTrainer:
                 epoch_n += 1
 
                 if epoch < 3:
-                    print("Epoch %d Batch %d: Loss %f (percep %f choice %f)" % (epoch, batch_n, loss.item(), loss_percep.item(), loss_change.item()))
+                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
 
             epoch_loss /= epoch_n
             epoch_loss_percep /= epoch_n
             epoch_loss_change /= epoch_n
 
-            self.recr.eval()
+            if epoch_loss < best_loss:
+                self.recr.eval()
 
-            # write binary video data
-            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
-            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+                # write binary video data
+                self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+                self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
 
-            # write visualization for humans
-            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+                # write visualization for humans
+                self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
-            for vi, vd in zip(self.viz_frames, self.viz_dirs):
-                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
+                for vi, vd in zip(self.viz_frames, self.viz_dirs):
+                    self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
 
-            # DISABLED: Not training sequence
-            # self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+                self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+
+                best_loss = epoch_loss
 
             print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
 
