@@ -381,7 +381,7 @@ int main()
 				//pixelbase[pmp] = pvo;
 				uint16_t po = pvr;
 
-				if( subframe & 1 )
+				if( subframe != 1 ) // Set this to &1 for 50/50 grey.
 					ssd1306_mini_i2c_sendbyte( po>>8 );
 				else
 					ssd1306_mini_i2c_sendbyte( po );
