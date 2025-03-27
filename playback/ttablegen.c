@@ -20,8 +20,9 @@ int main()
 		int vp = (pprev < 2)?pprev:2;
 		int vo = vt + (vn+vp+1)/2 - 1;
 		if( vo < 0 ) vo = 0;
-		if( vo > 2 ) vo = 3;
+		if( vo >= 2 ) vo = 3;
 
+printf( "%d %d %d %d\n", vt, vn, vp, vo );
 		int index = pprev * 4 + pnext;
 		int bito = pthis * 2;
 		potable[index] |= vo << bito;

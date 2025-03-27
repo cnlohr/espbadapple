@@ -38,8 +38,7 @@ volatile uint32_t kas = 0;
 
 #define SSD1306_RST_PIN PC0
 
-#define I2CDELAY_FUNC( x )
-	//asm volatile( "nop\nnop\n");
+#define I2CDELAY_FUNC( x ) asm volatile( "nop\nnop\n");
 
 #include "ssd1306mini.h"
 
@@ -93,7 +92,7 @@ uint16_t pixelmap[64*6];
 //pixelmap[64*6];
 int pmp;
 // From ttablegen.c
-const uint8_t potable[16]  __attribute__((section(".fixedflash"))) = { 0x50, 0xa4, 0xa4, 0xa4, 0xa4, 0xa4, 0xf9, 0xf9, 0xa4, 0xf9, 0xf9, 0xf9, 0xa4, 0xf9, 0xf9, 0xf9, };
+const uint8_t potable[16] __attribute__((section(".fixedflash"))) = { 0x50, 0xf4, 0xf4, 0xf4, 0xf4, 0xf4, 0xfd, 0xfd, 0xf4, 0xfd, 0xfd, 0xfd, 0xf4, 0xfd, 0xfd, 0xfd, };
 
 void PMEmit( uint16_t pvo )
 {
@@ -115,13 +114,16 @@ void EmitEdge( graphictype tgprev, graphictype tg, graphictype tgnext )
 	graphictype E = (B&C)|(A&D); // 8 bits worth of MSB of (next+prev+1)/2
 	graphictype F = D|B;         // 8 bits worth of LSB of (next+prev+1)/2
 
-	graphictype G = tg >> 8;
+/*	graphictype G = tg >> 8;
 	graphictype H = tg;          // implied & 0xff
 
 	//if( subframe )
 	int tghi = (F&G)|(E&H);     // 8 bits worth of MSB of this+(next+prev+1)/2-1
 	//else
 	int tglo = G|E|(F&H);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
+*/
+	int tghi = (D&E)|(B&E)|(B&C&F)|(A&D&F);     // 8 bits worth of MSB of this+(next+prev+1)/2-1 (Assuming values of 0,1,3)
+	int tglo = E|C|A|(D&F)|(B&F)|(B&D);       // 8 bits worth of MSB|LSB of this+(next+prev+1)/2-1
 
 	//ssd1306_mini_i2c_sendbyte( tg );
 	PMEmit( (tghi << 8) | tglo );
@@ -168,7 +170,7 @@ void UpdatePixelMap()
 			{
 				uint32_t got = g[7];
 				uint32_t gou = g[6];
-				uint32_t gon = (x<8)?gnext[0]:gou;
+				uint32_t gon = (x<7)?gnext[0]:gou;
 				EmitEdge( gou, got, gon );
 			}
 		}
@@ -358,7 +360,7 @@ int main()
 
 				pprev = pnext;
 
-				pthis = ((pvo>>7)&2) | ((pvo>>0)&1);
+				pthis = (((pvo>>7)&2) | ((pvo>>0)&1))<<1;
 
 				int pol = (potable[pnext+pprev*4]>>pthis)&3;
 				pvr |= (pol & 1) | (pol&2)<<7;
@@ -371,7 +373,7 @@ int main()
 					pnext = ((knext>>7)&2) | (knext &1);
 				}
 				pprev = ((pvo>>13)&2) | ((pvo>>6)&1);
-				pthis = ((pvo>>14)&2) | ((pvo>>7)&1);
+				pthis = (((pvo>>14)&2) | ((pvo>>7)&1))<<1;
 
 				pol = (potable[pnext+pprev*4]>>pthis)&3;
 				pvr |= (pol & 1)<<7 | (pol&2)<<14;
