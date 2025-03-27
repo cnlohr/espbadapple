@@ -127,12 +127,13 @@ SECTIONS
  PROVIDE( end = . );
  PROVIDE( _eusrstack = ORIGIN(RAM) + LENGTH(RAM));
 
+/*
 	.padding :
 	{
 		. = ALIGN(256);
 		FILL(0xDEADBEEF)
 	} >BOOTLOADER =0xff
-
+*/
 
     /DISCARD/ : {
       *(.note .note.*)

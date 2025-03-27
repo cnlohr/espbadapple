@@ -233,8 +233,8 @@ int main()
 	TIM2->CH2CVR = 128; 
 
 	// Weeeird... PUPD works better than GPIO_CFGLR_OUT_AF_PP
-	funPinMode( PD3, GPIO_CFGLR_OUT_AF_PP );
-	funPinMode( PD4, GPIO_CFGLR_OUT_AF_PP );
+	//funPinMode( PD3, GPIO_CFGLR_OUT_AF_PP );
+	//funPinMode( PD4, GPIO_CFGLR_OUT_AF_PP );
 
 	TIM1->CHCTLR2 = 
 		TIM1_CHCTLR2_OC3M_2 | TIM1_CHCTLR2_OC3M_1 | TIM1_CHCTLR2_OC3PE |
@@ -266,6 +266,13 @@ int main()
 // Debug pin
 //	funPinMode( PD6, GPIO_CFGLR_OUT_PP );
 
+	// Red LEDs
+	funDigitalWrite( PD7, 1 );
+	//funPinMode( PD7, GPIO_CFGLR_OUT_PP );
+
+	// D7 = GPIO_CFGLR_OUT_PP, D3, D4 = GPIO_CFGLR_OUT_AF_PP
+	GPIOD->CFGLR = 0x700bb444;
+
 	while(1)
 	{
 		//PrintHex( DMA1_Channel2->CNTR );
@@ -295,12 +302,12 @@ int main()
 			subframe = 0;
 			frame++;
 		}
-		else if( subframe == 1 )
+		else if( subframe & 1 )
 		{
 			UpdatePixelMap();
 		}
 
-		//funDigitalWrite( PD6, 0 );
+		funDigitalWrite( PD7, (frame < 442) || (frame > 460) );
 
 		while( (int32_t)(SysTick->CNT - nextFrame) < 0 )
 		{
