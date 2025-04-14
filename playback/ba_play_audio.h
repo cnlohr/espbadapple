@@ -111,23 +111,24 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 {
 	BITPULL_START;
 	int exp = 0;
-	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0 );
+	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0, audio_golmb_br = -1 );
 	do
 	{
 		BITPULL; CHECKBITS_AUDIO( 1 );
-		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp );
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_br = -1 );
 		if( bit ) break;
 		exp++;
 	} while( 1 );
 
 	int br;
 	int v = 1;
+	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = 0 );
 	for( br = 0; br < exp; br++ )
 	{
 		v = v << 1;
 		BITPULL; CHECKBITS_AUDIO( 1 );
-		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br );
 		v |= bit;
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br+1 );
 	}
 	BITPULL_END;
 	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_golmb = v-1 );
@@ -147,7 +148,7 @@ int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16
 		if( he & 0x80 )
 		{
 			BITPULL_END;
-			CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = -1, audio_pullhuff = he );
+			CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = -1, audio_pullhuff = he & 0xff );
 			return he & 0x7f;
 		}
 		he &= 0xff;
@@ -188,9 +189,9 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		CHECKPOINT( audio_backtrace = is_backtrace, decodephase = is_backtrace ? "AUDIO: Backtrack" : "AUDIO: No Backtrack" );
 		if( !is_backtrace ) break;
 
-		CHECKPOINT( decodephase = "AUDIO: Reading Backtrack Run Length" );
+		CHECKPOINT( decodephase = "AUDIO: Reading Backtrack Run Length", audio_golmb_exp = -1, audio_golmb_v = 0, audio_golmb = 0, audio_golmb_br = -1  );
 		int runlen = ba_audio_internal_pull_exp_golomb( player, optr );
-		CHECKPOINT( decodephase = "AUDIO: Reading Backtrack Offset" );
+		CHECKPOINT( decodephase = "AUDIO: Reading Backtrack Offset", audio_golmb_exp = -1, audio_golmb_v = 0, audio_golmb = 0, audio_golmb_br = -1  );
 		int offset = ba_audio_internal_pull_exp_golomb( player, optr );
 
 		int tremain = runlen + ESPBADAPPLE_SONG_MINRL + 1;
@@ -198,7 +199,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		player->stack[stackplace].remain -= tremain;
 		//printf( "RATCHET IN: %d / LEFT: %d\n", tremain, player->stack[stackplace].remain );
 		stackplace++;
-		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, decodephase = "AUDIO: Committed Backtrack" );
+		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, audio_backtrack_remain = tremain, audio_backtrack_runlen = runlen, audio_backtrack_offset = offset, decodephase = "AUDIO: Committed Backtrack" );
 
 		player->stack[stackplace] = (struct ba_audio_player_stack_element)
 		{ 

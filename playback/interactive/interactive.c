@@ -33,7 +33,7 @@ const char * decodephase;
 	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
 	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
 	x(audio_stack_offset) x(audio_backtrace) x(audio_newnote) x(audio_lenandrun) \
-	x(audio_gotnote)
+	x(audio_gotnote) x(audio_backtrack_offset) x(audio_backtrack_runlen) x(audio_backtrack_remain)
 
 #define xcomma(y) y,
 int FIELDS(xcomma) dummy;
@@ -637,11 +637,6 @@ void DrawTopGraph( Clay_RenderCommand * render )
 			CNFGColor( 0xffffff10 );
 			vSt = 18;
 		}
-		else if( cp->decodephase == "AUDIO: Backtrack" )
-		{
-			CNFGColor( 0xffffff40 );
-			vSt = 21;
-		}
 		else if( cp->decodephase == "AUDIO: Reading Backtrack Run Length" )
 		{
 			CNFGColor( 0xffffff60 );
@@ -972,7 +967,7 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		uint32_t v = espbadapple_song_data[vx>>5];
 		int bit = (v>>(vx&31))&1;
 		CNFGColor( bit?0xf0f0f080 : 0x10101080 );
-		CNFGTackSegment( bp+x, h-10+y, bp+x, h-2+y );
+		CNFGTackSegment( bp+x-1, h-10+y, bp+x-1, h-2+y );
 	}
 	CNFGColor( 0xf0f0f0ff );
 	CNFGTackSegment( wm/2+x, h-12+y, wm/2+x, h-10+y );
@@ -994,6 +989,22 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		step++;
 	}
 
+	char bitstream[17] = { 0 };
+	
+	int i;
+	for( i = 0; i < 16; i++ )
+	{
+		int vx = cp->audio_bpr + i;
+		uint32_t v = espbadapple_song_data[vx>>5];
+		int bit = (v>>(vx&31))&1;
+		bitstream[i] = '0' + bit;
+	}
+
+	DrawFormat( x + 2, y+2, 2, 0xffffffff, "%s", bitstream );
+	CNFGColor( 0xffffffff );
+	CNFGTackSegment( x+1, y + 24, x+12, y+24 );
+
+
 //	printf( "%d %d %d\n", cp->audio_stack_place, cp->audio_stack_remain );
 		// audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain
 		//struct ba_audio_player_stack_element (*audio_stack)[ESPBADAPPLE_SONG_MAX_BACK_DEPTH];
@@ -1003,6 +1014,46 @@ int NeedsHuffman()
 {
 	struct checkpoint * cp = &checkpoints[cursor];
 	return cp->decodephase == "AUDIO: Reading Note" || cp->decodephase == "AUDIO: Reading Length and Run";
+}
+
+int NeedsExpGolomb()
+{
+	struct checkpoint * cp = &checkpoints[cursor];
+	return cp->decodephase == "AUDIO: Backtrack" || cp->decodephase == "AUDIO: Reading Backtrack Run Length" || cp->decodephase == "AUDIO: Reading Backtrack Offset";
+}
+
+void DrawCellStateAudioExpGolomb( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGFlushRender();
+
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+
+	//audio_golmb_exp
+	//audio_golmb_br
+
+	char gexp[64] = { 0 };
+	int i;
+	for( i = 0; i < cp->audio_golmb_exp+1; i++ )
+	{
+		if( cp->audio_golmb_br >= i )
+		{
+			gexp[i] = ((cp->audio_golmb_v>>(cp->audio_golmb_br - (i)))&1) ? '1' : '0';
+			printf( "%d\n", cp->audio_golmb_v );
+		}
+		else
+		{
+			gexp[i] = '.';
+		}
+	}
+
+	DrawFormat( b.x + b.width/2, b.y, -2, 0xffffffff, "Exp Golomb: %s (%d)", gexp, cp->audio_golmb_v - 1 );
 }
 
 void DrawCellStateAudioHuffman( Clay_RenderCommand * render )
@@ -1024,15 +1075,13 @@ void DrawCellStateAudioHuffman( Clay_RenderCommand * render )
 	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
 
 	struct checkpoint * cp = &checkpoints[cursor];
-	vpx_reader * v = cp->baplay_vpx;
-	if( !v ) return;
 
 	float fx = b.x;
 	float fy = b.y;
 
 	int isnote = cp->decodephase == "AUDIO: Reading Note"; // Otherwise length-and-run.
 
-	DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "HUFFMAN DRAW %d", isnote );
+	//DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "HUFFMAN DRAW %d", isnote );
 
 	struct treepresnode * tree = (isnote)?HuffNoteNodes:HuffLenRunNodes;
 	int ct = (isnote)?HuffNoteNodeCount:HuffLenRunNodeCount;
@@ -1156,6 +1205,14 @@ void DrawCellStateAudio( Clay_RenderCommand * render )
 	else if( cp->decodephase == "AUDIO: Ending" )
 	{
 		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Audio Complete" );
+	}
+	else if( cp->decodephase == "AUDIO: Backtrack" )
+	{
+		// XXX TODO
+	}
+	else if( cp->decodephase == "AUDIO: Committed Backtrack" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Committed Backtrack\nOffset: %d\nRunlen: %d (%d)", cp->audio_backtrack_offset, cp->audio_backtrack_runlen, cp->audio_backtrack_remain );
 	}
 	else
 #if 0
@@ -1328,6 +1385,15 @@ int WXPORT(main)()
 								CLAY({ .custom = { .customData = DrawCellStateAudioHuffman } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 								{
 									//CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								}
+							}
+							if( NeedsExpGolomb() )
+							{
+								CLAY({ .custom = { .customData = DrawCellStateAudioExpGolomb } ,.layout = {
+									.childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER},
+									.sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+								{
+									CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 								}
 							}
 						}

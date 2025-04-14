@@ -39,12 +39,7 @@ void PerformTreeRelax( struct treepresnode * tree, int nodes )
 		}
 	}
 
-	printf( "Nodes: %d / %d\n", nodes, springct );
-	for( i = 0; i < springct; i++ )
-	{
-		printf( "%d %d - %d\n", i, springs[i][0], springs[i][1] );
-	}
-	const int iterations = 20000;
+	const int iterations = 2000;
 	for( i = 0; i < iterations; i++ )
 	{
 		float yougness = 1.0 - (i+1) / (double)iterations;
@@ -139,9 +134,9 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 	for( i = 0; i < size; i++ )
 	{
 		uint16_t tv = table[i];
-		uint8_t left = tv>>8;
-		uint8_t right = tv & 0xff;
-		printf( "%d / %d / %d\n", i, left, right );
+		uint8_t left = tv & 0xff;
+		uint8_t right = tv>>8;
+		//printf( "%d / %d / %d\n", i, left, right );
 		struct treepresnode * t = &tree[i];
 		if( !(left & 0x80) )
 		{
@@ -153,7 +148,7 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 			int lnode = ((*nnodes)++);
 			t->child[0] = &tree[lnode];
 			struct treepresnode * n = &tree[lnode];
-			sprintf( n->label, "%02x", left );
+			sprintf( n->label, "%02x", left & 0x7f );
 			n->value = left;
 
 			float pax = 0, pay = 0, paz = 0;
