@@ -11,6 +11,7 @@
 #define CHECKBITS_VIDEO(x) { bitsperframe_video[frame] += x;}
 
 int frame = 0;
+short screenw, screenh;
 
 double bitsperframe_audio[FRAMECT];
 double bitsperframe_video[FRAMECT];
@@ -28,7 +29,7 @@ const char * decodephase;
 #define FIELDS(x) x(decodeglyph) x(decode_is0or1) x(decode_runsofar) x(decode_prob) x(decode_lb) \
 	x(decode_cellid) x(decode_class) x(decode_run) x(decode_fromglyph) \
 	x(decode_tileid) x(decode_level) x(decoding_glyphs) x(vpxcheck) x(vpxcpv) \
-	x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) \
+	x(audio_pullbit) x(audio_gotbit) x(audio_last_bitmode) x(audio_bpr) \
 	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
 	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
 	x(audio_stack_offset) x(audio_backtrace) x(audio_newnote) x(audio_lenandrun) \
@@ -170,6 +171,31 @@ void ba_i_checkpoint()
 	//printf( "NRC: %d\n", nrcheckpoints );
 }
 
+#include "treepres.h"
+struct treepresnode * HuffNoteNodes;
+int HuffNoteNodeCount;
+struct treepresnode * HuffLenRunNodes;
+int HuffLenRunNodeCount;
+
+double dTime;
+
+float timelerp( float cur, float new, float speed )
+{
+	// See https://github.com/cnlohr/cnlohr_tricks/?tab=readme-ov-file#iir-filtering
+	float coeff = exp( -dTime * speed );
+	return cur * (1.0-coeff) + new * coeff;
+}
+
+int digits( int num )
+{
+	int dig = 0;
+	do
+	{
+		dig++;
+		num/=10;
+	} while( num );
+	return dig;
+}
 
 #ifdef VPX_GREY4
 
@@ -901,13 +927,174 @@ void DrawCellState( Clay_RenderCommand * render )
 		float fPerthou = (100.0-cp->decode_prob/2.55f)*10.0;
 		int perh = ((int)fPerthou/10);
 		int perd = (int)(((int)fPerthou)%10);
-		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %02x", perh, perd, cp->decode_lb, cp->decode_tileid );
+
+
+		char tilestr[BITS_FOR_TILE_ID+1] = { 0 };
+		for( i = 0; i < BITS_FOR_TILE_ID; i++ )
+		{
+			tilestr[i] = 
+				(i <= cp->decode_level) ?
+				(((cp->decode_tileid>>(BITS_FOR_TILE_ID-i-1))&1)?'1':'0') :
+				'x';
+		}
+		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s (%02x)", perh, perd, cp->decode_lb, tilestr, cp->decode_tileid );
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)");
 	}
 	else
 	{
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)" );
 	}
+}
+
+void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
+{
+	if( !cp->audio_stack ) return;
+	int k;
+	int maxpt = 0;
+
+	//struct ba_audio_player_stack_element * sp = &(*cp->audio_stack)[cp->audio_stack_place];
+	for( k = 0; k <= cp->audio_stack_place; k++ )
+	{
+		struct ba_audio_player_stack_element * s = &(*cp->audio_stack)[k];
+		if( s->offset > maxpt )
+		{
+			maxpt = s->offset;
+		}
+	}
+	int margin = 2;
+	int wm = w - margin;
+	int center = cp->audio_bpr;
+	int vx;
+	for( vx = center-wm/2; vx < center + wm/2; vx++ )
+	{
+		int bp = vx-center+wm/2+margin;
+		if( vx < 0 ) continue;
+		uint32_t v = espbadapple_song_data[vx>>5];
+		int bit = (v>>(vx&31))&1;
+		CNFGColor( bit?0xf0f0f080 : 0x10101080 );
+		CNFGTackSegment( bp+x, h-10+y, bp+x, h-2+y );
+	}
+	CNFGColor( 0xf0f0f0ff );
+	CNFGTackSegment( wm/2+x, h-12+y, wm/2+x, h-10+y );
+
+	int step = 1;
+	for( k = cp->audio_stack_place; k >= 0; k-- )
+	{
+		struct ba_audio_player_stack_element * s = &(*cp->audio_stack)[k];
+		//struct ba_audio_player_stack_element * sm1 = &(*cp->audio_stack)[k-1];
+		int bp = s->offset-center+wm/2;
+		int bpm1 = s->offset+10-center+wm/2;
+		if( bp >= w ) bp = w-1;
+		if( bpm1 >= w ) bpm1 = w-1;
+		CNFGTackSegment( x+bp, h-12-step*10+y, x+bpm1, h-12-step*10+y );
+		CNFGTackSegment( x+bp, h-12-step*10+y, x+bp, h-8-step*10+y );
+
+		DrawFormat( x+bp-digits(s->remain)*7, h-16-step*10+y, 1, 0xffffffff, "%d", s->remain );
+		CNFGSetLineWidth(2);
+		step++;
+	}
+
+//	printf( "%d %d %d\n", cp->audio_stack_place, cp->audio_stack_remain );
+		// audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain
+		//struct ba_audio_player_stack_element (*audio_stack)[ESPBADAPPLE_SONG_MAX_BACK_DEPTH];
+}
+
+int NeedsHuffman()
+{
+	struct checkpoint * cp = &checkpoints[cursor];
+	return cp->decodephase == "AUDIO: Reading Note" || cp->decodephase == "AUDIO: Reading Length and Run";
+}
+
+void DrawCellStateAudioHuffman( Clay_RenderCommand * render )
+{
+	static float cx;
+	static float cy;
+
+	GLint original_scissors_box[4];
+	glGetIntegerv( GL_SCISSOR_BOX, original_scissors_box );
+
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGFlushRender();
+
+	glScissor( (int)b.x, screenh-((int)b.y+(int)b.height), (int)b.width, (int)b.height );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+
+	float fx = b.x;
+	float fy = b.y;
+
+	int isnote = cp->decodephase == "AUDIO: Reading Note"; // Otherwise length-and-run.
+
+	DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "HUFFMAN DRAW %d", isnote );
+
+	struct treepresnode * tree = (isnote)?HuffNoteNodes:HuffLenRunNodes;
+	int ct = (isnote)?HuffNoteNodeCount:HuffLenRunNodeCount;
+
+	// TODO: Update cx, cy with position.
+
+	int i;
+	for( i = 0; i < ct; i++ )
+	{
+		struct treepresnode * n = tree + i;
+		float ox = n->x + b.width/2;
+		float oy = n->y + b.height/2;
+
+
+		ox -= cx;
+		oy -= cy;
+
+		struct treepresnode * c = n->child[0];
+		if( c )
+		{
+			CNFGColor( 0x000000ff );
+			CNFGTackSegment( b.x + ox, b.y + oy, b.x + c->x + b.width/2 - cx, b.y + c->y + b.height/2 - cy );
+		}
+		c = n->child[1];
+		if( c )
+		{
+			CNFGColor( 0xc0c0c080 );
+			CNFGTackSegment( b.x + ox, b.y + oy, b.x + c->x + b.width/2 - cx, b.y + c->y + b.height/2 - cy );
+		}
+		CNFGColor( 0xf0f0f080 );
+		CNFGTackRectangle( b.x + ox - 14, b.y + oy - 12, b.x + ox + 14, b.y + oy + 12);
+		DrawFormat( b.x + ox, b.y + oy - 10, -2, 0xffffffff, n->label );
+
+		if( i == cp->audio_last_ofs || ( cp->audio_pullhuff && cp->audio_pullhuff == n->value ) )
+		{
+			cx = timelerp( n->x, cx, 5 );
+			cy = timelerp( n->y, cy, 5 );
+			CNFGColor( 0xffffffff );
+			CNFGDrawBox( b.x + ox - 14, b.y + oy - 12, b.x + ox + 14, b.y + oy + 12);
+		}
+	}
+	CNFGFlushRender();
+	glScissor( original_scissors_box[0], original_scissors_box[1], original_scissors_box[2], original_scissors_box[3] );
+}
+
+void DrawCellStateAudioStack( Clay_RenderCommand * render )
+{
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	vpx_reader * v = cp->baplay_vpx;
+	if( !v ) return;
+
+	float fx = b.x;
+	float fy = b.y;
+
+	DrawAudioStack( cp, fx, fy, b.width, b.height );		
 }
 
 void DrawCellStateAudio( Clay_RenderCommand * render )
@@ -927,7 +1114,50 @@ void DrawCellStateAudio( Clay_RenderCommand * render )
 	float fy = b.y;
 	char vs[37] = { 0 };
 
+	fx += 2; // Add some margin.
+
 	int i;
+	if( cp->decodephase == "AUDIO: Pulling Note" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Pulling new note" );
+	}
+	else if( cp->decodephase == "AUDIO: Reading Next" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Reading Next" );
+	}
+	else if( cp->decodephase == "AUDIO: No Backtrack" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "No Backtrack" );
+	}
+	else if( cp->decodephase == "AUDIO: Reading Note" )
+	{
+		// This is a multi-part reading.
+		// This will also include a huffman table.
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Reading Note" );
+	}
+	else if( cp->decodephase == "AUDIO: Perform 16th Note" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Audio Tick" );
+	}
+	else if( cp->decodephase == "AUDIO: Processed Note" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Processed Note" );
+	}
+	else if( cp->decodephase == "AUDIO: Reading Length and Run" )
+	{
+		// This is a multi-part reading.
+		DrawFormat( fx, fy+4, 2, 0xffffffff, "Read a new note\nNote:%2d / Length: ?? / Run: ??", cp->audio_newnote );
+	}
+	else if( cp->decodephase == "AUDIO: Read Len And Run" )
+	{
+		//audio_lenandrun, audio_newnote
+		DrawFormat( fx, fy+4, 2, 0xffffffff, "Read a new note\nNote:%2d / Length:%2d / Run:%2d", cp->audio_newnote, (cp->audio_lenandrun & 7)+1, ((cp->audio_lenandrun >> 3) & 0x1f)+1 );
+	}
+	else if( cp->decodephase == "AUDIO: Ending" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4, -2, 0xffffffff, "Audio Complete" );
+	}
+	else
 #if 0
 	if( cp->decodephase == "Running" || cp->decodephase == "Run Stopped" )
 	{
@@ -977,7 +1207,10 @@ void DrawGeneral( Clay_RenderCommand * render )
 int WXPORT(main)()
 {
 	int x, y;
-	short w, h;
+
+	HuffNoteNodes = GenTreeFromTable( espbadapple_song_huffnote, sizeof(espbadapple_song_huffnote)/sizeof(espbadapple_song_huffnote[0]), &HuffNoteNodeCount );
+	HuffLenRunNodes = GenTreeFromTable( espbadapple_song_hufflen, sizeof(espbadapple_song_hufflen)/sizeof(espbadapple_song_hufflen[0]), &HuffLenRunNodeCount );
+
 	CNFGSetup( "Badder Apple", 1920/2, 1080/2 );
 	ExtraDrawingInit( 1920/2, 1080/2 );
 
@@ -997,7 +1230,7 @@ int WXPORT(main)()
 	while( CNFGHandleInput() )
 	{
 		Now = OGGetAbsoluteTime();
-		double dTime = Now - Last;
+		dTime = Now - Last;
 		Last = Now;
 		if( frame < FRAMECT )
 		{
@@ -1085,6 +1318,17 @@ int WXPORT(main)()
 							CLAY({ .custom = { .customData = DrawCellStateAudio } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
 								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+							CLAY({ .custom = { .customData = DrawCellStateAudioStack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+								CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+							if( NeedsHuffman() )
+							{
+								CLAY({ .custom = { .customData = DrawCellStateAudioHuffman } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+								{
+									//CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								}
 							}
 						}
 						else
@@ -1242,8 +1486,11 @@ int WXPORT(main)()
 		}
 
 		//DrawFormat( 50, 200, 2, 0xffffffff, "Test %d\n", frame );
-		CNFGGetDimensions( &w, &h );
-		Clay_SetLayoutDimensions((Clay_Dimensions) { w, h });
+		CNFGGetDimensions( &screenw, &screenh );
+		Clay_SetLayoutDimensions((Clay_Dimensions) { screenw, screenh });
+
+		glEnable( GL_SCISSOR_TEST );
+		glScissor( 0, 0, screenw, screenh );
 
 		CNFGSwapBuffers();
 	}

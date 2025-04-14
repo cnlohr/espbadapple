@@ -103,7 +103,7 @@ static int ba_audio_internal_pull_bit( struct ba_audio_player_t * player, uint16
 	BITPULL_START;
 	BITPULL; CHECKBITS_AUDIO( 1 );
 	BITPULL_END;
-	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 0 );
+	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 0 );
 	return bit;
 }
 
@@ -111,11 +111,11 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 {
 	BITPULL_START;
 	int exp = 0;
-	CHECKPOINT( audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0 );
+	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = 0, audio_last_bitmode = 1, audio_golmb_exp = exp, audio_golmb_v = 0, audio_golmb = 0 );
 	do
 	{
 		BITPULL; CHECKBITS_AUDIO( 1 );
-		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp );
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp );
 		if( bit ) break;
 		exp++;
 	} while( 1 );
@@ -126,11 +126,11 @@ int ba_audio_internal_pull_exp_golomb( struct ba_audio_player_t * player, uint16
 	{
 		v = v << 1;
 		BITPULL; CHECKBITS_AUDIO( 1 );
-		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br );
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_golmb_exp = exp, audio_golmb_v = v, audio_golmb_br = br );
 		v |= bit;
 	}
 	BITPULL_END;
-	CHECKPOINT( audio_golmb = v-1 );
+	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_golmb = v-1 );
 	return v-1;
 }
 
@@ -142,16 +142,16 @@ int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16
 	{
 		uint16_t he = htree[ofs];
 		BITPULL; CHECKBITS_AUDIO( 1 );
-		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_ofs = ofs, audio_last_he = he );
 		he>>=bit*8;
+		//CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_ofs = ofs, audio_last_he = he );
 		if( he & 0x80 )
 		{
 			BITPULL_END;
-			CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_pullhuff = he & 0x7f, audio_last_he = he );
+			CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = ofs, audio_pullhuff = he );
 			return he & 0x7f;
 		}
 		he &= 0xff;
-		CHECKPOINT( audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he );
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = ofs );
 		ofs = he + 1 + ofs;
 	} while( 1 );
 }
@@ -208,11 +208,11 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		//printf( "RTK: %d %d\n", player->stack[stackplace].offset, player->stack[stackplace].remain );
 	} while( 1 );
 
-	CHECKPOINT( decodephase = "AUDIO: Reading Note" );
+	CHECKPOINT( audio_gotbit = -1, decodephase = "AUDIO: Reading Note", audio_last_ofs = 0, audio_last_he = 0, audio_pullhuff = 0 );
 	int note = ba_audio_internal_pull_huff( player, espbadapple_song_huffnote, optr );
-		CHECKPOINT( audio_newnote = note, decodephase = "AUDIO: Reading Length and Run" );
+	CHECKPOINT( audio_gotbit = -1, audio_newnote = note, decodephase = "AUDIO: Reading Length and Run", audio_last_ofs = 0, audio_last_he = 0, audio_pullhuff = 0 );
 	int lenandrun = ba_audio_internal_pull_huff( player, espbadapple_song_hufflen, optr );
-	CHECKPOINT( audio_lenandrun = lenandrun, decodephase = "AUDIO: Read Len And Run" );
+	CHECKPOINT( audio_gotbit = -1, audio_lenandrun = lenandrun, decodephase = "AUDIO: Read Len And Run" );
 
 	//printf( "[%02x %02x, %d, %d]\n", note, lenandrun, player->stack[stackplace].remain, stackplace );
 	player->stackplace = stackplace;
@@ -234,9 +234,7 @@ static inline void perform_16th_note( struct ba_audio_player_t * player )
 
 	while( player->t >= player->nexttrel && !player->ending )
 	{
-		CHECKPOINT( decodephase = "AUDIO: Pulling New Note" );
 		int note = ba_audio_pull_note( player );
-		CHECKPOINT( audio_gotnote = note, decodephase = "AUDIO: Pulling New Note" );
 		if( note < 0 )
 		{
 			CHECKPOINT( decodephase = "AUDIO: Ending" );

@@ -1,9 +1,8 @@
 all : interactive
 
-CFLAGS:=-O2 -g
 
 include ../../common/make.inc
-
+CFLAGS+=-Og -g
 CFLAGS+=-I. -I.. -I../../common -I../../vpxtest
 LDFLAGS+=-lm -lGL
 
