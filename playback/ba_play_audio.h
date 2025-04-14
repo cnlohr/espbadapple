@@ -147,12 +147,12 @@ int ba_audio_internal_pull_huff( struct ba_audio_player_t * player, const uint16
 		if( he & 0x80 )
 		{
 			BITPULL_END;
-			CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = ofs, audio_pullhuff = he );
+			CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = -1, audio_pullhuff = he );
 			return he & 0x7f;
 		}
 		he &= 0xff;
-		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = ofs );
 		ofs = he + 1 + ofs;
+		CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 2, audio_last_he = he, audio_last_ofs = ofs );
 	} while( 1 );
 }
 
