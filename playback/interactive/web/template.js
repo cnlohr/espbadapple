@@ -102,6 +102,7 @@ function SystemStart( title, w, h )
 	document.title = toUTF8( title );
 	wgl.viewportWidth = canvas.width = w;
 	wgl.viewportHeight = canvas.height = h;
+	document.getElementById("loading").innerHTML = "";
 }
 
 //Buffered geometry system.
@@ -138,7 +139,10 @@ let imports = {
 		},
 		CNFGSetup : (title,w,h ) => {
 			SystemStart( title, w, h );
-			fullscreen = false;
+//			fullscreen = false;
+// Override fullscreen
+			canvas.style = "position:absolute; top:0; left:0;"
+			fullscreen = true;
 		},
 		CNFGSetupFullscreen : (title,w,h ) => {
 			SystemStart( title, w, h );
@@ -160,12 +164,31 @@ let imports = {
 		Add1 : (i) => { return i+1; }, //Super simple function for speed testing.
 
 		//Tricky - math functions just automatically link through.
-		sin : Math.sin, 
-		cos : Math.cos,
-		tan : Math.tan,
-		sinf : Math.sin,
-		cosf : Math.cos,
-		tanf : Math.tan,
+		sin   : Math.sin, 
+		cos   : Math.cos,
+		tan   : Math.tan,
+		atan2 : Math.atan2,
+		sinf  : Math.sin,
+		cosf  : Math.cos,
+		tanf  : Math.tan,
+		exp   : Math.exp,
+		log   : Math.log,
+
+
+		CNFGSetScissorsInternal : ( xywh ) => {
+			wgl.enable( wgl.SCISSOR_TEST );
+			HEAPU32 = new Uint32Array(mem.buffer);
+			wgl.scissor( HEAPU32[(xywh>>2)+0], HEAPU32[(xywh>>2)+1], HEAPU32[(xywh>>2)+2], HEAPU32[(xywh>>2)+3] );
+		},
+
+		CNFGGetScissorsInternal : ( xywh ) => {
+			HEAPU32 = new Uint32Array(mem.buffer);
+			var xywha = wgl.getParameter( wgl.SCISSOR_BOX );
+			HEAPU32[(xywh>>2)+0] = xywha[0];
+			HEAPU32[(xywh>>2)+1] = xywha[1];
+			HEAPU32[(xywh>>2)+2] = xywha[2];
+			HEAPU32[(xywh>>2)+3] = xywha[3];
+		},
 
 		saveHighScore : (hs) => { localStorage.setItem("highScore", hs); },
 		getHighScore : () => { return localStorage.getItem("highScore"); },

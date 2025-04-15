@@ -1,6 +1,8 @@
 #ifndef _TREEPRES_H
 #define _TREEPRES_H
 
+#include <math.h>
+
 struct treepresnode
 {
 	struct treepresnode * parent;
@@ -195,7 +197,7 @@ void SetNodePos( struct treepresnode * n, struct treepresnode * t )
 
 struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes )
 {
-	srand( 0 );
+	//srand( 0 );
 	// Store terminal nodes at the end of the tree.
 	struct treepresnode * tree = (struct treepresnode*)calloc( sizeof( struct treepresnode ), size*3 );
 	*nnodes = size;
@@ -212,13 +214,14 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 		{
 			t->x = 0;
 			t->y = 0;
+
+			sprintf( t->label, " " );
 		}
 		else
 		{
 			if( !t->parent )
 			{
-				fprintf( stderr, "Error: broken tree, no parent on non-root node\n" );
-				exit( -5 );
+				return 0;
 			}
 			t->depth = t->parent->depth + 1;
 			SetNodePos( t, t->parent );
@@ -227,9 +230,11 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 		if( !(left & 0x80) )
 		{
 			t->child[0] = &tree[left+i+1];
-			tree[left+i+1].parent = t;
-			tree[left+i+1].isone = 0;
-			tree[left+i+1].depth = t->depth + 1;
+			struct treepresnode * n = &tree[left+i+1];
+			n->parent = t;
+			n->isone = 0;
+			n->depth = t->depth + 1;
+			sprintf( n->label, " " );
 		}
 		else
 		{
@@ -247,9 +252,11 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 		if( !(right & 0x80) )
 		{
 			t->child[1] = &tree[right+i+1];
-			tree[right+i+1].parent = t;
-			tree[right+i+1].isone = 1;
-			tree[right+i+1].depth = t->depth + 1;
+			struct treepresnode * n = &tree[right+i+1];
+			n->parent = t;
+			n->isone = 1;
+			n->depth = t->depth + 1;
+			sprintf( n->label, " " );
 		}
 		else
 		{

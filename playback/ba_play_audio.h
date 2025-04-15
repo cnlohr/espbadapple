@@ -39,7 +39,15 @@
 #define SYFN( n ) \
 	(uint16_t)((pow( 2, (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
 #else
-#define STATICPOW2( x ) x
+// WASM (Clang)
+// Thanks, @kayla
+#define STATICPOW2(f) ((float)(1 << (int)(f)) * ( \
+    1.+ (0.6931471806 * ((f) - (int)(f)) / 1.) + \
+        (0.4804530139 * ((f) - (int)(f)) * ((f) - (int)(f)) / 2.) + \
+        (0.3330246520 * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) / 6.) + \
+        (0.2308350986 * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) / 24.) + \
+        (0.1600026978 * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) / 120.)))
+
 #define SYFN( n ) \
 	(uint16_t)((STATICPOW2( (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
 #endif

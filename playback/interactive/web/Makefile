@@ -8,7 +8,7 @@ all : subst index.html
 #node-uglify lld clang-10 lld-10 binaryen
 
 #Path to rawdraw
-CFLAGS:=-I.. -DEMU -I../.. -I../../../common -I../../../vpxtest -Iweblibc_headers -DWASM -DASYNCIFY=1 -I. -Wno-string-compare
+CFLAGS:=-I.. -DEMU -I../.. -I../../../common -I../../../vpxtest -Iweblibc_headers -DWASM -DASYNCIFY=1 -I. -Wno-string-compare -Wno-shift-count-negative
 
 include ../../../common/make.inc
 
