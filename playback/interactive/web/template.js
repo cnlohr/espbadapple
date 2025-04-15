@@ -16,12 +16,7 @@ let fullscreen = false;
 
 //Configure WebGL Stuff (allow to be part of global context)
 let canvas = document.getElementById('canvas');
-let wgl = canvas.getContext('webgl');
-if( !wgl )
-{
-	//Janky - on Firefox 83, with NVIDIA GPU, you need to ask twice.
-	wgl = canvas.getContext('webgl');
-}
+let wgl = canvas.getContext('webgl', { antialias: false, depth: false });
 let wglShader = null; //Standard flat color shader
 let wglABV = null;    //Array buffer for vertices
 let wglABC = null;    //Array buffer for colors.
@@ -139,14 +134,11 @@ let imports = {
 		},
 		CNFGSetup : (title,w,h ) => {
 			SystemStart( title, w, h );
-//			fullscreen = false;
-// Override fullscreen
-			canvas.style = "position:absolute; top:0; left:0;"
-			fullscreen = true;
+			fullscreen = false;
 		},
 		CNFGSetupFullscreen : (title,w,h ) => {
 			SystemStart( title, w, h );
-			canvas.style = "position:absolute; top:0; left:0;"
+			canvas.style += ";position:absolute; top:0; left:0;"
 			fullscreen = true;
 		},
 		CNFGClearFrameInternal: ( color ) => {

@@ -1552,7 +1552,12 @@ int WXPORT(main)()
 	HuffNoteNodes = GenTreeFromTable( espbadapple_song_huffnote, sizeof(espbadapple_song_huffnote)/sizeof(espbadapple_song_huffnote[0]), &HuffNoteNodeCount );
 	HuffLenRunNodes = GenTreeFromTable( espbadapple_song_hufflen, sizeof(espbadapple_song_hufflen)/sizeof(espbadapple_song_hufflen[0]), &HuffLenRunNodeCount );
 
+#ifdef __wasm__
+	CNFGSetupFullscreen( "Badder Apple", 1 );
+#else
 	CNFGSetup( "Badder Apple", 1920/2, 1080/2 );
+#endif
+
 	ExtraDrawingInit( 1920/2, 1080/2 );
 
 #ifdef VPX_GREY4
@@ -1712,13 +1717,13 @@ int WXPORT(main)()
 
 						if( need_to_display_audio_track )
 						{
-							CLAY({ .custom = { .customData = DrawAudioTrack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							CLAY({ .custom = { .customData = DrawAudioTrack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(10), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
 							}
 						}
 						else if( !doing_audio )
 						{
-							CLAY({ .custom = { .customData = DrawGlyphSet } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							CLAY({ .custom = { .customData = DrawGlyphSet } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(25), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
 							}
 						}
@@ -1769,7 +1774,7 @@ int WXPORT(main)()
 
 				CLAY({
 					.id = CLAY_ID("Bottom Bar"),
-					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(10) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
@@ -1805,13 +1810,13 @@ int WXPORT(main)()
 
 				CLAY({
 					.id = CLAY_ID("Final Bottom Bar Holder"),
-					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(0) } },
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW(10) } },
 					.backgroundColor = COLOR_PADGREY
 				})
 				CLAY({
 					.id = CLAY_ID("Final Bottom Bar"),
 					.custom = { .customData = DrawBottomGraph },
-					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(32), .width = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
+					.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(32), .width = CLAY_SIZING_GROW(10) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild },
 					.backgroundColor = COLOR_PADGREY
 				})
 				{
