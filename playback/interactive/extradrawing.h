@@ -52,6 +52,8 @@ int btnClicked = 0;
 
 int mousePositionX, mousePositionY, isMouseDown;
 
+void print( double );
+
 void WXPORT(HandleKey)( int keycode, int bDown ) {
 	if( keycode == ' ' && bDown ) inPlayMode = !inPlayMode;
 	// 65366 page down, or advance frame
@@ -67,25 +69,39 @@ void WXPORT(HandleKey)( int keycode, int bDown ) {
 				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame+1]+1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65365 || keycode == 33 )
+		else if( keycode == 65365 || keycode == 33 )
 		{
 			int tFrame = checkpoints[cursor].frame - 1;
 			if( tFrame - 1 >= 0 && checkpoint_offset_by_frame[tFrame-1]+1 > 0 && checkpoint_offset_by_frame[tFrame-1]+1 < nrcheckpoints 	)
 				midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame-1]+1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65361 || keycode == 37 )
+		else if( keycode == 65361 || keycode == 37 )
 		{
 			if( cursor-1 >= 0 )
 			midCursor = topCursor = cursor = cursor-1;
 			inPlayMode = 0;
 		}
-		if( keycode == 65363 || keycode == 39 )
+		else if( keycode == 65363 || keycode == 39 )
 		{
 			if( cursor+1 < nrcheckpoints )
 			midCursor = topCursor = cursor = cursor+1;
 			inPlayMode = 0;
 		}
+		else if( keycode == 65360 || keycode == 36 )
+		{
+			midCursor = topCursor = cursor = 0;
+			inPlayMode = 0;
+		}
+		else if( keycode == 65367 || keycode == 35 )
+		{
+			if( nrcheckpoints > 1 )
+				midCursor = topCursor = cursor = nrcheckpoints-1;
+			inPlayMode = 0;
+		}
+#ifndef __wasm__
+		else printf( "%d\n", keycode );
+#endif
 	}
 }
 void WXPORT(HandleButton)( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }

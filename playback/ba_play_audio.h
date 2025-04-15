@@ -49,7 +49,7 @@
         (0.1600026978 * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) * ((f) - (int)(f)) / 120.)))
 
 #define SYFN( n ) \
-	(uint16_t)((STATICPOW2( (((float)n + LOWEST_NOTE) - 69.0)/12.0 ) * 440.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
+	(uint16_t)((STATICPOW2( (((float)n + LOWEST_NOTE + 24) - 69.0)/12.0 ) * 110.0 * 65536.0 * 2.0 / 2.0 / (float)F_SPS) + 0.5)
 #endif
 
 #define NOTE_RANGE  ( ESPBADAPPLE_SONG_HIGHEST_NOTE - ESPBADAPPLE_SONG_LOWEST_NOTE + 1 )

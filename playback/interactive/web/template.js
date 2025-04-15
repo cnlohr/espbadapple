@@ -22,6 +22,143 @@ let wglABV = null;    //Array buffer for vertices
 let wglABC = null;    //Array buffer for colors.
 let wglUXFRM = null;  //Uniform location for transform on solid colors
 
+/* Audio subsystem, from lolra, example using AudioContext without needing to have extra .js files. */
+
+var playingAudioProcessor = null;
+var audioContext = null;
+var mute = false;
+
+var esetup = null;
+async function SetupWebAudio()
+{
+	var bypass = '\
+	class PlayingAudioProcessor extends AudioWorkletProcessor {\
+		static get parameterDescriptors() {\
+		  return [\
+		  	{ name: "gain", defaultValue: 0, },\
+		  	{ name: "sampleAdvance", defaultValue: 1.0, },\
+			]\
+		};\
+		constructor() {\
+			super();\
+			this.rbuffer = new Float32Array(8192); \
+			this.rbufferhead = 0|0; \
+			this.rbuffertail = 0|0; \
+			this.sampleplace = 0.0; \
+			this.dcoffset = 0.0; \
+			this.totalsampcount = 0|0; \
+			\
+			this.port.onmessage = (e) => { \
+				for( var i = 0|0; i < e.data.length|0; i++ ) \
+				{ \
+					let n = (this.rbufferhead + (1|0))%(8192|0); \
+					if( n == this.rbuffertail ) \
+					{ \
+						this.rbuffertail = (this.rbuffertail + (1|0))%(8192|0); \
+						/*console.log( "Overflow" ); */ \
+					} \
+					var vv = e.data[i]; \
+					this.dcoffset = this.dcoffset * 0.995 + vv * 0.005; \
+					this.rbuffer[this.rbufferhead] = vv - this.dcoffset; \
+					this.rbufferhead = n; \
+				} \
+			}; \
+		}\
+		\
+		process(inputs, outputs, parameters) {\
+			/*console.log( parameters.gain[0] );*/ \
+			/*console.log( this.ingestData );*/ \
+			let len = outputs[0][0].length; \
+			const sa = Math.fround( parameters.sampleAdvance[0] ); /*float*/ \
+			var s = Math.fround( this.sampleplace );      /*float*/ \
+			var tail = this.rbuffertail | 0;              /* int*/  \
+			var tailnext = this.rbuffertail | 0;          /* int*/  \
+			if( tail == this.rbufferhead ) { /*console.log( "Underflow " );*/ return true; }\
+			var tsamp = Math.fround( this.rbuffer[tail] ); \
+			var nsamp = Math.fround( this.rbuffer[tailnext] ); \
+			this.totalsampcount += len|0; \
+			for (let b = 0|0; b < len|0; b++) { \
+				s += sa; \
+				var excess = Math.floor( s ) | 0; \
+				if( excess > 0 ) \
+				{ \
+					s -= excess; \
+					tail = ( tail + (excess|0) ) % (8192|0); \
+					tailnext = ( tail + (1|0) ) % (8192|0); \
+					if( tail == this.rbufferhead ) { /* console.log( "Underflow" ); */ break; } \
+					tsamp = Math.fround( this.rbuffer[tail] ); \
+					nsamp = Math.fround( this.rbuffer[tailnext] ); \
+				} \
+				var valv = tsamp * (1.0-s) + nsamp * s; \
+				outputs[0][0][b] = valv*parameters.gain[0]; \
+			} \
+			/*console.log( tail + " " + this.rbuffertail + " " + tsamp + " " + nsamp );*/ \
+			this.rbuffertail = tail; \
+			this.sampleplace = s; \
+			return true; \
+		} \
+	} \
+	\
+	registerProcessor("playing-audio-processor", PlayingAudioProcessor);';
+
+	// The following mechanism does not work on Chrome.
+	//	const dataURI = URL.createObjectURL( new Blob([bypass], { type: 'text/javascript', } ) );
+
+	// Extremely tricky trick to side-step local file:// CORS issues.
+	// https://stackoverflow.com/a/67125196/2926815
+	// https://stackoverflow.com/a/72180421/2926815
+	let blob = new Blob([bypass], {type: 'application/javascript'});
+	let reader = new FileReader();
+	await reader.readAsDataURL(blob);
+	let dataURI = await new Promise((res) => {
+		reader.onloadend = function () {
+			res(reader.result);
+		}
+	});
+
+	audioContext = new AudioContext();
+
+	await audioContext.audioWorklet.addModule(dataURI);
+
+	playingAudioProcessor = new AudioWorkletNode(
+		audioContext,
+		"playing-audio-processor"
+	);
+	playingAudioProcessor.connect(audioContext.destination);
+	audioContext.resume();
+
+	let gainParam = playingAudioProcessor.parameters.get( "gain" );
+	gainParam.setValueAtTime( 1.0, audioContext.currentTime ); 
+}
+
+enableAudio = () =>
+{
+	// AudioContexts need human intervention.
+	if( !playingAudioProcessor )
+	{
+		SetupWebAudio();
+		mute = false;
+	}
+	else
+	{
+		mute = !mute;
+	}
+	document.getElementById( "soundButton" ).value = mute?"🔇":"🔊";
+}
+
+function FeedWebAudio( audioFloat, audioSamples )
+{
+	if( !mute && audioContext != null && playingAudioProcessor != null )
+	{
+		// If we need to do a poor resample.
+//		let sampleAdvance = (system_rate/sample_divisor) / audioContext.sampleRate;
+//		let sampleAdvanceParam = playingAudioProcessor.parameters.get("sampleAdvance");
+//		sampleAdvanceParam.setValueAtTime( 1.0, audioContext.currentTime);
+		playingAudioProcessor.port.postMessage( HEAPF32.slice(audioFloat>>2,(audioFloat>>2)+audioSamples), );
+	}
+}
+
+
 
 //Utility stuff for WebGL sahder creation.
 function wgl_makeShader( vertText, fragText )
@@ -166,6 +303,7 @@ let imports = {
 		exp   : Math.exp,
 		log   : Math.log,
 
+		FeedWebAudio : FeedWebAudio,
 
 		CNFGSetScissorsInternal : ( xywh ) => {
 			wgl.enable( wgl.SCISSOR_TEST );

@@ -60,6 +60,7 @@ ba_play_context ctx;
 uint64_t * audio_notes_playing_by_sixteenth;
 int highest_sixteenth;
 int * audio_notes_playing_by_sixteenth_to_cpid;
+float * audioOut = 0;
 
 int cursor = 0;
 int midCursor = 0;
@@ -103,6 +104,8 @@ struct checkpoint
 	int frame;
 	int vframe;
 	int frameChanged;
+
+	float * audio_play;
 
 	const char * decodephase;
 	int FIELDS(xcomma) dummy;
@@ -161,6 +164,7 @@ void ba_i_checkpoint()
 	checkpoint_offset_by_frame[frame] = nrcheckpoints;
 	checkpoint_offset_by_frame_virtual[vframe] = nrcheckpoints;
 
+	cp->audio_play = audioOut;
 
 	if( cp->frameChanged ) vframe++;
 	if( frame == 0 && ( nrcheckpoints % 500 == 0 ) && vframe < MAX_PREFRAMES ) vframe++;
@@ -1588,6 +1592,8 @@ int WXPORT(main)()
 			frame++;
 
 			CHECKPOINT( decodephase = "Frame Done", decode_cellid = -1 );
+			audioOut = 0;
+
 			lasttail = outbuffertail;
 
 			if( frame >= START_AUDIO_AT_FRAME )
@@ -1596,14 +1602,19 @@ int WXPORT(main)()
 				ba_audio_fill_buffer( out_buffer_data, outbuffertail );
 
 				struct checkpoint * cp = &checkpoints[nrcheckpoints-1];
-				uint8_t * ad = cp->audio_sample_data = malloc( AS_PER_FRAME );
+				//uint8_t * ad = cp->audio_sample_data = malloc( AS_PER_FRAME );
 				cp->audio_sample_data_frame = nrcheckpoints;
+
+#ifdef __wasm__
+				audioOut = malloc( sizeof(float) * AS_PER_FRAME );
+				int samp = 0;
 				for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
 				{
-					*(ad++) = out_buffer_data[n];
-					float fo = out_buffer_data[n] / 128.0 - 1.0;
+					//*(ad++) = out_buffer_data[n];
+					audioOut[samp++] = out_buffer_data[n] / 128.0 - 1.0;
 					//fwrite( &fo, 1, 4, fAudioDump );
 				}
+#endif
 			}
 		}
 		CNFGClearFrame();
@@ -1834,11 +1845,23 @@ int WXPORT(main)()
 				if( fFrameElapse > 3.0/30.0 ) fFrameElapse = 3.0/30.0;
 				fFrameElapse -= 1.0/30.0;
 				int tFrame = checkpoints[cursor].frame-1;
-				if( tFrame + 1 < FRAMECT && checkpoint_offset_by_frame[tFrame+1]+1 > 0 && checkpoint_offset_by_frame[tFrame+1]+1 < nrcheckpoints 	)
+				if( tFrame + 1 < FRAMECT && checkpoint_offset_by_frame[tFrame+1]+1 > 0 && checkpoint_offset_by_frame[tFrame+1]+1 < nrcheckpoints )
+				{
 					midCursor = topCursor = cursor = checkpoint_offset_by_frame[tFrame+1]+1;
+				}
 			}
 		}
 
+#ifdef __wasm__
+		static int last_played_audio_frame = -1;
+		struct checkpoint * cp = &checkpoints[cursor];
+		if( cp && cp->audio_play && cp->frame != last_played_audio_frame )
+		{
+			void FeedWebAudio( float *, int );
+			FeedWebAudio( cp->audio_play, AS_PER_FRAME );
+			last_played_audio_frame = cp->frame;
+		}
+#endif
 
 		// All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
 		Clay_RenderCommandArray renderCommands = Clay_EndLayout();

@@ -8,14 +8,16 @@ all : subst index.html
 #node-uglify lld clang-10 lld-10 binaryen
 
 #Path to rawdraw
-CFLAGS:=-I.. -DEMU -I../.. -I../../../common -I../../../vpxtest -Iweblibc_headers -DWASM -DASYNCIFY=1 -I. -Wno-string-compare -Wno-shift-count-negative
+CFLAGS:=-I.. -DEMU -I../.. -I../../../common -I../../../vpxtest -Iweblibc_headers -DWASM -DASYNCIFY=1 -I. -Wno-string-compare
+
+#-Wno-shift-count-negative -- can't just unwarn this one.
 
 include ../../../common/make.inc
 
 CLANG?=clang
 WASMOPT?=wasm-opt
 TERSER?=terser
-TERSERFLAGS?=--module --ecma 2017 -d RAWDRAW_USE_LOOP_FUNCTION=false -d RAWDRAW_NEED_BLITTER=true
+TERSERFLAGS?=--module --compress -d RAWDRAW_USE_LOOP_FUNCTION=false -d RAWDRAW_NEED_BLITTER=true
 
 # Add -g3 here for debug in CFLAGS
 CFLAGS+=-DWASM -nostdlib --target=wasm32 \
