@@ -76,7 +76,7 @@ void WXPORT(HandleKey)( int keycode, int bDown ) {
 		}
 		if( keycode == 65361 || keycode == 37 )
 		{
-			if( cursor-1 > 0 )
+			if( cursor-1 >= 0 )
 			midCursor = topCursor = cursor = cursor-1;
 			inPlayMode = 0;
 		}

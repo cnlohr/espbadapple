@@ -282,7 +282,7 @@ int main()
 		if( subframe == 4 )
 		{
 			if( frame == FRAMECT ) asm volatile( "j 0" );
-			if( frame == 46 )
+			if( frame == START_AUDIO_AT_FRAME )
 			{
 				// Start playing music at frame 37.
 				// Triggered off TIM2UP

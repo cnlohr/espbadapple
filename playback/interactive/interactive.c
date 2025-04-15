@@ -33,7 +33,8 @@ const char * decodephase;
 	x(audio_golmb_exp) x(audio_golmb_v) x(audio_golmb_br) x(audio_golmb) x(audio_last_ofs) \
 	x(audio_last_he) x(audio_pullhuff) x(audio_stack_place) x(audio_stack_remain) \
 	x(audio_stack_offset) x(audio_backtrace) x(audio_newnote) x(audio_lenandrun) \
-	x(audio_gotnote) x(audio_backtrack_offset) x(audio_backtrack_runlen) x(audio_backtrack_remain)
+	x(audio_gotnote) x(audio_backtrack_offset) x(audio_backtrack_runlen) \
+	x(audio_backtrack_remain) x(audio_sixteenth)
 
 #define xcomma(y) y,
 int FIELDS(xcomma) dummy;
@@ -56,6 +57,9 @@ int AS_PER_FRAME = F_SPS/30;
 uint8_t out_buffer_data[AUDIO_BUFFER_SIZE];
 ba_play_context ctx;
 
+uint64_t * audio_notes_playing_by_sixteenth;
+int highest_sixteenth;
+int * audio_notes_playing_by_sixteenth_to_cpid;
 
 int cursor = 0;
 int midCursor = 0;
@@ -166,6 +170,22 @@ void ba_i_checkpoint()
 
 	#define xassign(tf) cp->tf = tf;
 	FIELDS(xassign);
+
+	if( audio_sixteenth >= highest_sixteenth )
+	{
+		audio_notes_playing_by_sixteenth = realloc( audio_notes_playing_by_sixteenth, (audio_sixteenth+1) * sizeof( audio_notes_playing_by_sixteenth[0] ) );
+		audio_notes_playing_by_sixteenth_to_cpid = realloc( audio_notes_playing_by_sixteenth_to_cpid, (audio_sixteenth+1) * sizeof( audio_notes_playing_by_sixteenth_to_cpid[0] ) );
+		memset( &audio_notes_playing_by_sixteenth[highest_sixteenth+1], 0, sizeof( audio_notes_playing_by_sixteenth[0] ) * (audio_sixteenth-audio_sixteenth) );
+		memset( &audio_notes_playing_by_sixteenth_to_cpid[highest_sixteenth+1], 0, sizeof( audio_notes_playing_by_sixteenth_to_cpid[0] ) * (audio_sixteenth-audio_sixteenth) );
+		highest_sixteenth = audio_sixteenth+1;
+	}
+
+	audio_notes_playing_by_sixteenth[audio_sixteenth] = 
+		((uint64_t)ba_player.playing_freq[0]<<0) |
+		((uint64_t)ba_player.playing_freq[1]<<16) |
+		((uint64_t)ba_player.playing_freq[2]<<32) |
+		((uint64_t)ba_player.playing_freq[3]<<48);
+	audio_notes_playing_by_sixteenth_to_cpid[audio_sixteenth] = nrcheckpoints;
 
 	nrcheckpoints++;
 	//printf( "NRC: %d\n", nrcheckpoints );
@@ -816,6 +836,7 @@ void DrawMemory( Clay_RenderCommand * render )
 	const uint8_t * base = cp->decoding_glyphs?ba_glyphdata:ba_video_payload;
 	vpx_reader * v = cp->baplay_vpx;
 	if( !v ) return;
+	const uint8_t * vb = v->buffer ? v->buffer : base;
 	int dlen = v->buffer_end - base;
 
 	float fx = b.x;
@@ -827,7 +848,7 @@ void DrawMemory( Clay_RenderCommand * render )
 	int bofs = 0;
 	for( bo = -bol/2; bo < bol/2; bo++ )
 	{
-		int tp = bo + v->buffer - base;
+		int tp = bo + vb - base;
 		if( tp >= 0 && tp < dlen )
 			DrawFormat( bofs*pairsize+fx+pairsize/2, fy+3, -2, 0xffffffff, "%02x", base[tp] );
 		if( bo == 0 )
@@ -935,6 +956,14 @@ void DrawCellState( Clay_RenderCommand * render )
 		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s (%02x)", perh, perd, cp->decode_lb, tilestr, cp->decode_tileid );
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)");
 	}
+	else if( cp->decodephase == "Reading Glyphs" )
+	{
+		//decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar, decode_prob = tprob, decode_lb = lb, vpxcheck = 0
+		DrawFormat( fx+b.width/2-8, fy+4+24*0, -2, 0xffffffff, "Read Pixel: %03d", cp->decodeglyph );
+		DrawFormat( fx+b.width/2-8, fy+4+24*1, -2, 0xffffffff, "Was:%d Run:%d Prob:%d, Bit:%d", 
+			cp->decode_is0or1,  cp->decode_runsofar, cp->decode_prob, cp->decode_lb );
+
+	}
 	else
 	{
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)" );
@@ -989,20 +1018,47 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		step++;
 	}
 
-	char bitstream[17] = { 0 };
+	char bitstream_prev[3] = { 0 };
+	char bitstream_this[2] = { 0 };
+	char bitstream[13] = { 0 };
 	
 	int i;
-	for( i = 0; i < 16; i++ )
+	for( i = 0; i < sizeof(bitstream_prev)-1; i++ )
+	{
+		int vx = cp->audio_bpr + i - sizeof(bitstream_prev) + 1;
+		if( vx >= 0 )
+		{
+			uint32_t v = espbadapple_song_data[vx>>5];
+			int bit = (v>>(vx&31))&1;
+			bitstream_prev[i] = '0' + bit;
+		}
+		else
+		{
+			bitstream_prev[i] = ' ';
+		}
+	}
+	for( i = 0; i < sizeof(bitstream_this)-1; i++ )
 	{
 		int vx = cp->audio_bpr + i;
+		uint32_t v = espbadapple_song_data[vx>>5];
+		int bit = (v>>(vx&31))&1;
+		bitstream_this[i] = '0' + bit;
+	}
+	for( i = 0; i < sizeof(bitstream)-1; i++ )
+	{
+		int vx = cp->audio_bpr + i + sizeof(bitstream_this)-1;
 		uint32_t v = espbadapple_song_data[vx>>5];
 		int bit = (v>>(vx&31))&1;
 		bitstream[i] = '0' + bit;
 	}
 
-	DrawFormat( x + 2, y+2, 2, 0xffffffff, "%s", bitstream );
+	int xofs = 24+2+4;
+	int xofs2 = 24+2+21;
+	DrawFormat( x + 2, y+4, 2, 0xffffffff, "%s", bitstream_prev );
+	DrawFormat( x + 2+xofs, y+4, 2, 0xffffffff, "%s", bitstream_this );
+	DrawFormat( x + 2+xofs2, y+4, 2, 0xffffff80, "%s", bitstream );
 	CNFGColor( 0xffffffff );
-	CNFGTackSegment( x+1, y + 24, x+12, y+24 );
+	CNFGDrawBox( x+xofs-3, y + 1, x+12+xofs+3, y+25 );
 
 
 //	printf( "%d %d %d\n", cp->audio_stack_place, cp->audio_stack_remain );
@@ -1045,7 +1101,6 @@ void DrawCellStateAudioExpGolomb( Clay_RenderCommand * render )
 		if( cp->audio_golmb_br >= i )
 		{
 			gexp[i] = ((cp->audio_golmb_v>>(cp->audio_golmb_br - (i)))&1) ? '1' : '0';
-			printf( "%d\n", cp->audio_golmb_v );
 		}
 		else
 		{
@@ -1053,7 +1108,102 @@ void DrawCellStateAudioExpGolomb( Clay_RenderCommand * render )
 		}
 	}
 
-	DrawFormat( b.x + b.width/2, b.y, -2, 0xffffffff, "Exp Golomb: %s (%d)", gexp, cp->audio_golmb_v - 1 );
+	DrawFormat( b.x + b.width/2, b.y, -2, 0xffffffff, "Exp Golomb: %s %3d", gexp, cp->audio_golmb_v - 1 );
+}
+
+void DrawAudioTrack( Clay_RenderCommand * render )
+{
+	GLint original_scissors_box[4];
+	glGetIntegerv( GL_SCISSOR_BOX, original_scissors_box );
+
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGFlushRender();
+
+	glScissor( (int)b.x, screenh-((int)b.y+(int)b.height), (int)b.width, (int)b.height );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	if( !cp ) goto ending;
+
+	float fx = b.x;
+	float fy = b.y;
+
+	CNFGColor( 0xc0c0c090 );
+
+	int sxth;
+	float sper = b.width / 21.0;
+	float xst = b.x + sper * 10;
+	float yst = b.height/2.5;
+
+	int center_audio_sixteenth = cp->audio_sixteenth;
+
+	// Microscrolling
+	float partial = 0.0;
+	if( highest_sixteenth > center_audio_sixteenth )
+	{
+		int thisid = audio_notes_playing_by_sixteenth_to_cpid[center_audio_sixteenth-1];
+		int nextid = audio_notes_playing_by_sixteenth_to_cpid[center_audio_sixteenth];
+		partial = (cursor - thisid)/(float)(nextid - thisid);
+	}
+
+	CNFGSetLineWidth(1.0);
+
+	CNFGColor( 0xc0c0c010 );
+	for( sxth = center_audio_sixteenth-10; sxth <= center_audio_sixteenth+11; sxth++ )
+	{
+		if( sxth < 0 ) continue;
+		if( sxth >= highest_sixteenth ) continue;
+
+		float relpos = sxth - cp->audio_sixteenth - partial;
+		
+		CNFGTackSegment( xst + sper*relpos, b.y, xst + sper*relpos, b.y+b.height );
+	}
+	CNFGSetLineWidth(2.0);
+
+	uint16_t * apf = cp->audio_playing_freq ? *cp->audio_playing_freq : 0;
+	int * apfs = cp->audio_tstop ? *cp->audio_tstop : 0;
+
+	for( sxth = center_audio_sixteenth-10; sxth <= center_audio_sixteenth+11; sxth++ )
+	{
+		if( sxth < 0 ) continue;
+		if( sxth >= highest_sixteenth ) continue;
+		uint64_t sixteenth = audio_notes_playing_by_sixteenth[sxth];
+		int n = 0;
+		for( n = 0; n < 4; n++ )
+		{
+			int fr = (sixteenth >> (16*n))&0xffff;
+			if( fr )
+			{
+				float note = 7.3-log(fr);
+				float relpos = sxth - cp->audio_sixteenth - partial;
+				CNFGColor( 0xc0c0c090 );
+				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+1), b.y + yst * note + 10 );
+			}
+
+			if( apf && cp->audio_sixteenth == sxth )
+			{
+				int stop = apfs[n];
+				int fr = apf[n];
+
+				if( !fr ) continue;
+				float note = 7.3-log(fr);
+				float relpos = sxth - cp->audio_sixteenth - partial;
+				CNFGColor( 0xf0f0f0f0 );
+				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+stop-sxth), b.y + yst * note + 10 );
+			}
+		}
+	}
+
+	CNFGTackSegment( xst, b.y, xst, b.y+b.height );
+
+ending:
+	CNFGFlushRender();
+	glScissor( original_scissors_box[0], original_scissors_box[1], original_scissors_box[2], original_scissors_box[3] );
+
 }
 
 void DrawCellStateAudioHuffman( Clay_RenderCommand * render )
@@ -1111,7 +1261,7 @@ void DrawCellStateAudioHuffman( Clay_RenderCommand * render )
 			CNFGColor( 0xc0c0c080 );
 			CNFGTackSegment( b.x + ox, b.y + oy, b.x + c->x + b.width/2 - cx, b.y + c->y + b.height/2 - cy );
 		}
-		CNFGColor( 0xf0f0f080 );
+		CNFGColor( (i == 0 ) ? 0x00000080 : 0xf0f0f080 );
 		CNFGTackRectangle( b.x + ox - 14, b.y + oy - 12, b.x + ox + 14, b.y + oy + 12);
 		DrawFormat( b.x + ox, b.y + oy - 10, -2, 0xffffffff, n->label );
 
@@ -1243,6 +1393,125 @@ void DrawCellStateAudio( Clay_RenderCommand * render )
 	}
 }
 
+void DrawGlyphSet( Clay_RenderCommand * render )
+{
+	GLint original_scissors_box[4];
+	glGetIntegerv( GL_SCISSOR_BOX, original_scissors_box );
+
+	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
+	
+	Clay_BoundingBox b = render->boundingBox;
+	CNFGColor( COLOR_BACKPAD_HEX );
+	CNFGFlushRender();
+
+	glScissor( (int)b.x, screenh-((int)b.y+(int)b.height), (int)b.width, (int)b.height );
+	CNFGTackRectangle( b.x, b.y, b.x + b.width, b.y + b.height );
+	Clay_Vector2 cursor_rel = { .x = mousePositionX - b.x, .y = mousePositionY - b.y };
+
+	struct checkpoint * cp = &checkpoints[cursor];
+	if( !cp ) goto ending;
+	if( !cp->glyphdata ) goto ending;
+
+	float margin = 2;
+	float fx = b.x + margin;
+	float fy = b.y + margin;
+	float fw = b.width - margin*2;
+	float fh = b.height - margin*2;
+
+	CNFGColor( 0xc0c0c090 );
+
+	float outsideaspectratio = fw / fh;
+
+	int optimalwidth = 1;
+	int optimalheight = 1;
+	int testwidth = 0;
+	float bestratio = 1e20;
+	for( testwidth = 1; testwidth <= TILE_COUNT+1; testwidth++ )
+	{
+		int nh = TILE_COUNT / testwidth;
+		nh += (TILE_COUNT % testwidth) ? 1 : 0;
+		float aspectratio = testwidth / (float)nh;
+		float ratiodiff = aspectratio - outsideaspectratio;
+		ratiodiff *= ratiodiff;
+		if( ratiodiff > bestratio )
+		{
+			break;
+		}
+		bestratio = ratiodiff;
+		optimalheight = nh;
+		optimalwidth = testwidth;
+	}
+
+	if( optimalwidth == 0 || optimalheight == 0 ) goto ending;
+
+	float scale_based_on_width = fw / optimalwidth;
+	float scale_based_on_height = fh / optimalheight;
+	float scale = (scale_based_on_width<scale_based_on_height) ? scale_based_on_width : scale_based_on_height;
+
+	int x, y;
+	for( y = 0; y < optimalheight; y++ )
+	{
+		for( x = 0; x < optimalwidth; x++ )
+		{
+			int tileid = x + y * optimalwidth;
+			if( tileid >= TILE_COUNT ) continue;
+			int sx, sy;
+			for( sy = 0; sy < BLOCKSIZE; sy++ )
+			for( sx = 0; sx < BLOCKSIZE; sx++ )
+			{
+				int pxid = sx + sy * BLOCKSIZE;
+				graphictype px = (*cp->glyphdata)[tileid][pxid/GRAPHICSIZE_WORDS/4];
+				int pxval = (px >> ((pxid)%(8))) & 0x101;
+				pxval = ( pxval & 1 ) | ( pxval >> 7 );
+				CNFGColor( (uint32_t[]){0x000000ff,0x808080ff,0xffffffff,0xf0f0f0ff}[pxval] );
+				float tx = fx + ( sy + x * 10 ) * scale / 10.0;
+				float ty = fy + ( sx + y * 10 ) * scale / 10.0;
+				CNFGTackRectangle( tx, ty, tx+scale/8.0, ty+scale/8.0 );
+			}
+
+			int selected = 0;
+
+
+			if( cp->decodephase == "Reading Glyphs" )
+			{
+				if( tileid == cp->decodeglyph/64 )
+				{
+					selected = 1;
+				}
+			}
+			else if( cp->decode_cellid >= 0 && cp->curmap )
+			{
+				glyphtype gindex = (*cp->curmap)[cp->decode_cellid];
+
+				// Animate the search.
+				if( cp->decodephase == "Decoding Bit" )
+				{
+					gindex = cp->decode_tileid;
+				}
+
+				if( tileid == gindex )
+				{
+					selected = 1;
+				}
+			}
+
+			// Otherwise, while decoding.
+
+			if( selected )
+			{
+				CNFGColor( 0xffffffff );
+				float tx = fx + ( x ) * scale - 1;
+				float ty = fy + ( y ) * scale - 2;
+				CNFGDrawBox( tx, ty, tx+scale, ty+scale );
+			}
+		}
+	}
+
+ending:
+	CNFGFlushRender();
+	glScissor( original_scissors_box[0], original_scissors_box[1], original_scissors_box[2], original_scissors_box[3] );
+}
+
 void DrawGeneral( Clay_RenderCommand * render )
 {
 	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
@@ -1277,6 +1546,7 @@ int WXPORT(main)()
 	static uint8_t palette[48] = { 0, 0, 0, 128, 128, 128, 255, 255, 255 };
 #endif
 
+	CHECKPOINT( decodephase = "START" );
 	ba_play_setup( &ctx );
 	ba_audio_setup();
 
@@ -1300,17 +1570,20 @@ int WXPORT(main)()
 			CHECKPOINT( decodephase = "Frame Done", decode_cellid = -1 );
 			lasttail = outbuffertail;
 
-			outbuffertail = (AS_PER_FRAME + outbuffertail) % AUDIO_BUFFER_SIZE;
-			ba_audio_fill_buffer( out_buffer_data, outbuffertail );
-
-			struct checkpoint * cp = &checkpoints[nrcheckpoints-1];
-			uint8_t * ad = cp->audio_sample_data = malloc( AS_PER_FRAME );
-			cp->audio_sample_data_frame = nrcheckpoints;
-			for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
+			if( frame >= START_AUDIO_AT_FRAME )
 			{
-				*(ad++) = out_buffer_data[n];
-				float fo = out_buffer_data[n] / 128.0 - 1.0;
-				//fwrite( &fo, 1, 4, fAudioDump );
+				outbuffertail = (AS_PER_FRAME + outbuffertail) % AUDIO_BUFFER_SIZE;
+				ba_audio_fill_buffer( out_buffer_data, outbuffertail );
+
+				struct checkpoint * cp = &checkpoints[nrcheckpoints-1];
+				uint8_t * ad = cp->audio_sample_data = malloc( AS_PER_FRAME );
+				cp->audio_sample_data_frame = nrcheckpoints;
+				for( int n = lasttail; n != outbuffertail; n = (n+1)%AUDIO_BUFFER_SIZE )
+				{
+					*(ad++) = out_buffer_data[n];
+					float fo = out_buffer_data[n] / 128.0 - 1.0;
+					//fwrite( &fo, 1, 4, fAudioDump );
+				}
 			}
 		}
 		CNFGClearFrame();
@@ -1370,6 +1643,8 @@ int WXPORT(main)()
 					})
 					if( cp && cp->decodephase )
 					{
+						int need_to_display_audio_track = 0;
+						int doing_audio = 0;
 						if( cp->decodephase && strncmp( cp->decodephase, "AUDIO", 5 ) == 0 )
 						{
 							CLAY({ .custom = { .customData = DrawCellStateAudio } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
@@ -1387,7 +1662,7 @@ int WXPORT(main)()
 									//CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 								}
 							}
-							if( NeedsExpGolomb() )
+							else if( NeedsExpGolomb() )
 							{
 								CLAY({ .custom = { .customData = DrawCellStateAudioExpGolomb } ,.layout = {
 									.childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER},
@@ -1396,6 +1671,11 @@ int WXPORT(main)()
 									CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 								}
 							}
+							else
+							{
+								need_to_display_audio_track = 1;
+							}
+							doing_audio = 1;
 						}
 						else
 						{
@@ -1410,6 +1690,21 @@ int WXPORT(main)()
 							CLAY({ .custom = { .customData = DrawCellState } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
 								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+						}
+
+						if( cp->decodephase == "Frame Done" ) need_to_display_audio_track = 1;
+
+						if( need_to_display_audio_track )
+						{
+							CLAY({ .custom = { .customData = DrawAudioTrack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
+							}
+						}
+						else if( !doing_audio )
+						{
+							CLAY({ .custom = { .customData = DrawGlyphSet } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							{
 							}
 						}
 					}

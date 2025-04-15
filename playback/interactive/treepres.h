@@ -7,16 +7,20 @@ struct treepresnode
 	struct treepresnode * child[2];
 	char label[32];
 	int value;
+	int isone;
+	int depth;
 	float x, y, z;
 	float fx, fy, fz; //Force (For spring calculation phase)
 };
+
+const float idealspringsize = 38;
 
 void PerformTreeRelax( struct treepresnode * tree, int nodes )
 {
 	int springs[nodes*2][2]; // Cannot be more springs than nodes*2.
 	int springct = 0;
 	const float idealspringsize = 38;
-	const float springforce_base = 0.10;
+	const float springforce_base = 0.060;
 	float repelforce;
 	float springforce = springforce_base;
 	int i;
@@ -44,7 +48,7 @@ void PerformTreeRelax( struct treepresnode * tree, int nodes )
 	{
 		float yougness = 1.0 - (i+1) / (double)iterations;
 
-		repelforce = 4200.8;
+		repelforce = 10000.0;
 
 		// Perform mass spring system iterations.
 		// Step 1. Perform springs first.
@@ -124,6 +128,71 @@ void PerformTreeRelax( struct treepresnode * tree, int nodes )
 	}
 }
 
+void SetNodePos( struct treepresnode * n, struct treepresnode * t )
+{
+#if 0
+	float pax = 0, pay = 0, paz = 0;
+	if( t->parent )
+	{
+		pax = t->parent->x; pay = t->parent->y; paz = t->parent->z;
+		float dirx = t->x - pax*.5;
+		float diry = t->y - pay*.5;
+		float dirz = t->z - paz*.5;
+		if( sqrtf( dirx*dirx + diry*diry + dirz*dirz ) > 1.0 )
+		{
+			dirx /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
+			diry /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
+		}
+		n->x = t->x + (rand()%101)-50 + dirx * 50;
+		n->y = t->y + (rand()%101)-50 + diry * 50;
+		n->z = t->z + (rand()%101)-50 + dirz * 50;
+	}
+	else
+	{
+		n->x += t->x;
+		n->y += t->y;
+		n->z += t->z;
+
+		float dirx = t->x;
+		float diry = t->y;
+		float dirz = t->z;
+		if( sqrtf( dirx*dirx + diry*diry + dirz*dirz ) > 1.0 )
+		{
+			dirx /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
+			diry /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
+			dirz /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
+		}
+
+		n->x += dirx * 50;
+		n->y += diry * 50;
+		n->z += dirz * 50;
+	}
+#endif
+	struct treepresnode * tp = t->parent;
+	if( tp )
+	{
+		float vpmex = tp->x - t->x;
+		float vpmey = tp->y - t->y;
+		float vpmag = sqrtf( vpmex*vpmex + vpmey*vpmey );
+		float atv = 0;
+		if( vpmag > 0.001 )
+		{
+			atv = atan2( vpmex, vpmey );
+		}
+		
+		float oang = atv + (n->isone ? 1.5707963 : -1.5707963) / (t->depth + 3.0);
+		n->x = t->x + cos( oang ) * idealspringsize * (t->depth + 3.0);
+		n->y = t->y + sin( oang ) * idealspringsize * (t->depth + 3.0);
+	}
+	else
+	{
+		// The root is our parent.
+		float oang = n->isone ? 3.14159 : 0;
+		n->x = t->x + cos( oang ) * idealspringsize * (t->depth + 3.0);
+		n->y = t->y + sin( oang ) * idealspringsize * (t->depth + 3.0);
+	}
+}
+
 struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes )
 {
 	srand( 0 );
@@ -137,11 +206,30 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 		uint8_t left = tv & 0xff;
 		uint8_t right = tv>>8;
 		//printf( "%d / %d / %d\n", i, left, right );
+
 		struct treepresnode * t = &tree[i];
+		if( i == 0 )
+		{
+			t->x = 0;
+			t->y = 0;
+		}
+		else
+		{
+			if( !t->parent )
+			{
+				fprintf( stderr, "Error: broken tree, no parent on non-root node\n" );
+				exit( -5 );
+			}
+			t->depth = t->parent->depth + 1;
+			SetNodePos( t, t->parent );
+		}
+
 		if( !(left & 0x80) )
 		{
 			t->child[0] = &tree[left+i+1];
 			tree[left+i+1].parent = t;
+			tree[left+i+1].isone = 0;
+			tree[left+i+1].depth = t->depth + 1;
 		}
 		else
 		{
@@ -150,28 +238,18 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 			struct treepresnode * n = &tree[lnode];
 			sprintf( n->label, "%02x", left & 0x7f );
 			n->value = left;
-
-			float pax = 0, pay = 0, paz = 0;
-			if( t->parent ) { pax = t->parent->x; pay = t->parent->y; paz = t->parent->z; }
-			float dirx = t->x - pax*.5;
-			float diry = t->y - pay*.5;
-			float dirz = t->z - paz*.5;
-			if( sqrtf( dirx*dirx + diry*diry + dirz*dirz ) > 1.0 )
-			{
-				dirx /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-				diry /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-			}
-			n->x = t->x + (rand()%101)-50 + dirx * 50;
-			n->y = t->y + (rand()%101)-50 + diry * 50;
-			n->z = t->z + (rand()%101)-50 + dirz * 50;
-
 			n->parent = t;
+			n->isone = 0;
+			n->depth = t->depth + 1;
+			SetNodePos( n, t );
 		}
 
 		if( !(right & 0x80) )
 		{
 			t->child[1] = &tree[right+i+1];
 			tree[right+i+1].parent = t;
+			tree[right+i+1].isone = 1;
+			tree[right+i+1].depth = t->depth + 1;
 		}
 		else
 		{
@@ -180,53 +258,10 @@ struct treepresnode * GenTreeFromTable( uint16_t * table, int size, int * nnodes
 			struct treepresnode * n = &tree[lnode];
 			sprintf( n->label, "%02x", right&0x7f );
 			n->value = right;
-
-			float pax = 0, pay = 0, paz = 0;
-			if( t->parent ) { pax = t->parent->x; pay = t->parent->y; paz = t->parent->z; }
-
-			float dirx = t->x - pax*.5;
-			float diry = t->y - pay*.5;
-			float dirz = t->z - paz*.5;
-			if( sqrtf( dirx*dirx + diry*diry + dirz*dirz ) > 1.0 )
-			{
-				dirx /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-				diry /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-			}
-
-			n->x = t->x + (rand()%101)-50 + dirx * 50;
-			n->y = t->y + (rand()%101)-50 + diry * 50;
-			n->z = t->z + (rand()%101)-50 + dirz * 50;
 			n->parent = t;
-		}
-
-		if( i == 0 )
-		{
-			t->x = 0;
-			t->y = 0;
-		}
-		else
-		{
-			t->x = (rand()%101)-50;
-			t->y = (rand()%101)-50;
-
-			if( t->parent )
-			{
-				t->x += t->parent->x;
-				t->y += t->parent->y;
-
-				float dirx = t->parent->x;
-				float diry = t->parent->y;
-				float dirz = t->parent->z;
-				if( sqrtf( dirx*dirx + diry*diry + dirz*dirz ) > 1.0 )
-				{
-					dirx /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-					diry /= sqrtf( dirx*dirx + diry*diry + dirz*dirz );
-				}
-
-				t->x += dirx * 50;
-				t->y += diry * 50;
-				t->z += dirz * 50;
-			}
+			n->isone = 1;
+			n->depth = t->depth + 1;
+			SetNodePos( n, t );
 		}
 	}
 	PerformTreeRelax( tree, *nnodes );

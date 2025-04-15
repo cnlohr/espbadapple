@@ -80,7 +80,6 @@ static int ba_play_setup( ba_play_context * ctx )
 		for( g = 0; g < TILE_COUNT*BLOCKSIZE*BLOCKSIZE; g+=1 )
 		{
 			int tprob = ba_vpx_glyph_probability_run_0_or_1[is0or1][runsofar];
-			CHECKPOINT( decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar );
 			if( ((g) & (BLOCKSIZE*BLOCKSIZE-1)) == 0 )
 			{
 				tprob = 128;
@@ -92,9 +91,8 @@ static int ba_play_setup( ba_play_context * ctx )
 			int ly = ((g/BLOCKSIZE)&(BLOCKSIZE-1))%BLOCKSIZE;
 			for( subpixel = 0; subpixel < BITSETS_TILECOMP; subpixel++ )
 			{
-				CHECKPOINT( decode_prob = tprob );
 				int lb = vpx_read( &ctx->vpx_changes, tprob );
-				CHECKPOINT( decode_lb = lb, vpxcheck = 0 );
+				CHECKPOINT( decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar, decode_prob = tprob, decode_lb = lb, vpxcheck = 0 );
 				if( subpixel == 0 )
 				{
 					if( lb != is0or1 )

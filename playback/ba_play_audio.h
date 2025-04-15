@@ -17,6 +17,8 @@
 #define NUM_VOICES 4
 #define TIMESCALE ((F_SPS*60)/(138*4)) // 138 BPM
 
+#define START_AUDIO_AT_FRAME 46
+
 // MUST BE POWER-OF-TWO
 #ifndef AUDIO_BUFFER_SIZE
 #define AUDIO_BUFFER_SIZE 1024
@@ -103,7 +105,6 @@ static int ba_audio_internal_pull_bit( struct ba_audio_player_t * player, uint16
 	BITPULL_START;
 	BITPULL; CHECKBITS_AUDIO( 1 );
 	BITPULL_END;
-	CHECKPOINT( audio_bpr = (bpo & ~0x1f) | bpoo, audio_pullbit = *optr, audio_gotbit = bit, audio_last_bitmode = 0 );
 	return bit;
 }
 
@@ -186,7 +187,7 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 		CHECKPOINT( audio_stack_place = stackplace, audio_stack_remain = player->stack[stackplace].remain, audio_stack_offset = player->stack[stackplace].offset, decodephase = "AUDIO: Reading Next" );
 		int bpstart = *optr;
 		int is_backtrace = ba_audio_internal_pull_bit( player, optr );
-		CHECKPOINT( audio_backtrace = is_backtrace, decodephase = is_backtrace ? "AUDIO: Backtrack" : "AUDIO: No Backtrack" );
+		CHECKPOINT( audio_bpr = *optr, audio_pullbit = *optr, audio_gotbit = is_backtrace, audio_last_bitmode = 0, audio_backtrace = is_backtrace, decodephase = is_backtrace ? "AUDIO: Backtrack" : "AUDIO: No Backtrack" );
 		if( !is_backtrace ) break;
 
 		CHECKPOINT( decodephase = "AUDIO: Reading Backtrack Run Length", audio_golmb_exp = -1, audio_golmb_v = 0, audio_golmb = 0, audio_golmb_br = -1  );
@@ -223,12 +224,13 @@ static int ba_audio_pull_note( struct ba_audio_player_t * player )
 static inline void perform_16th_note( struct ba_audio_player_t * player )
 {
 	int i;
-	CHECKPOINT( decodephase = "AUDIO: Perform 16th Note" );
+	static int sixteenthnote;
+	CHECKPOINT( decodephase = "AUDIO: Perform 16th Note", audio_sixteenth = ++sixteenthnote );
 	for( i = 0; i < NUM_VOICES; i++ )
 	{
 		if( player->playing_freq[i] && player->tstop[i] <= player->t )
 		{
-			CHECKPOINT( decodephase = "AUDIO: Note Complete" );
+			//CHECKPOINT( decodephase = "AUDIO: Note Complete" );
 			player->playing_freq[i] = 0;
 		}
 	}
