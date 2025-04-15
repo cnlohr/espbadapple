@@ -956,6 +956,20 @@ void DrawCellState( Clay_RenderCommand * render )
 		DrawFormat( fx+b.width/2-8, fy+4+24, -2, 0xffffffff, "%3d.%1d%% Got Bit:%d -> %s (%02x)", perh, perd, cp->decode_lb, tilestr, cp->decode_tileid );
 		DrawFormat( fx+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "%s", cp->decodephase?cp->decodephase:"(Unknown)");
 	}
+	else if( cp->decodephase == "Frame Done" )
+	{
+		DrawFormat( fx+b.width/2-8, fy+4+24*0, -2, 0xffffffff, "Frame: %03d", cp->frame );
+
+		const uint8_t * base = cp->decoding_glyphs?ba_glyphdata:ba_video_payload;
+		vpx_reader * v = cp->baplay_vpx;
+		if( base && v )
+		{
+			const uint8_t * vb = v->buffer ? v->buffer : base;
+			int dlen = v->buffer_end - base;
+			float percent = 100.0*(vb-base) /sizeof(ba_video_payload);
+			DrawFormat( fx+b.width/2-8, fy+4+24*1, -2, 0xffffffff, "Video Byte %d/%d %.1f%%", vb-base, sizeof(ba_video_payload), percent );
+		}
+	}
 	else if( cp->decodephase == "Reading Glyphs" )
 	{
 		//decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar, decode_prob = tprob, decode_lb = lb, vpxcheck = 0
