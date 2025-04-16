@@ -1197,7 +1197,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 			{
 				float note = 7.3-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
-				CNFGColor( 0xc0c0c090 );
+				CNFGColor( ( sxth > center_audio_sixteenth ) ? 0xf0f0f018 : 0xc0c0c0b0 );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+1), b.y + yst * note + 10 );
 			}
 
@@ -1209,7 +1209,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 				if( !fr ) continue;
 				float note = 7.3-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
-				CNFGColor( 0xf0f0f0f0 );
+				CNFGColor( 0xffffffff );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+stop-sxth), b.y + yst * note + 10 );
 			}
 		}
@@ -1466,6 +1466,9 @@ void DrawGlyphSet( Clay_RenderCommand * render )
 	float scale_based_on_width = fw / optimalwidth;
 	float scale_based_on_height = fh / optimalheight;
 	float scale = (scale_based_on_width<scale_based_on_height) ? scale_based_on_width : scale_based_on_height;
+	float center_adjust = (fw - optimalwidth * scale)/2;
+
+	fx += center_adjust;
 
 	int x, y;
 	for( y = 0; y < optimalheight; y++ )
