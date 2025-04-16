@@ -1,4 +1,4 @@
-all : subst index.html
+all : subst badderapple.html
 
 #For tools (Works in Ubuntu 20.04 (Including WSL), Mint)
 # sudo apt-get install clang-10 lld-10 binaryen
@@ -52,7 +52,7 @@ opt.js : template.js main.wasm
 	$(TERSERLINE)
 	#rm mid.js blob_b64
 
-index.html : template.ht opt.js
+badderapple.html : template.ht opt.js
 	./subst template.ht -s -f JAVASCRIPT_DATA opt.js -o $@
 
 subst : subst.c
@@ -64,5 +64,5 @@ main.wasm: ../interactive.c
 	#wasm-objdump -d main.wasm > main.disassembly.txt
 
 clean:
-	rm -rf main.wasm opt.js index.html blob_b64
+	rm -rf main.wasm opt.js badderapple.html blob_b64
 

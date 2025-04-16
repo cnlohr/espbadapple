@@ -1,15 +1,13 @@
 #include <stdio.h>
 
-// XXX TODO: Handle partial bits in ba_play.h
-// TODO: Add buttons to toggle on and off each filtering axis.
-// TODO: Update hardware with new logic code for edge blending/filtering.
-// TODO: Improve memory graph showing more memory.
+#define TITLE "Badder Apple 2"
 
 #define WARNING(x...) printf( x );
 #define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
 #define CHECKBITS_AUDIO(x) { bitsperframe_audio[frame] += x;}
 #define CHECKBITS_VIDEO(x) { bitsperframe_video[frame] += x;}
 
+int is_vertical = 0;
 int frame = 0;
 short screenw, screenh;
 
@@ -41,7 +39,11 @@ int FIELDS(xcomma) dummy;
 
 #include "ba_play.h"
 
+#ifdef __wasm__
+#define F_SPS 44100
+#else
 #define F_SPS 48000
+#endif
 #define AUDIO_BUFFER_SIZE 2048
 
 int AS_PER_FRAME = F_SPS/30;
@@ -459,6 +461,8 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 		}
 	}
 
+	uint8_t raw_icon_data[RESX*RESY/2] = { 0 };
+
 	int x, y;
 	for( y = 0; y < RESY; y++ )
 	for( x = 0; x < RESX; x++ )
@@ -488,7 +492,18 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 		uint32_t color = (v<<24) | (v<<16) | (v<<8) | 0xFF;
 		CNFGColor( color );
 		CNFGTackRectangle( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
+
+		raw_icon_data[((RESY-y-1)*RESX + x)/2] |= (vi)<<((x&1)*4);
 	}
+
+	// Only update favicon every other frame.
+	static int dispframe;
+	if( dispframe++ & 1 )
+	{
+		void ChangeFavicon( uint8_t * raw_icon_data, int w, int h );
+		ChangeFavicon( raw_icon_data, RESX, RESY );
+	}
+
 	CNFGSetLineWidth(1.0);
 	CNFGColor( 0xc0c0c010 );
 	for( y = 0; y < RESY; y++ )
@@ -1126,7 +1141,7 @@ void DrawCellStateAudioExpGolomb( Clay_RenderCommand * render )
 		}
 	}
 
-	DrawFormat( b.x + b.width/2, b.y, -2, 0xffffffff, "Exp Golomb: %s %3d", gexp, cp->audio_golmb_v - 1 );
+	DrawFormat( b.x + b.width/2, b.y+2, -2, 0xffffffff, "Exp Golomb: %s %3d", gexp, cp->audio_golmb_v - 1 );
 }
 
 void DrawAudioTrack( Clay_RenderCommand * render )
@@ -1549,6 +1564,9 @@ void DrawGeneral( Clay_RenderCommand * render )
 	fy = b.y;
 	fzoom = CLAY__MIN( b.width / RESX, b.height / RESY );
 
+	float xoffset = (b.width - fzoom * RESX)/2;
+	fx += xoffset;
+
 	EmitSamples8( cp, fx, fy, fzoom, (glyphtype *)cp->curmap, (void*)cp->glyphdata );
 }
 
@@ -1560,9 +1578,9 @@ int WXPORT(main)()
 	HuffLenRunNodes = GenTreeFromTable( espbadapple_song_hufflen, sizeof(espbadapple_song_hufflen)/sizeof(espbadapple_song_hufflen[0]), &HuffLenRunNodeCount );
 
 #ifdef __wasm__
-	CNFGSetupFullscreen( "Badder Apple", 1 );
+	CNFGSetupFullscreen( TITLE, 0 );
 #else
-	CNFGSetup( "Badder Apple", 1920/2, 1080/2 );
+	CNFGSetup( TITLE, 1920/2, 1080/2 );
 #endif
 
 	ExtraDrawingInit( 1920/2, 1080/2 );
@@ -1640,7 +1658,7 @@ int WXPORT(main)()
 				{
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 					{
-						CLAY_TEXT(saprintf_g( 1, "Badder Apple" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY_TEXT(saprintf_g( 1, TITLE ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 					int tframe = checkpoints?checkpoints[cursor].frame:0;
 					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */ } )
@@ -1653,9 +1671,12 @@ int WXPORT(main)()
 						CLAY_TEXT(saprintf( "A:%3d b, V:%3d b", (int)bitsperframe_audio[tframe], (int)bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 					}
 
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					if( !is_vertical )
 					{
-						CLAY_TEXT(saprintf_g( (frame < FRAMECT), "Dec %d", frame), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+						CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+						{
+							CLAY_TEXT(saprintf_g( (frame < FRAMECT), "Dec %d", frame), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+						}
 					}
 				}
 
@@ -1677,6 +1698,15 @@ int WXPORT(main)()
 					})
 					if( cp && cp->decodephase )
 					{
+
+						if( is_vertical )
+						{
+							CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_GROW(150) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+							{
+								CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+							}
+						}
+
 						int need_to_display_audio_track = 0;
 						int doing_audio = 0;
 						if( cp->decodephase && strncmp( cp->decodephase, "AUDIO", 5 ) == 0 )
@@ -1687,7 +1717,7 @@ int WXPORT(main)()
 							}
 							CLAY({ .custom = { .customData = DrawCellStateAudioStack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
-								CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 							}
 							if( NeedsHuffman() )
 							{
@@ -1704,6 +1734,7 @@ int WXPORT(main)()
 								{
 									CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 								}
+								need_to_display_audio_track = 1;
 							}
 							else
 							{
@@ -1747,9 +1778,12 @@ int WXPORT(main)()
 						// Null. Can't draw a side info bar for this.
 					}
 
-					CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(300), .height = CLAY_SIZING_GROW(300) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+					if( !is_vertical )
 					{
-						CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						CLAY({ .custom = { .customData = DrawGeneral } , .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_GROW(150) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+						{
+							CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+						}
 					}
 
 				}
@@ -1896,7 +1930,12 @@ int WXPORT(main)()
 		CNFGGetDimensions( &screenw, &screenh );
 		Clay_SetLayoutDimensions((Clay_Dimensions) { screenw, screenh });
 
+		is_vertical = screenh > screenw;
+
 		CNFGSetScissors( (int[4]){ 0, 0, screenw, screenh } );
+
+		// Debug mouse input.
+		//DrawFormat( 50, 50, 2, 0xc0c0c0ff, "%d %d %d", mousePositionX, mousePositionY, isMouseDown );
 
 		CNFGSwapBuffers();
 	}

@@ -146,11 +146,59 @@ enableAudio = () =>
 	document.getElementById( "soundButton" ).value = mute?"🔇":"🔊";
 }
 
+function ChangeFavicon( pixelData, width, height )
+{
+	HEAPU8 = new Uint8Array(mem.buffer);
+
+	document.head = document.head || document.getElementsByTagName('head')[0];
+	var link = document.createElement('link'),
+		oldLink = document.getElementById('dynamic-favicon');
+	link.id = 'dynamic-favicon';
+	link.rel = 'shortcut icon';
+
+	const trailerLength = 384;
+
+	const header = new Uint8Array( [
+		0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+		width, // Width
+		height, // Height
+		0x10, 0x00, 0x01, 0x00, 0x04, 0x00,
+		0xE8, 0x07, 0x00, 0x00, // Bitmap size
+		0x16, 0x00, 0x00, 0x00, // Bitmap contents
+		// 3-color DIB header (in 16-color mode)
+		0x28, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8C, 0x8C, 0x8C, 0x00,
+		0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+	]);
+
+    let fullBitmap = new Uint8Array( header.byteLength + width * height / 2 + trailerLength );
+	fullBitmap.set( header, 0 );
+	fullBitmap.set( new Uint8Array( mem.buffer.slice(pixelData,pixelData+(width*height/2)|0) ), header.byteLength );
+
+	var binary = '';
+    var len = fullBitmap.byteLength;
+    for (var i = 0; i < len; i++) {
+        binary += String.fromCharCode( fullBitmap[ i ] );
+    }
+	const b64icon = btoa( binary );
+	link.href = "data:image/x-icon;base64," + b64icon;
+	if (oldLink) {
+		document.head.removeChild(oldLink);
+	}
+	document.head.appendChild(link);
+}
+
+//ChangeFavicon();
+
 function FeedWebAudio( audioFloat, audioSamples )
 {
 	if( !mute && audioContext != null && playingAudioProcessor != null )
 	{
-		// If we need to do a poor resample.
+		// If we need to do a poor resample. (Which we don't)
 //		let sampleAdvance = (system_rate/sample_divisor) / audioContext.sampleRate;
 //		let sampleAdvanceParam = playingAudioProcessor.parameters.get("sampleAdvance");
 //		sampleAdvanceParam.setValueAtTime( 1.0, audioContext.currentTime);
@@ -273,7 +321,8 @@ let imports = {
 			SystemStart( title, w, h );
 			fullscreen = false;
 		},
-		CNFGSetupFullscreen : (title,w,h ) => {
+		CNFGSetupFullscreen : (title, sno) => {
+			w = canvas.width; h = canvas.height;
 			SystemStart( title, w, h );
 			canvas.style += ";position:absolute; top:0; left:0;"
 			fullscreen = true;
@@ -304,6 +353,8 @@ let imports = {
 		log   : Math.log,
 
 		FeedWebAudio : FeedWebAudio,
+
+		ChangeFavicon : ChangeFavicon,
 
 		CNFGSetScissorsInternal : ( xywh ) => {
 			wgl.enable( wgl.SCISSOR_TEST );
@@ -437,14 +488,21 @@ startup = async () => {
 			if( instance.exports.HandleMotion )
 			{
 				canvas.addEventListener('mousemove', e => { instance.exports.HandleMotion( e.offsetX, e.offsetY, e.buttons ); } );
-				canvas.addEventListener('touchmove', e => { instance.exports.HandleMotion( e.touches[0].clientX, e.touches[0].clientY, 1 ); } );
+				canvas.addEventListener('touchmove', e => { instance.exports.HandleMotion( e.touches.length?e.touches[0].clientX:0, e.touches.length?e.touches[0].clientY:0, e.touches.length?1:0 ); } );
 			}
 
-			console.log( instance.exports.HandleButton );
 			if( instance.exports.HandleButton )
 			{
-				canvas.addEventListener('mouseup', e => { instance.exports.HandleButton( e.offsetX, e.offsetY, e.button, 0 ); return false; } );
-				canvas.addEventListener('mousedown', e => { instance.exports.HandleButton( e.offsetX, e.offsetY, e.button, 1 ); return false; } );
+				var touchEvent = ( e, d ) => {
+					instance.exports.HandleButton( e.offsetX, e.offsetY, e.button, d );
+					//instance.exports.HandleMotion( e.offsetX, e.offsetY, e.buttons );
+					//e.preventDefault();
+					return false;
+				};
+				canvas.addEventListener('mouseup',    e => { return touchEvent( e, 0 ); }, false );
+				canvas.addEventListener('mousedown',  e => { return touchEvent( e, 1 ); }, false );
+				canvas.addEventListener('touchend',   e => { instance.exports.HandleButton( e.touches.length?e.touches[0].clientX:0, e.touches.length?e.touches[0].clientY:0, 0, 0 ); return false; }, false );
+				canvas.addEventListener('touchstart', e => { instance.exports.HandleButton( e.touches.length?e.touches[0].clientX:0, e.touches.length?e.touches[0].clientY:0, 0, e.touches.length?1:0 ); return false; }, false );
 			}
 
 			if( instance.exports.HandleKey )

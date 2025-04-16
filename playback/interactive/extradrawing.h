@@ -104,7 +104,7 @@ void WXPORT(HandleKey)( int keycode, int bDown ) {
 #endif
 	}
 }
-void WXPORT(HandleButton)( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown; }
+void WXPORT(HandleButton)( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown<<button; }
 void WXPORT(HandleMotion)( int x, int y, int mask ) { mousePositionX = x; mousePositionY = y; isMouseDown = mask; }
 int WXPORT(HandleDestroy)() { return 0; }
 
