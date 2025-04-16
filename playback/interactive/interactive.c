@@ -496,6 +496,7 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 		raw_icon_data[((RESY-y-1)*RESX + x)/2] |= (vi)<<((x&1)*4);
 	}
 
+#ifdef __wasm__
 	// Only update favicon every other frame.
 	static int dispframe;
 	if( dispframe++ & 1 )
@@ -503,6 +504,7 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 		void ChangeFavicon( uint8_t * raw_icon_data, int w, int h );
 		ChangeFavicon( raw_icon_data, RESX, RESY );
 	}
+#endif
 
 	CNFGSetLineWidth(1.0);
 	CNFGColor( 0xc0c0c010 );
@@ -928,6 +930,14 @@ void DrawVPX( Clay_RenderCommand * render )
 	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%s %3d", vs, v->range );
 }
 
+void DrawMemoryAndVPX( Clay_RenderCommand * render )
+{
+	render->boundingBox.height *= 0.45;
+	DrawMemory( render );
+	render->boundingBox.y += 39;
+	DrawVPX( render );
+}
+
 void DrawCellState( Clay_RenderCommand * render )
 {
 	if( !checkpoints && cursor >= 0 && cursor < nrcheckpoints ) return;
@@ -1008,7 +1018,7 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 	if( !cp->audio_stack ) return;
 	int k;
 	int maxpt = 0;
-
+	const int song_length_bits = sizeof( espbadapple_song_data ) * 8;
 	//struct ba_audio_player_stack_element * sp = &(*cp->audio_stack)[cp->audio_stack_place];
 	for( k = 0; k <= cp->audio_stack_place; k++ )
 	{
@@ -1018,14 +1028,19 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 			maxpt = s->offset;
 		}
 	}
+
+	const int scrollalong = 0;
+
 	int margin = 2;
-	int wm = w - margin;
-	int center = cp->audio_bpr;
+	float pxscale = scrollalong ? 1 : ((w-margin)/(float)song_length_bits);
+	float wm = (w - margin)/pxscale;
+	float center = scrollalong ? cp->audio_bpr : song_length_bits/2;
 	int vx;
 	for( vx = center-wm/2; vx < center + wm/2; vx++ )
 	{
-		int bp = vx-center+wm/2+margin;
+		int bp = (vx-center+wm/2)*pxscale+margin;
 		if( vx < 0 ) continue;
+		if( vx >= song_length_bits ) break;
 		uint32_t v = espbadapple_song_data[vx>>5];
 		int bit = (v>>(vx&31))&1;
 		CNFGColor( bit?0xf0f0f080 : 0x10101080 );
@@ -1039,21 +1054,22 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 	{
 		struct ba_audio_player_stack_element * s = &(*cp->audio_stack)[k];
 		//struct ba_audio_player_stack_element * sm1 = &(*cp->audio_stack)[k-1];
-		int bp = s->offset-center+wm/2;
-		int bpm1 = s->offset+10-center+wm/2;
+		int bp = (s->offset-center+wm/2)*pxscale;
+		int bpm1 = bp+10;
 		if( bp >= w ) bp = w-1;
 		if( bpm1 >= w ) bpm1 = w-1;
 		CNFGTackSegment( x+bp, h-12-step*10+y, x+bpm1, h-12-step*10+y );
 		CNFGTackSegment( x+bp, h-12-step*10+y, x+bp, h-8-step*10+y );
 
-		DrawFormat( x+bp-digits(s->remain)*7, h-16-step*10+y, 1, 0xffffffff, "%d", s->remain );
+		int otherside = ( bp < 40 ) ? digits(s->remain)*7+12 : 0;
+		DrawFormat( x+bp-digits(s->remain)*7+otherside, h-16-step*11+y, 1, 0xffffffff, "%d", s->remain );
 		CNFGSetLineWidth(2);
 		step++;
 	}
 
-	char bitstream_prev[3] = { 0 };
+	char bitstream_prev[5] = { 0 };
 	char bitstream_this[2] = { 0 };
-	char bitstream[13] = { 0 };
+	char bitstream[40] = { 0 };
 	
 	int i;
 	for( i = 0; i < sizeof(bitstream_prev)-1; i++ )
@@ -1085,8 +1101,8 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		bitstream[i] = '0' + bit;
 	}
 
-	int xofs = 24+2+4;
-	int xofs2 = 24+2+21;
+	int xofs = 6*sizeof(bitstream_prev-1)+2+4;
+	int xofs2 = 6*sizeof(bitstream_prev-1)+2+21;
 	DrawFormat( x + 2, y+4, 2, 0xffffffff, "%s", bitstream_prev );
 	DrawFormat( x + 2+xofs, y+4, 2, 0xffffffff, "%s", bitstream_this );
 	DrawFormat( x + 2+xofs2, y+4, 2, 0xffffff80, "%s", bitstream );
@@ -1210,7 +1226,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 			int fr = (sixteenth >> (16*n))&0xffff;
 			if( fr )
 			{
-				float note = 7.3-log(fr);
+				float note = 7-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
 				CNFGColor( ( sxth > center_audio_sixteenth ) ? 0xf0f0f018 : 0xc0c0c0b0 );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+1), b.y + yst * note + 10 );
@@ -1222,7 +1238,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 				int fr = apf[n];
 
 				if( !fr ) continue;
-				float note = 7.3-log(fr);
+				float note = 7-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
 				CNFGColor( 0xffffffff );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+stop-sxth), b.y + yst * note + 10 );
@@ -1231,6 +1247,9 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 	}
 
 	CNFGTackSegment( xst, b.y, xst, b.y+b.height );
+
+
+	DrawAudioStack( cp, fx, fy, b.width, b.height );		
 
 ending:
 	CNFGFlushRender();
@@ -1715,12 +1734,15 @@ int WXPORT(main)()
 							{
 								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 							}
-							CLAY({ .custom = { .customData = DrawCellStateAudioStack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
-							{
-								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
-							}
+
 							if( NeedsHuffman() )
 							{
+
+								CLAY({ .custom = { .customData = DrawCellStateAudioStack } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+								{
+									CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								}
+
 								CLAY({ .custom = { .customData = DrawCellStateAudioHuffman } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 								{
 									//CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
@@ -1732,25 +1754,28 @@ int WXPORT(main)()
 									.childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER},
 									.sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 								{
-									CLAY_TEXT(CLAY_STRING( " \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+									CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 								}
 								need_to_display_audio_track = 1;
 							}
 							else
 							{
+
+								CLAY({ .custom = {  } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+								{
+									CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								}
+
+
 								need_to_display_audio_track = 1;
 							}
 							doing_audio = 1;
 						}
 						else
 						{
-							CLAY({ .custom = { .customData = DrawMemory } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
+							CLAY({ .custom = { .customData = DrawMemoryAndVPX } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{
-								CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
-							}
-							CLAY({ .custom = { .customData = DrawVPX } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
-							{
-								CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+								CLAY_TEXT(CLAY_STRING( " \n \n " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 							}
 							CLAY({ .custom = { .customData = DrawCellState } ,.layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } } )
 							{

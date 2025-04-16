@@ -99,9 +99,6 @@ void WXPORT(HandleKey)( int keycode, int bDown ) {
 				midCursor = topCursor = cursor = nrcheckpoints-1;
 			inPlayMode = 0;
 		}
-#ifndef __wasm__
-		else printf( "%d\n", keycode );
-#endif
 	}
 }
 void WXPORT(HandleButton)( int x, int y, int button, int bDown ) { mousePositionX = x; mousePositionY = y; isMouseDown = bDown<<button; }
