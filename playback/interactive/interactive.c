@@ -1501,7 +1501,7 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 		if( kc >= nrcheckpoints )
 		{
 			float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
-			DrawFormat( rx + 12 + 8, ry + mh/2, -2, 0xffffff5f, "\x001" );
+			DrawFormat( rx + 12 + 8, ry + mh/2, -2, 0xffffff5f, "\x0b" );
 			break;
 		}
 		if( kc < 0 ) { dispct++; continue; }
