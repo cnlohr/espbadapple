@@ -1108,8 +1108,8 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		bitstream[i] = '0' + bit;
 	}
 
-	int xofs = 6*sizeof(bitstream_prev-1)+2+4;
-	int xofs2 = 6*sizeof(bitstream_prev-1)+2+21;
+	int xofs = 6*sizeof(bitstream_prev)-1+2+4;
+	int xofs2 = 6*sizeof(bitstream_prev)-1+2+21;
 	DrawFormat( x + 2, y+4, 2, 0xffffffff, "%s", bitstream_prev );
 	DrawFormat( x + 2+xofs, y+4, 2, 0xffffffff, "%s", bitstream_this );
 	DrawFormat( x + 2+xofs2, y+4, 2, 0xffffff80, "%s", bitstream );
@@ -1492,9 +1492,19 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 
 	int dispct = 0;
 
+	float margin = 2;
+	float mh = b.height - margin*2;
+	float ry = b.y + margin;
+
 	for( ; dispct < rrange * 2 + 1; kc++ )
 	{
-		if( kc < 0 || kc > nrcheckpoints ) { dispct++; continue; }
+		if( kc >= nrcheckpoints )
+		{
+			float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
+			DrawFormat( rx + 12 + 8, ry + mh/2, -2, 0xffffff5f, "\x001" );
+			break;
+		}
+		if( kc < 0 ) { dispct++; continue; }
 		struct checkpoint * cp = &checkpoints[kc];
 		if( !cp ) { dispct++; continue; }
 		vpx_reader  * vpx = cp->baplay_vpx;
@@ -1504,9 +1514,6 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 
 		vpx_reader * vpx_pr_use = (vpx_reader*)vpx_pr;
 
-		float margin = 2;
-		float mh = b.height - margin*2;
-		float ry = b.y + margin;
 		float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
 		float rxnext = b.x + (dispct+1)*(b.width-margin*2) / (rrange*2+1) + margin;
 
