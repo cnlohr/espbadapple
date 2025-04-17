@@ -36,6 +36,11 @@
 #define CHECKBITS_VIDEO(x...)
 #endif
 
+#ifndef GLYPH_DONE_DECODE
+#define GLYPH_DONE_DECODE(g...)
+#endif
+
+
 #if TILE_COUNT > 256
 typedef uint16_t glyphtype;
 #else
@@ -107,6 +112,11 @@ static int ba_play_setup( ba_play_context * ctx )
 					tprob = lb?GSC1:GSC0;
 				}
 				ctx->glyphdata[gid][lx] |= lb<<(ly+BLOCKSIZE*(BITSETS_TILECOMP-1)-subpixel*BLOCKSIZE); // Yuck.. bit ordering here is weird.
+			}
+
+			if( ( g & (BLOCKSIZE*BLOCKSIZE-1)) == 0 )
+			{
+				GLYPH_DONE_DECODE( g );
 			}
 		}
 	}
