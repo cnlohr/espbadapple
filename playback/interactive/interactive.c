@@ -1009,7 +1009,7 @@ void DrawCellState( Clay_RenderCommand * render )
 	else if( cp->decodephase == "Reading Glyphs" )
 	{
 		//decodeglyph = g, decode_is0or1 = is0or1, decode_runsofar = runsofar, decode_prob = tprob, decode_lb = lb, vpxcheck = 0
-		DrawFormat( fx+b.width/2-8, fy+4+24*0, -2, 0xffffffff, "Read Pixel: %03d", cp->decodeglyph );
+		DrawFormat( fx+b.width/2-8, fy+4+24*0, -2, 0xffffffff, "Read Pixel: %d", cp->decodeglyph );
 		DrawFormat( fx+b.width/2-8, fy+4+24*1, -2, 0xffffffff, "Was:%d Run:%d Prob:%d, Bit:%d", 
 			cp->decode_is0or1,  cp->decode_runsofar, cp->decode_prob, cp->decode_lb );
 
@@ -1108,8 +1108,8 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 		bitstream[i] = '0' + bit;
 	}
 
-	int xofs = 6*sizeof(bitstream_prev)-1+2+4;
-	int xofs2 = 6*sizeof(bitstream_prev)-1+2+21;
+	int xofs = 6*(sizeof(bitstream_prev)+1)+4+15;
+	int xofs2 = 6*(sizeof(bitstream_prev)+1)+21+15;
 	DrawFormat( x + 2, y+4, 2, 0xffffffff, "%s", bitstream_prev );
 	DrawFormat( x + 2+xofs, y+4, 2, 0xffffffff, "%s", bitstream_this );
 	DrawFormat( x + 2+xofs2, y+4, 2, 0xffffff80, "%s", bitstream );
@@ -2097,6 +2097,9 @@ int WXPORT(main)()
 	int lasttail = 0;
 	double Now = OGGetAbsoluteTime();
 	double Last = Now;
+
+	inPlayMode = 1;
+
 	while( CNFGHandleInput() )
 	{
 		Now = OGGetAbsoluteTime();
