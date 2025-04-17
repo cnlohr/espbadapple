@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#define TITLE "Badder Apple 2"
+#define TITLE "Badder Apple"
 
 #define WARNING(x...) printf( x );
 #define CHECKPOINT(x...) { x; ba_i_checkpoint(); }
@@ -1233,7 +1233,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 			int fr = (sixteenth >> (16*n))&0xffff;
 			if( fr )
 			{
-				float note = 7-log(fr);
+				float note = 7.1-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
 				CNFGColor( ( sxth > center_audio_sixteenth ) ? 0xf0f0f018 : 0xc0c0c0b0 );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+1), b.y + yst * note + 10 );
@@ -1245,7 +1245,7 @@ void DrawAudioTrack( Clay_RenderCommand * render )
 				int fr = apf[n];
 
 				if( !fr ) continue;
-				float note = 7-log(fr);
+				float note = 7.1-log(fr);
 				float relpos = sxth - cp->audio_sixteenth - partial;
 				CNFGColor( 0xffffffff );
 				CNFGTackRectangle( xst + sper*relpos, b.y + yst * note, xst + sper*(relpos+stop-sxth), b.y + yst * note + 10 );
