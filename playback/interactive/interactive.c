@@ -2093,7 +2093,7 @@ void RenderFrame()
 
 	if( ShowHelp )
 	{
-		CNFGColor( 0x000000a8 );
+		CNFGColor( 0x000000c0 );
 		CNFGTackRectangle( 0, 0, screenw, screenh );
 		DrawFormatShadow( screenw/2, 48, -2, 0xffffffff, "Explore badder apple one bit at a time" );
 
@@ -2111,13 +2111,13 @@ void RenderFrame()
 		CNFGTackRectangle( 118, 10, 408, 36 );
 		DrawFormatShadow( 120, 12, 2, 0xffffffff, "\x1b Click X to close help." );
 
-		DrawFormatShadow( screenw/2, screenh/2-48, -2, 0xffffffff, "[Space to toggle playing]" );
-		DrawFormatShadow( screenw/2, screenh/2-24, -2, 0xffffffff, "[left/right to advance bytes]" );
-		DrawFormatShadow( screenw/2, screenh/2+0 , -2, 0xffffffff, "[pgup/pgdn to advance frames]" );
-		DrawFormatShadow( screenw/2, screenh/2+24, -2, 0xffffffff, "[home/end to begin/end]" );
-		DrawFormatShadow( screenw/2, screenh-114, -2, 0xffffffff, "[Click and drag to scrub bytes]" );
-		DrawFormatShadow( screenw/2, screenh-72, -2, 0xffffffff, "[Click and drag to scrub frames]" );
-		DrawFormatShadow( screenw/2, screenh-30, -2, 0xffffffff, "[Full Decoded Overview]" );
+		DrawFormatShadow( screenw/2, screenh/2-48, -2, 0xffffffff, "[Space] to toggle playing" );
+		DrawFormatShadow( screenw/2, screenh/2-24, -2, 0xffffffff, "left \x1b right \x1a to advance bytes" );
+		DrawFormatShadow( screenw/2, screenh/2+0 , -2, 0xffffffff, "pgup/pgdn \x17 to advance frames" );
+		DrawFormatShadow( screenw/2, screenh/2+24, -2, 0xffffffff, "home/end to begin/end" );
+		DrawFormatShadow( screenw/2, screenh-114, -2, 0xffffffff, "\x1b Click and drag to scrub bytes \x1a" );
+		DrawFormatShadow( screenw/2, screenh-72, -2, 0xffffffff, "\x1b Click and drag to scrub frames \x1a" );
+		DrawFormatShadow( screenw/2, screenh-30, -2, 0xffffffff, "\x1b Full Decoded Overview \x1a" );
 	}
 
 	CNFGSwapBuffers();
