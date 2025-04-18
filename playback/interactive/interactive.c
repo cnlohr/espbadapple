@@ -500,7 +500,9 @@ void EmitSamples8( struct checkpoint * cp, float ofsx, float ofsy, float fzoom, 
 		CNFGColor( color );
 		CNFGTackRectangle( x*fzoom+ofsx, y*fzoom+ofsy, x*fzoom+fzoom+ofsx, y*fzoom+fzoom+ofsy );
 
-		raw_icon_data[((RESY-y-1)*RESX + x)/2] |= (vi)<<((x&1)*4);
+		if( vi > 2 ) vi = 2;
+		if( vi < 0 ) vi = 0;
+		raw_icon_data[((RESY-y-1)*RESX + x)/2] |= (vi)<<(!(x&1)*4);
 	}
 
 #ifdef __wasm__

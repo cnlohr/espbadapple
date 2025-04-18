@@ -187,6 +187,7 @@ function ChangeFavicon( pixelData, width, height )
     }
 	const b64icon = btoa( binary );
 	link.href = "data:image/x-icon;base64," + b64icon;
+
 	if (oldLink) {
 		document.head.removeChild(oldLink);
 	}
