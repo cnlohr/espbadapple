@@ -128,7 +128,7 @@ async function SetupWebAudio()
 	audioContext.resume();
 
 	let gainParam = playingAudioProcessor.parameters.get( "gain" );
-	gainParam.setValueAtTime( .2, audioContext.currentTime );  // Reduce volume
+	gainParam.setValueAtTime( .5, audioContext.currentTime );  // Reduce volume
 }
 
 ToggleAudio = () =>
