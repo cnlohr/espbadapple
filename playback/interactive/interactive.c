@@ -1581,7 +1581,13 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 			float ratioo = 1.0 - cp->decode_prob / 256.0 * upratio;
 			float ratioonext = 1.0 - (cpnext?cpnext->decode_prob:0) / 256.0 * uprationext;
 
-			float uprationext_proj = (vpx_pr_use->range- cp->decode_prob) / 256.0;
+			float uprationext_proj = (vpx_pr_use->range-cp->decode_prob + 1) / 256.0;
+
+			int gpused = vpx_pr_use->count - vpx->count;
+			//if( gpused < 0 ) gpused = 0;
+			gpused = (vpx->buffer-vpx_pr_use->buffer)*8 + gpused;
+
+
 
 			if( pass == 0 )
 			{
@@ -1610,14 +1616,17 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					 rx + column_width, bypm + mh * (1.0-upratio) );
 
 				// This turned out to just be confusing
-				if(0)
+				if( 0 )
 				if( vpx_pr_use->range- cp->decode_prob != vpx->range )
 				{
+					CNFGColor( 0xffffff10 );
 					CNFGSetLineWidth(2.0);
 					CNFGTackSegment(
 						rx + column_width, bypm + mh * (1.0-upratio) ,
 						rxnext, bypm + mh * (1.0-uprationext_proj) );
 				}
+
+
 				CNFGColor( 0x00000050 );
 				CNFGTackPoly( (RDPoint[]){
 					{ rx + column_width, bypm + mh },
@@ -1641,17 +1650,33 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 				// Boundary
 				//CNFGTackSegment( rx, b.y + mh * ratio + margin,  rx + column_width, b.y + mh * ratio + margin );
 
-				CNFGTackSegment(
-					rx + 2,                bypm + mh * ratio - column_width/2 + 2,
-					rx + column_width - 2, bypm + mh * ratio + column_width/2 - 2 );
-				CNFGTackSegment(
-					rx + column_width - 2, bypm + mh * ratio - column_width/2 + 2,
-					rx + 2,                bypm + mh * ratio + column_width/2 - 2 );
-
+				DrawHashAt( rx + column_width / 2, bypm + mh * ratio, column_width / 2-2 );
 
 				CNFGTackSegment(
 					rx + column_width/2, bypm + mh * ratio,
 					rxnext + column_width/2, bypm + mh * rationext );
+
+
+				if( gpused > 0 )
+				{
+					int hm = 0;
+					float xadvance = (rxnext-rx) / (float)gpused;
+					float xst = rx + column_width/2;
+					float yadvance = ((bypm + mh * rationext) - (bypm + mh * ratio)) / (float)gpused;
+					float yst = bypm + mh * ratio;
+					xst += xadvance * 0.5;
+					yst += yadvance * 0.5;
+					for( hm = 0; hm < gpused; hm++ )
+					{
+						//DrawHashAt( xst, yst, column_width / 2-2 );
+						CNFGDrawBox(
+							xst - column_width / 2-1, yst - column_width / 2-1 ,
+							xst + column_width / 2-2, yst + column_width / 2-2  );
+						xst += xadvance;
+						yst += yadvance;
+					}
+				}
+
 
 				// Mark
 				//CNFGTackSegment( rx + column_width + 8, b.y + mh * ratioo + margin, rx - 8, b.y + mh * ratioo + margin );

@@ -253,6 +253,16 @@ void LayoutStart()
 }
 
 
+void DrawHashAt( int x, int y, int s )
+{
+	CNFGTackSegment(
+		x - s, y - s,
+		x + s, y + s );
+	CNFGTackSegment(
+		x + s, y - s,
+		x - s, y + s );
+}
+
 
 Clay_String saprintf( const char * fmt, ... )
 {
