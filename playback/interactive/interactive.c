@@ -1581,6 +1581,8 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 			float ratioo = 1.0 - cp->decode_prob / 256.0 * upratio;
 			float ratioonext = 1.0 - (cpnext?cpnext->decode_prob:0) / 256.0 * uprationext;
 
+			float uprationext_proj = (vpx_pr_use->range- cp->decode_prob) / 256.0;
+
 			if( pass == 0 )
 			{
 				CNFGSetLineWidth(1.0);
@@ -1607,6 +1609,15 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					rx, bypm + mh * (1.0-upratio),
 					 rx + column_width, bypm + mh * (1.0-upratio) );
 
+				// This turned out to just be confusing
+				if(0)
+				if( vpx_pr_use->range- cp->decode_prob != vpx->range )
+				{
+					CNFGSetLineWidth(2.0);
+					CNFGTackSegment(
+						rx + column_width, bypm + mh * (1.0-upratio) ,
+						rxnext, bypm + mh * (1.0-uprationext_proj) );
+				}
 				CNFGColor( 0x00000050 );
 				CNFGTackPoly( (RDPoint[]){
 					{ rx + column_width, bypm + mh },
