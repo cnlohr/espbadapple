@@ -131,7 +131,7 @@ async function SetupWebAudio()
 	gainParam.setValueAtTime( 1.0, audioContext.currentTime ); 
 }
 
-enableAudio = () =>
+ToggleAudio = () =>
 {
 	// AudioContexts need human intervention.
 	if( !playingAudioProcessor )
@@ -143,7 +143,8 @@ enableAudio = () =>
 	{
 		mute = !mute;
 	}
-	document.getElementById( "soundButton" ).value = mute?"🔇":"🔊";
+	//document.getElementById( "soundButton" ).value = mute?"🔇":"🔊";
+	return !mute;
 }
 
 function ChangeFavicon( pixelData, width, height )
@@ -353,8 +354,19 @@ let imports = {
 		log   : Math.log,
 
 		FeedWebAudio : FeedWebAudio,
-
 		ChangeFavicon : ChangeFavicon,
+		ToggleAudio : ToggleAudio,
+		ToggleFullscreen : () => {
+			const ce = document.getElementById('canvas');
+			var isFullscreen = document.fullscreenElement == ce;
+			if(isFullscreen)
+				document.exitFullscreen();
+			else
+				ce.requestFullscreen();
+		},
+		NavigateLink : (str) => { document.location.href = toUTF8(str); },
+		ChangeCursorToPointer = ( yes ) => { document.getElementById('canvas').style.cursor = yes?"pointer":"default" },
+		IsFullscreen : () => { return document.fullscreenElement == document.getElementById('canvas'); },
 
 		CNFGSetScissorsInternal : ( xywh ) => {
 			wgl.enable( wgl.SCISSOR_TEST );

@@ -120,6 +120,7 @@ struct checkpoint
 
 int nrcheckpoints;
 int inPlayMode;
+int ShowHelp = 0;
 double fFrameElapse;
 
 #include "extradrawing.h"
@@ -226,6 +227,8 @@ int digits( int num )
 	} while( num );
 	return dig;
 }
+
+int AudioEnabled = false;
 
 #ifdef VPX_GREY4
 
@@ -1758,6 +1761,34 @@ void RenderFrame()
 				.backgroundColor = COLOR_PADGREY
 			})
 			{
+#ifdef __wasm__
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(32), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+				if( AudioEnabled )
+					CLAY_TEXT(CLAY_STRING("\x04"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+				else
+					CLAY_TEXT(CLAY_STRING("\x0e"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+
+				int ToggleAudio();
+				int ToggleFullscreen();
+				int IsFullscreen();
+
+				if( btnClicked ) { AudioEnabled = ToggleAudio(); }
+
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(32), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+				if( IsFullscreen() )
+					CLAY_TEXT(CLAY_STRING( "\x1f" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+				else
+					CLAY_TEXT(CLAY_STRING( "\x12" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+				if( btnClicked ) { ToggleFullscreen(); }
+
+#endif
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(32), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+				if( ShowHelp )
+					CLAY_TEXT(CLAY_STRING( "X" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+				else
+					CLAY_TEXT(CLAY_STRING( "?" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
+				if( btnClicked ) { ShowHelp = !ShowHelp; }
+
 				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 				{
 					CLAY_TEXT(saprintf_g( 1, TITLE ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
@@ -1955,7 +1986,7 @@ void RenderFrame()
 					CLAY_TEXT(CLAY_STRING("|<"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 				if( btnClicked && checkpoints ) { int tframe = checkpoints?checkpoints[cursor].frame:0; for( ; cursor > 0; cursor-- ) if( checkpoints[cursor].frame != tframe ) { break; } midCursor = topCursor = cursor; }
 
-				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(32), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 					CLAY_TEXT(CLAY_STRING("\x0f"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 				if( btnClicked && checkpoints ) { inPlayMode = 0; }
 
@@ -1964,7 +1995,7 @@ void RenderFrame()
 					CLAY_TEXT(CLAY_STRING( " " ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 				}
 
-				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(32), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = ClayButton() } )
 					CLAY_TEXT(CLAY_STRING("\x10"), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 				if( btnClicked && checkpoints ) { inPlayMode = !inPlayMode; }
 
@@ -2057,6 +2088,37 @@ void RenderFrame()
 
 	// Debug mouse input.
 	//DrawFormat( 50, 50, 2, 0xc0c0c0ff, "%d %d %d", mousePositionX, mousePositionY, isMouseDown );
+
+	int linkhover = 0;
+
+	if( ShowHelp )
+	{
+		CNFGColor( 0x000000a8 );
+		CNFGTackRectangle( 0, 0, screenw, screenh );
+		DrawFormatShadow( screenw/2, 48, -2, 0xffffffff, "Explore badder apple one bit at a time" );
+
+		linkhover = mousePositionX > screenw/2-220 && mousePositionX < screenw/2+220 && mousePositionY < 122+24 && mousePositionY > 96+24;
+		DrawFormatShadow( screenw/2, 120, -2, 0xffffffff, "https://github.com/cnlohr/badderapple" );
+		CNFGTackSegment( screenw/2-222, (linkhover?120:122)+24, screenw/2+222, (linkhover?120:122)+24 );
+#ifdef __wasm__
+		void NavigateLink( const char * url );
+		void ChangeCursorToPointer( int yes );
+		if( linkhover && mouseUpThisFrame )
+			NavigateLink( "https://github.com/cnlohr/badderapple" );
+		ChangeCursorToPointer( linkhover );
+#endif
+		CNFGColor( 0x000000f8 );
+		CNFGTackRectangle( 118, 10, 408, 36 );
+		DrawFormatShadow( 120, 12, 2, 0xffffffff, "\x1b Click X to close help." );
+
+		DrawFormatShadow( screenw/2, screenh/2-48, -2, 0xffffffff, "[Space to toggle playing]" );
+		DrawFormatShadow( screenw/2, screenh/2-24, -2, 0xffffffff, "[left/right to advance bytes]" );
+		DrawFormatShadow( screenw/2, screenh/2+0 , -2, 0xffffffff, "[pgup/pgdn to advance frames]" );
+		DrawFormatShadow( screenw/2, screenh/2+24, -2, 0xffffffff, "[home/end to begin/end]" );
+		DrawFormatShadow( screenw/2, screenh-114, -2, 0xffffffff, "[Click and drag to scrub bytes]" );
+		DrawFormatShadow( screenw/2, screenh-72, -2, 0xffffffff, "[Click and drag to scrub frames]" );
+		DrawFormatShadow( screenw/2, screenh-30, -2, 0xffffffff, "[Full Decoded Overview]" );
+	}
 
 	CNFGSwapBuffers();
 }
