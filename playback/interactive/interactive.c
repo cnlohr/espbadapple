@@ -1478,7 +1478,7 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 	int kc = 0;
 	const int rrange = 5;
 	int bcount = 0;
-	void * vpx_pr = (void*)1;
+	vpx_reader * vpx_pr = (vpx_reader *)1;
 	struct checkpoint * cpprev = 0;
 	for( kc = cursor; kc >= 0; kc-- )
 	{
@@ -1495,78 +1495,145 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 		if( bcount >= rrange + 2 ) break;
 	}
 
-	int dispct = 0;
 
+	int column_width = 12;
 	float margin = 2;
+	float bypm = b.y + margin;
 	float mh = b.height - margin*2;
 	float ry = b.y + margin;
 
-	for( ; dispct < rrange * 2 + 1; kc++ )
+	int pass = 0;
+	int kcbackup = kc;
+	vpx_reader * vpx_pr_backup = (vpx_reader *)vpx_pr;
+	for( pass = 0; pass < 2; pass++ )
 	{
-		if( kc >= nrcheckpoints )
+		vpx_pr = vpx_pr_backup;
+		kc = kcbackup;
+		int dispct = 0;
+
+		for( ; dispct < rrange * 2 + 1; kc++ )
 		{
+			if( kc >= nrcheckpoints )
+			{
+				float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
+				DrawFormat( rx + column_width + 8, ry + mh/2, -2, 0xffffff5f, "\x01" );
+				break;
+			}
+			if( kc < 0 ) { dispct++; continue; }
+			struct checkpoint * cp = &checkpoints[kc];
+			if( !cp ) { dispct++; continue; }
+			vpx_reader  * vpx = cp->baplay_vpx;
+			if( !vpx || vpx_pr == (vpx_reader *)1 ) { dispct++; continue; }
+
+			struct checkpoint * cpnext = cp;
+			int kcnext = kc;
+			while( cpnext->baplay_vpx == cp->baplay_vpx )
+			{
+				kcnext++;
+				cpnext++;
+				if( kcnext >= nrcheckpoints )
+				{
+					cpnext = 0;
+					break;
+				}
+			}
+
+			if( vpx_pr == vpx ) { continue; }
+
+			vpx_reader * vpx_pr_use = (vpx_reader*)vpx_pr;
+
 			float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
-			DrawFormat( rx + 12 + 8, ry + mh/2, -2, 0xffffff5f, "\x0b" );
-			break;
+			float rxnext = b.x + (dispct+1)*(b.width-margin*2) / (rrange*2+1) + margin;
+
+			if( dispct == rrange )
+			{
+				CNFGColor( 0xf0f0f010 );
+				CNFGTackRectangle( rx-15, b.y, rx + 27, b.y+b.height );
+			}
+
+			CNFGColor( 0xf0f0f040 );
+			CNFGDrawBox( rx, b.y+margin, rx + column_width, b.y+mh + margin );
+
+			dispct++;
+
+			float range = vpx_pr_use->range + 0.0001;
+			float rangenext = vpx->range + 0.0001;
+
+			float upratio = (vpx_pr_use->range) / 256.0;
+			float uprationext = (vpx->range) / 256.0;
+
+			float ratio = 1.0 - ( (vpx_pr_use->value>>24) / range ) * upratio;
+			float rationext = 1.0 - ( (vpx->value>>24) / rangenext ) * uprationext;
+			float ratioo = 1.0 - cp->decode_prob / 256.0 * upratio;
+			float ratioonext = 1.0 - (cpnext?cpnext->decode_prob:0) / 256.0 * uprationext;
+
+			if( pass == 0 )
+			{
+				CNFGSetLineWidth(1.0);
+
+				CNFGColor( 0xffffff50 );
+				CNFGTackPoly( (RDPoint[]){
+					{ rx + column_width, bypm + mh * (1.0-upratio) },
+					{ rxnext, bypm + mh * (1.0-uprationext) },
+					{ rxnext, bypm + mh * ratioonext },
+					{ rx + column_width, bypm + mh * ratioo },
+				}, 4 );
+				CNFGTackPoly( (RDPoint[]){
+					{ rx, bypm + mh * (1.0-upratio) },
+					{ rx + column_width, bypm + mh * (1.0-upratio) },
+					{ rx + column_width, bypm + mh * ratioo },
+					{ rx, bypm + mh * ratioo },
+				}, 4 );
+
+				CNFGTackSegment(
+					rx + column_width, bypm + mh * (1.0-upratio) ,
+					rxnext, bypm + mh * (1.0-uprationext) );
+
+				CNFGTackSegment(
+					rx, bypm + mh * (1.0-upratio),
+					 rx + column_width, bypm + mh * (1.0-upratio) );
+
+				CNFGColor( 0x00000050 );
+				CNFGTackPoly( (RDPoint[]){
+					{ rx + column_width, bypm + mh },
+					{ rxnext, bypm + mh },
+					{ rxnext, bypm + mh * ratioonext },
+					{ rx + column_width, bypm + mh * ratioo },
+				}, 4 );
+
+				CNFGTackPoly( (RDPoint[]){
+					{ rx, bypm + mh },
+					{ rx + column_width, bypm + mh },
+					{ rx + column_width, bypm + mh * ratioo },
+					{ rx, bypm + mh * ratioo }
+				}, 4 );
+			}
+			else
+			{
+				CNFGSetLineWidth(2.0);
+
+				CNFGColor( 0xf0f0f0c0 );
+				// Boundary
+				//CNFGTackSegment( rx, b.y + mh * ratio + margin,  rx + column_width, b.y + mh * ratio + margin );
+
+				CNFGTackSegment(
+					rx + 2,                bypm + mh * ratio - column_width/2 + 2,
+					rx + column_width - 2, bypm + mh * ratio + column_width/2 - 2 );
+				CNFGTackSegment(
+					rx + column_width - 2, bypm + mh * ratio - column_width/2 + 2,
+					rx + 2,                bypm + mh * ratio + column_width/2 - 2 );
+
+				// Mark
+				//CNFGTackSegment( rx + column_width + 8, b.y + mh * ratioo + margin, rx - 8, b.y + mh * ratioo + margin );
+
+				DrawFormat( rx + column_width + 8, ry + mh/2, -2, 0xffffff5f, "%d", cp->decode_lb );
+			}
+			//decode_prob
+			//decode_lb
+
+			cpprev = cp;
+			vpx_pr = vpx;
 		}
-		if( kc < 0 ) { dispct++; continue; }
-		struct checkpoint * cp = &checkpoints[kc];
-		if( !cp ) { dispct++; continue; }
-		vpx_reader  * vpx = cp->baplay_vpx;
-		if( !vpx || vpx_pr == (void*)1 ) { dispct++; continue; }
-
-		if( vpx_pr == vpx ) { continue; }
-
-		vpx_reader * vpx_pr_use = (vpx_reader*)vpx_pr;
-
-		float rx = b.x + dispct*(b.width-margin*2) / (rrange*2+1) + margin;
-		float rxnext = b.x + (dispct+1)*(b.width-margin*2) / (rrange*2+1) + margin;
-
-		if( dispct == rrange )
-		{
-			CNFGColor( 0xf0f0f010 );
-			CNFGTackRectangle( rx-15, b.y, rx + 27, b.y+b.height );
-		}
-
-		CNFGColor( 0xf0f0f040 );
-		CNFGDrawBox( rx, b.y+margin, rx + 12, b.y+mh + margin );
-
-		dispct++;
-
-		float range = vpx_pr_use->range + 0.0001;
-		float rangenext = vpx->range + 0.0001;
-
-		float ratio = ( (vpx_pr_use->value>>24) / range );
-		float rationext = ( (vpx->value>>24) / rangenext );
-		float ratioo = cp->decode_prob / 256.0;
-
-		CNFGColor( 0xf0f0f0c0 );
-		// Boundary
-		CNFGTackSegment( rx, b.y + mh * ratio + margin,  rx + 12, b.y + mh * ratio + margin );
-		// Mark
-		CNFGTackSegment( rx + 12 + 8, b.y + mh * ratioo + margin, rx - 8, b.y + mh * ratioo + margin );
-
-		CNFGColor( 0xf0f0f020 );
-		// Draw a line from one boundary to the next
-		//CNFGTackSegment( rx + 12, b.y + mh * ratio + margin,  rxnext, b.y + mh * rationext + margin );
-		if( cp->decode_lb )
-		{
-			CNFGTackSegment( rx + 12, b.y + mh * ratioo + margin,  rxnext, b.y + mh * 0 + margin );
-			CNFGTackSegment( rx + 12, b.y + mh * 1 + margin,  rxnext, b.y + mh * 1 + margin );
-		}
-		else
-		{
-			CNFGTackSegment( rx + 12, b.y + mh * ratioo + margin,  rxnext, b.y + mh * 1 + margin );
-			CNFGTackSegment( rx + 12, b.y + mh * 0 + margin,  rxnext, b.y + mh * 0 + margin );
-		}
-
-		DrawFormat( rx + 12 + 8, ry + mh/2, -2, 0xffffff5f, "%d", cp->decode_lb );
-
-		//decode_prob
-		//decode_lb
-
-		cpprev = cp;
-		vpx_pr = vpx;
 	}
 
 	//DrawFormat( b.x+b.width/2-8, fy+4+24*2, -2, 0xffffffff, "VPX DETAIL" );
