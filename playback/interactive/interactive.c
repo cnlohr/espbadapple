@@ -1081,7 +1081,7 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 
 	char bitstream_prev[5] = { 0 };
 	char bitstream_this[2] = { 0 };
-	char bitstream[40] = { 0 };
+	char bitstream[120] = { 0 };
 	
 	int i;
 	for( i = 0; i < sizeof(bitstream_prev)-1; i++ )
@@ -1101,16 +1101,30 @@ void DrawAudioStack( struct checkpoint * cp, int x, int y, int w, int h )
 	for( i = 0; i < sizeof(bitstream_this)-1; i++ )
 	{
 		int vx = cp->audio_bpr + i;
-		uint32_t v = espbadapple_song_data[vx>>5];
-		int bit = (v>>(vx&31))&1;
-		bitstream_this[i] = '0' + bit;
+		if( vx >= sizeof(espbadapple_song_data)*8 )
+		{
+			bitstream_this[i] = sizeof(espbadapple_song_data)*8 == vx ? '.' : ' ';;
+		}
+		else
+		{
+			uint32_t v = espbadapple_song_data[vx>>5];
+			int bit = (v>>(vx&31))&1;
+			bitstream_this[i] = '0' + bit;
+		}
 	}
 	for( i = 0; i < sizeof(bitstream)-1; i++ )
 	{
 		int vx = cp->audio_bpr + i + sizeof(bitstream_this)-1;
-		uint32_t v = espbadapple_song_data[vx>>5];
-		int bit = (v>>(vx&31))&1;
-		bitstream[i] = '0' + bit;
+		if( vx >= sizeof(espbadapple_song_data)*8 )
+		{
+			bitstream[i] = sizeof(espbadapple_song_data)*8 == vx ? '.' : ' ';
+		}
+		else
+		{
+			uint32_t v = espbadapple_song_data[vx>>5];
+			int bit = (v>>(vx&31))&1;
+			bitstream[i] = '0' + bit;
+		}
 	}
 
 	int xofs = 6*(sizeof(bitstream_prev)+1)+4+15;
@@ -1623,6 +1637,11 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					rx + column_width - 2, bypm + mh * ratio - column_width/2 + 2,
 					rx + 2,                bypm + mh * ratio + column_width/2 - 2 );
 
+
+				CNFGTackSegment(
+					rx + column_width/2, bypm + mh * ratio,
+					rxnext + column_width/2, bypm + mh * rationext );
+
 				// Mark
 				//CNFGTackSegment( rx + column_width + 8, b.y + mh * ratioo + margin, rx - 8, b.y + mh * ratioo + margin );
 
@@ -1858,24 +1877,28 @@ void RenderFrame()
 					CLAY_TEXT(CLAY_STRING( "?" ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 				if( btnClicked ) { ShowHelp = !ShowHelp; }
 
-				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+				if( screenw > 440 )
 				{
-					CLAY_TEXT(saprintf_g( 1, TITLE ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					{
+						CLAY_TEXT(saprintf_g( 1, TITLE ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					}
 				}
+
 				int tframe = checkpoints?checkpoints[cursor].frame:0;
 				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */ } )
 				{
 					CLAY_TEXT(saprintf( "%d/%d (Frame %d)", cursor, nrcheckpoints, tframe ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 				}
 
-				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */} )
+				CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(45), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild } /*, .backgroundColor = COLOR_PADGREY */} )
 				{
-					CLAY_TEXT(saprintf( "A:%3d b, V:%3d b", (int)bitsperframe_audio[tframe], (int)bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
+					CLAY_TEXT(saprintf( is_vertical?"%3db\n%3db":"A:%3d b, V:%3d b", (int)bitsperframe_audio[tframe], (int)bitsperframe_video[tframe] ), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));	
 				}
 
 				if( !is_vertical )
 				{
-					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
+					CLAY({ .layout = { .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER}, .sizing = { .width = CLAY_SIZING_GROW(40), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = paddingChild }, .backgroundColor = COLOR_PADGREY } )
 					{
 						CLAY_TEXT(saprintf_g( (frame < FRAMECT), "Dec %d", frame), CLAY_TEXT_CONFIG({ .textAlignment = CLAY_TEXT_ALIGN_CENTER, .fontSize = 16, .textColor = {255, 255, 255, 255} }));
 					}

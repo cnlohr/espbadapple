@@ -104,7 +104,7 @@ async function SetupWebAudio()
 	// The following mechanism does not work on Chrome.
 	//	const dataURI = URL.createObjectURL( new Blob([bypass], { type: 'text/javascript', } ) );
 
-	// Extremely tricky trick to side-step local file:// CORS issues.
+	// Extremely tricky trick to side-step local file:// CORS issues.  (This does work on Chrome)
 	// https://stackoverflow.com/a/67125196/2926815
 	// https://stackoverflow.com/a/72180421/2926815
 	let blob = new Blob([bypass], {type: 'application/javascript'});
@@ -200,10 +200,10 @@ function FeedWebAudio( audioFloat, audioSamples )
 {
 	if( !mute && audioContext != null && playingAudioProcessor != null )
 	{
-		// If we need to do a poor resample. (Which we don't)
-//		let sampleAdvance = (system_rate/sample_divisor) / audioContext.sampleRate;
-//		let sampleAdvanceParam = playingAudioProcessor.parameters.get("sampleAdvance");
-//		sampleAdvanceParam.setValueAtTime( 1.0, audioContext.currentTime);
+		// If we need to do a poor resample.  Some browsers seem to prefer 44100
+		let sampleAdvance = (48000.0) / audioContext.sampleRate;
+		let sampleAdvanceParam = playingAudioProcessor.parameters.get("sampleAdvance");
+		sampleAdvanceParam.setValueAtTime( 1.0, audioContext.currentTime);
 		playingAudioProcessor.port.postMessage( HEAPF32.slice(audioFloat>>2,(audioFloat>>2)+audioSamples), );
 	}
 }
