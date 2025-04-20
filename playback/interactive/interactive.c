@@ -43,11 +43,7 @@ void EarlyGlyphDecodeFrameDone( int frame );
 
 #include "ba_play.h"
 
-#ifdef __wasm__
-#define F_SPS 44100
-#else
 #define F_SPS 48000
-#endif
 #define AUDIO_BUFFER_SIZE 2048
 
 int AS_PER_FRAME = F_SPS/30;
@@ -1571,14 +1567,14 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 
 			dispct++;
 
-			float range = vpx_pr_use->range + 0.0001;
-			float rangenext = vpx->range + 0.0001;
+			float rangef = vpx_pr_use->range + 0.0001;
+			float rangenextf = vpx->range + 0.0001;
 
 			float upratio = (vpx_pr_use->range) / 256.0;
 			float uprationext = (vpx->range) / 256.0;
 
-			float ratio = 1.0 - ( (vpx_pr_use->value>>24) / range ) * upratio;
-			float rationext = 1.0 - ( (vpx->value>>24) / rangenext ) * uprationext;
+			float ratio = 1.0 - ( (vpx_pr_use->value>>24) / rangef ) * upratio;
+			float rationext = 1.0 - ( (vpx->value>>24) / rangenextf ) * uprationext;
 			float ratioo = 1.0 - cp->decode_prob / 256.0 * upratio;
 			float ratioonext = 1.0 - (cpnext?cpnext->decode_prob:0) / 256.0 * uprationext;
 
@@ -1588,7 +1584,29 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 			//if( gpused < 0 ) gpused = 0;
 			gpused = (vpx->buffer-vpx_pr_use->buffer)*8 + gpused;
 
+			// Analytical approach (Discard above if works)
+			gpused = vpx_norm[vpx_pr_use->range]; // "shift"
 
+			// From within the vpxcoding code.
+			unsigned int split = (vpx_pr_use->range * cp->decode_prob + (256 - cp->decode_prob)) >> CHAR_BIT;
+			uint32_t bigsplit = (BD_VALUE)split << (BD_VALUE_SIZE - CHAR_BIT);
+
+			uint32_t range = split;
+			uint32_t value = vpx_pr_use->value;
+
+			int compbit = 0;
+			if (value >= bigsplit) {
+				range = vpx_pr_use->range - split;
+				value = value - bigsplit;
+				compbit = 1;
+			}
+
+			const unsigned char shift = vpx_norm[(unsigned char)range];
+			gpused = shift;
+//printf( "%d %d\n", range, gpused );
+//			range = range << shift;
+	//		value = value << shift;
+		//	count = count - shift;
 
 			if( pass == 0 )
 			{
@@ -1662,9 +1680,10 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 
 				DrawHashAt( rx + column_width / 2, bypm + mh * ratio, column_width / 2-2 );
 
-				CNFGTackSegment(
-					rx + column_width/2, bypm + mh * ratio,
-					rxnext + column_width/2, bypm + mh * rationext );
+				if( gpused == 0 )
+					CNFGTackSegment(
+						rx + column_width/2, bypm + mh * ratio,
+						rxnext + column_width/2, bypm + mh * rationext );
 
 
 				if( gpused > 0 )
@@ -1672,35 +1691,73 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					int hm = 0;
 					float xadvance = (rxnext-rx) / (float)gpused;
 					float xst = rx + column_width/2;
-					float yadvance = ((bypm + mh * rationext) - (bypm + mh * ratio)) / (float)gpused;
-					float yst = bypm + mh * ratio;
-					xst += xadvance * 0.5;
-					yst += yadvance * 0.5;
+					//float yadvance = ((bypm + mh * rationext) - (bypm + mh * ratio)) / (float)gpused;
+					//float yst = bypm + mh * ratio;
+					float xstprev = xst;
+					float ystprev = bypm + mh * ratio;
+					//yst += yadvance * 0.5;
 					int hmpt = 0;
 					struct checkpoint * cpmon = cp;
 					vpx_reader * bitmon = vpx_pr_use;
 					uint32_t vuse = bitmon->value;
 					int vremain = bitmon->count;
+					//int vrun = vpx_pr_use->value;
+					//int rrun = vpx_pr_use->range;
+					float yst;
 					for( hm = 0; hm < gpused; hm++ )
 					{
-						if( hmpt >= vremain ) { hmpt = 0; bitmon = vpx; cpmon = cpnext; vuse = bitmon->value; vremain = bitmon->count; if( vremain < 0 ) { vuse = cpmon->vpxcpv; vremain = 24; } }
+						if( hmpt >= vremain ) {
+							hmpt = 0;
+							bitmon = vpx;
+							cpmon = cpnext;
+							vuse = bitmon->value;
+							vremain = bitmon->count;
+							if( vremain < 0 && cpmon )
+							{
+								vuse = cpmon->vpxcpv;
+								vremain = 24;
+							}
+						}
 						//DrawFormat( xst, yst, 1, 0xffffffff, "%d / %08x / %d %06x %06x\n", bitmon->count, bitmon->value&0xffffff, cpmon->vpxcheck, cpmon->vpxcpv , vuse&0xffffff );
 //cp->vpxcheck )cp->vpxcpv
 						int bit = (vuse>>(23-hmpt)) & 1;
 						hmpt++;
+
+
+						value = ((value<<1));
+						range = ((range<<1))&0xff;
+
+						rangef = range + 0.0001;
+						upratio = range / 256.0;
+						yst = bypm + mh * ( 1.0 - ( (value>>24) / rangef ) * upratio);
+
+						xst += xadvance * ((!hm)?0.5:1);
 
 						//DrawHashAt( xst, yst, column_width / 2-2 );
 						CNFGColor( bit ? 0xf0f0f0c0 : 0x101010c0 );
 						CNFGTackRectangle( 
 							xst - column_width / 2, yst - column_width / 2 ,
 							xst + column_width / 2-2, yst + column_width / 2-2  );
-						CNFGColor( 0xf0f0f0c0 );
+						CNFGColor( 0xfff0f0c0 );
 						CNFGDrawBox(
 							xst - column_width / 2, yst - column_width / 2 ,
 							xst + column_width / 2-2, yst + column_width / 2-2  );
-						xst += xadvance;
-						yst += yadvance;
+
+						CNFGTackSegment(
+							xst, yst,
+							xstprev, ystprev );
+
+						xstprev = xst;
+						ystprev = yst;
+
 					}
+					xst += xadvance*0.5;
+					yst = bypm + mh * ( 1.0 - ( (value>>24) / rangef ) * upratio);
+
+					CNFGTackSegment(
+						xst, yst,
+						xstprev, ystprev );
+
 				}
 
 
