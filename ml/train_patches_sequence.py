@@ -413,7 +413,7 @@ class BlockTrainer:
         # gumbel-softmax temperature annealing - value updates once per epoch (aka once per pass thru video)
         gs_tau_scale = 1.0
         gs_tau_min = 0.1
-        gs_tau_anneal_rate = 1e-3
+        gs_tau_anneal_rate = 1e-2
 
         for epoch in range(1000000):
             self.recr.train()
