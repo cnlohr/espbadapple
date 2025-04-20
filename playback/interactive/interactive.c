@@ -939,7 +939,7 @@ void DrawVPX( Clay_RenderCommand * render )
 //	printf( "%08x\n", v->value );
 
 	// Skip first 8 bits because they _are_ the range.
-	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%3d\x1b%s %3d", v->value>>24, vs + 8, v->range );
+	DrawFormat( fx+b.width/2-8, fy+4, -2, cp->vpxcheck?0x606060ff:0xffffffff, "%3d\x1b%s %3d * %d", v->value>>24, vs + 8, v->range, v->count );
 }
 
 void DrawMemoryAndVPX( Clay_RenderCommand * render )
@@ -1541,7 +1541,8 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 
 			struct checkpoint * cpnext = cp;
 			int kcnext = kc;
-			while( cpnext->baplay_vpx == cp->baplay_vpx )
+			//|| cpnext->baplay_vpx->count < 0
+			while( cpnext->baplay_vpx && ( cpnext->baplay_vpx == cp->baplay_vpx ) )
 			{
 				kcnext++;
 				cpnext++;
@@ -1641,6 +1642,15 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					{ rx + column_width, bypm + mh * ratioo },
 					{ rx, bypm + mh * ratioo }
 				}, 4 );
+
+				CNFGTackSegment(
+					rx + column_width, bypm + mh * ratioo,
+					rxnext, bypm + mh * ratioonext );
+
+				CNFGTackSegment(
+					rx, bypm + mh * ratioo,
+					 rx + column_width, bypm + mh * ratioo );
+
 			}
 			else
 			{
@@ -1666,11 +1676,27 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 					float yst = bypm + mh * ratio;
 					xst += xadvance * 0.5;
 					yst += yadvance * 0.5;
+					int hmpt = 0;
+					struct checkpoint * cpmon = cp;
+					vpx_reader * bitmon = vpx_pr_use;
+					uint32_t vuse = bitmon->value;
+					int vremain = bitmon->count;
 					for( hm = 0; hm < gpused; hm++ )
 					{
+						if( hmpt >= vremain ) { hmpt = 0; bitmon = vpx; cpmon = cpnext; vuse = bitmon->value; vremain = bitmon->count; if( vremain < 0 ) { vuse = cpmon->vpxcpv; vremain = 24; } }
+						//DrawFormat( xst, yst, 1, 0xffffffff, "%d / %08x / %d %06x %06x\n", bitmon->count, bitmon->value&0xffffff, cpmon->vpxcheck, cpmon->vpxcpv , vuse&0xffffff );
+//cp->vpxcheck )cp->vpxcpv
+						int bit = (vuse>>(23-hmpt)) & 1;
+						hmpt++;
+
 						//DrawHashAt( xst, yst, column_width / 2-2 );
+						CNFGColor( bit ? 0xf0f0f0c0 : 0x101010c0 );
+						CNFGTackRectangle( 
+							xst - column_width / 2, yst - column_width / 2 ,
+							xst + column_width / 2-2, yst + column_width / 2-2  );
+						CNFGColor( 0xf0f0f0c0 );
 						CNFGDrawBox(
-							xst - column_width / 2-1, yst - column_width / 2-1 ,
+							xst - column_width / 2, yst - column_width / 2 ,
 							xst + column_width / 2-2, yst + column_width / 2-2  );
 						xst += xadvance;
 						yst += yadvance;

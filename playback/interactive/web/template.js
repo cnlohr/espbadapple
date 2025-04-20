@@ -202,6 +202,7 @@ function FeedWebAudio( audioFloat, audioSamples )
 	{
 		// If we need to do a poor resample.  Some browsers seem to prefer 44100
 		let sampleAdvance = (48000.0) / audioContext.sampleRate;
+		//console.log( "Target Rate : " + audioContext.sampleRate );
 		let sampleAdvanceParam = playingAudioProcessor.parameters.get("sampleAdvance");
 		sampleAdvanceParam.setValueAtTime( 1.0, audioContext.currentTime);
 		playingAudioProcessor.port.postMessage( HEAPF32.slice(audioFloat>>2,(audioFloat>>2)+audioSamples), );
