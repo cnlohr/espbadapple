@@ -1720,7 +1720,7 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 						}
 						//DrawFormat( xst, yst, 1, 0xffffffff, "%d / %08x / %d %06x %06x\n", bitmon->count, bitmon->value&0xffffff, cpmon->vpxcheck, cpmon->vpxcpv , vuse&0xffffff );
 //cp->vpxcheck )cp->vpxcpv
-						int bit = (vuse>>(23-hmpt)) & 1;
+						int bit = (value>>23)&1;//(vuse>>(23-hmpt)) & 1;
 						hmpt++;
 
 
