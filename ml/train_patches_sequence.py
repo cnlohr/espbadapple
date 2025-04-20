@@ -270,13 +270,17 @@ class ImageReconstruction(nn.Module):
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
         logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...], dim=-1)
 
-        # symmetrized kl divergence
-        kl_div_elementwise_1 = F.kl_div(logprob_a, logprob_b, reduction='none', log_target=True)
-        kl_div_elementwise_2 = F.kl_div(logprob_b, logprob_a, reduction='none', log_target=True)
-        kl_div_elementwise = ( kl_div_elementwise_1 + kl_div_elementwise_2 ) / 2
-        kl_div = kl_div_elementwise.sum(-1)  # Sum over categorical dim to yield per-frame/per-tile KL divergence
+        # pick the highest‑prob tile‑class in each
+        max_idx_a = logprob_a.argmax(dim=-1, keepdim=True)  # shape: [batch, num_tiles, 1]
+        max_idx_b = logprob_b.argmax(dim=-1, keepdim=True)
 
-        return kl_div.mean()
+        # negative log‑prob of B at A’s max, and of A at B’s max
+        # (We want both to be one-hot distributions with the same top choice)
+        nll_ab = -logprob_b.gather(dim=-1, index=max_idx_a).squeeze(-1)
+        nll_ba = -logprob_a.gather(dim=-1, index=max_idx_b).squeeze(-1)
+
+        per_tile_loss = (nll_ab + nll_ba) * 0.5
+        return per_tile_loss.mean()
 
     def forward(self, frame_idxs):
         """
