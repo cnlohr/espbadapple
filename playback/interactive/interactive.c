@@ -1717,13 +1717,14 @@ void DrawVPXDetail( Clay_RenderCommand * render )
 								vuse = cpmon->vpxcpv;
 								vremain = 24;
 							}
+							//value = vuse;
 						}
 						//DrawFormat( xst, yst, 1, 0xffffffff, "%d / %08x / %d %06x %06x\n", bitmon->count, bitmon->value&0xffffff, cpmon->vpxcheck, cpmon->vpxcpv , vuse&0xffffff );
 //cp->vpxcheck )cp->vpxcpv
-						int bit = (value>>23)&1;//(vuse>>(23-hmpt)) & 1;
+						int bit = (vuse>>23)&1;//(vuse>>(23-hmpt)) & 1;
 						hmpt++;
 
-
+						vuse = (vuse<<1);
 						value = ((value<<1));
 						range = ((range<<1))&0xff;
 
