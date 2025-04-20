@@ -198,6 +198,10 @@ class ImageReconstruction(nn.Module):
         # Lookup table for deblocking filter
         self.lut = gen_deblocking_lut()
 
+        # Gumbel-Softmax temperature. Note this term is annealed by the training loop
+        self.gs_tau = 1.0
+
+
     def init_blocks_tiledata(self, tiles_path):
         tiles = np.fromfile(tiles_path, dtype=np.float32)
         tiles = tiles.reshape(-1, block_size[0], block_size[1])
@@ -287,7 +291,7 @@ class ImageReconstruction(nn.Module):
         if self.training and self.train_sequence:
             # Use the gumbel-softmax trick to sample our tiles
             block_weights = F.gumbel_softmax(logits=self.sequence[frame_idxs, ...],
-                                             tau=1.0,  # TODO tune me
+                                             tau=self.gs_tau,
                                              hard=False)
         else:
             # Use argmax
@@ -402,6 +406,11 @@ class BlockTrainer:
 
         best_loss = 1e9
 
+        # gumbel-softmax temperature annealing - value updates once per epoch (aka once per pass thru video)
+        gs_tau_scale = 1.0
+        gs_tau_min = 0.1
+        gs_tau_anneal_rate = 1e-3
+
         for epoch in range(1000000):
             self.recr.train()
 
@@ -412,6 +421,9 @@ class BlockTrainer:
             epoch_n = 0
 
             self.sampler.set_epoch(epoch)  # update sampler offset and shuffle
+
+            # anneal gumbel-softmax temperature
+            self.recr.gs_tau = max(gs_tau_min, gs_tau_scale * np.exp(-gs_tau_anneal_rate * epoch))
 
             for batch_n, (target_img, idx) in enumerate(self.data_loader, start=0):
 
