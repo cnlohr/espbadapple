@@ -26,18 +26,93 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import torch
 
-def soft_clamp(x, min, max, hardness=10.0):
+def trilinear_interp(lut: torch.Tensor, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
     """
-    Like torch.clamp, but with soft edges (using softplus)
-    Increase hardness for sharper corners.
+    LUT: (Dx, Dy, Dz)
+    x, y, z: same shape S, floats in [0, D?-1]
+    returns v: shape S
     """
-    return min + F.softplus(x - min, beta=hardness) - F.softplus(x - max, beta=hardness)
+    Dx, Dy, Dz = lut.shape
+
+    # neighbor indices
+    x0 = x.floor().long().clamp(0, Dx - 2)
+    y0 = y.floor().long().clamp(0, Dy - 2)
+    z0 = z.floor().long().clamp(0, Dz - 2)
+    x1 = (x0 + 1).clamp(0, Dx - 1)
+    y1 = (y0 + 1).clamp(0, Dy - 1)
+    z1 = (z0 + 1).clamp(0, Dz - 1)
+
+    # interp weights
+    xd = x - x0.float()
+    yd = y - y0.float()
+    zd = z - z0.float()
+
+    # cube corner values
+    c000 = lut[x0, y0, z0]
+    c100 = lut[x1, y0, z0]
+    c010 = lut[x0, y1, z0]
+    c110 = lut[x1, y1, z0]
+    c001 = lut[x0, y0, z1]
+    c101 = lut[x1, y0, z1]
+    c011 = lut[x0, y1, z1]
+    c111 = lut[x1, y1, z1]
+
+    # interpolate in xy planes at z0 and z1
+    c00 = c000 * (1 - xd) * (1 - yd) \
+        + c100 * xd       * (1 - yd) \
+        + c010 * (1 - xd) * yd       \
+        + c110 * xd       * yd
+
+    c01 = c001 * (1 - xd) * (1 - yd) \
+        + c101 * xd       * (1 - yd) \
+        + c011 * (1 - xd) * yd       \
+        + c111 * xd       * yd
+
+    # final interp along z
+    v = c00 * (1 - zd) + c01 * zd
+
+    return v
+
+def gen_deblocking_lut():
+    # 3D LUT for deblocking op
+    # The actual math on the microcontroller is integer and bitwise ops that are hostile to gradients
+    # Here we make a LUT of the operation, which is exact for integer input and can be interpolated for valid gradients
+    # Addressing: (center, left, right) -> (output)
+    lut = torch.zeros((3, 3, 3), dtype=torch.float32, device=device)
+    lut[0, 0, 0] = 0.0
+    lut[1, 0, 0] = 0.0
+    lut[2, 0, 0] = 1.0
+    lut[0, 0, 1] = 0.0
+    lut[1, 0, 1] = 1.0
+    lut[2, 0, 1] = 2.0
+    lut[0, 0, 2] = 1.0
+    lut[1, 0, 2] = 1.0
+    lut[2, 0, 2] = 2.0
+    lut[0, 1, 0] = 0.0
+    lut[1, 1, 0] = 1.0
+    lut[2, 1, 0] = 2.0
+    lut[0, 1, 1] = 1.0
+    lut[1, 1, 1] = 1.0
+    lut[2, 1, 1] = 2.0
+    lut[0, 1, 2] = 1.0
+    lut[1, 1, 2] = 2.0
+    lut[2, 1, 2] = 2.0
+    lut[0, 2, 0] = 1.0
+    lut[1, 2, 0] = 1.0
+    lut[2, 2, 0] = 2.0
+    lut[0, 2, 1] = 1.0
+    lut[1, 2, 1] = 2.0
+    lut[2, 2, 1] = 2.0
+    lut[0, 2, 2] = 1.0
+    lut[1, 2, 2] = 2.0
+    lut[2, 2, 2] = 2.0
+
+    return lut
 
 
-def deblocking_filter(img_raw):
+def deblocking_filter(img_raw, lut, quantize=False):
     """
-    Runs Charles' custom deblocking filter on inputs.
-    This math is floating point with a clamp, but otherwise performs a similar operation.
+    Runs Charles' custom deblocking filter on inputs, optionally with quantization.
     """
 
     # Range scaling to [0..2]
@@ -48,37 +123,37 @@ def deblocking_filter(img_raw):
     # Create 1D masks for input coordinates, marking where the block filter would apply
     x_indices = torch.arange(W, device=img.device)
     y_indices = torch.arange(H, device=img.device)
-    mask_x = ((x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))).to(img.dtype)
-    mask_y = ((y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))).to(img.dtype)
+    mask_x = (x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))
+    mask_y = (y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))
 
     # Reshape for broadcasting
     mask_x = mask_x.view(1, 1, 1, W)
     mask_y = mask_y.view(1, 1, H, 1)
 
-    # Number of samples considered per pixel
-    qty = .9 * mask_x + .9 * mask_y  # shape (B, 1, H, W)
-
-    # Pad with replication (equivalent to clamps in c pixel-sampling function)
-    padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
-
-    # Extract the center region (same as input) and neighbors
+    # left/right filter is evaluated first
+    padded = F.pad(img, (1, 1, 1, 1), mode='replicate')  # Pad w/ replication to match c impl
     center = padded[:, :, 1:-1, 1:-1]
     left = padded[:, :, 1:-1, :-2]
     right = padded[:, :, 1:-1, 2:]
-    up = padded[:, :, :-2, 1:-1]
-    down = padded[:, :, 2:, 1:-1]
+    filtered = torch.where(mask_x, trilinear_interp(lut, center, left, right), center)
 
-    # eval transform
-    filtered = center + (left + right ) / 2 * mask_x + (up + down ) / 2 * mask_y - qty
-    filtered = soft_clamp(filtered, min=0, max=2)
+    if quantize:
+        filtered = filtered + (torch.round(filtered) - filtered).detach()
 
-    # Pass through non-filtered pixels as-is
-    result = torch.where(qty == 1, center, filtered)
+    # up/down filter is evaluated second
+    padded2 = F.pad(filtered, (1, 1, 1, 1), mode='replicate')
+    center2 = padded2[:, :, 1:-1, 1:-1]
+    up = padded2[:, :, 1:-1, :-2]
+    down = padded2[:, :, 1:-1, 2:]
+    filtered2 = torch.where(mask_y, trilinear_interp(lut, center, up, down), center2)
+
+    if quantize:
+        filtered2 = filtered2 + (torch.round(filtered2) - filtered2).detach()
 
     # Undo scaling
-    result /= 2
+    filtered2 /= 2
 
-    return result
+    return filtered2
 
 
 class TileMSEMatcher(nn.Module):
@@ -119,6 +194,9 @@ class ImageReconstruction(nn.Module):
         # Note this parameter will be large
         self.sequence = None
         self.train_sequence = True
+
+        # Lookup table for deblocking filter
+        self.lut = gen_deblocking_lut()
 
     def init_blocks_tiledata(self, tiles_path):
         tiles = np.fromfile(tiles_path, dtype=np.float32)
@@ -224,7 +302,7 @@ class ImageReconstruction(nn.Module):
         reconstructed = self.fold(uf_reconstructed)
 
         # Apply deblocking filter.
-        reconstructed = deblocking_filter(reconstructed)
+        reconstructed = deblocking_filter(reconstructed, self.lut)
 
         return reconstructed
 
@@ -260,14 +338,10 @@ class BlockTrainer:
 
         self.recr = ImageReconstruction(n_sequence=len(self.dataset))
 
-        #self.recr.init_blocks_tiledata("start_20250223/tiles-64x48x8.dat")
-        #self.recr.init_sequence("start_20250223/stream_stripped.dat")
-
         self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
         # self.recr.init_sequence("stream-kmeans_256_ni.dat")
 
         self.recr.to(device)
-
         self.recr.init_sequence_matching(self.dataset)
 
         # sampe contiguous chunks with random offset

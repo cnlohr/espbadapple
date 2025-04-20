@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from video_data import VideoFrames
-from train_patches_sequence import deblocking_filter
+from train_patches_sequence import deblocking_filter, gen_deblocking_lut
 from ttools.modules.losses import LPIPS
 from blocksettings import *
 import tqdm
@@ -84,6 +84,9 @@ class SkipEvaluator:
         self.change_early_ld = np.zeros((len(self.dataset), self.tiles_per_img))
         self.change_late_ld = np.zeros((len(self.dataset), self.tiles_per_img))
 
+        # deblocking filter lut
+        self.lut = gen_deblocking_lut()
+
     def make_change_late_seq(self):
         held_idxs = self.base_sequence[0].copy()
         self.late_sequence[0] = held_idxs
@@ -159,8 +162,8 @@ class SkipEvaluator:
             imgs_early_t = torch.Tensor(imgs_early).to(device)
 
             # apply deblocking filter
-            imgs_late_t = deblocking_filter(imgs_late_t)
-            imgs_early_t = deblocking_filter(imgs_early_t)
+            imgs_late_t = deblocking_filter(imgs_late_t, self.lut)
+            imgs_early_t = deblocking_filter(imgs_early_t, self.lut)
 
             # resample
             tgt_us = nn.functional.interpolate(gt_frame, size=(192, 256), mode='nearest')
