@@ -407,8 +407,6 @@ class BlockTrainer:
         self.recr.train_sequence = True
         self.recr.sequence.requires_grad = True
 
-        best_loss = 1e9
-
         # gumbel-softmax temperature annealing - value updates once per epoch (aka once per pass thru video)
         gs_tau_scale = 1.0
         gs_tau_min = 0.1
@@ -463,22 +461,19 @@ class BlockTrainer:
             epoch_loss_percep /= epoch_n
             epoch_loss_change /= epoch_n
 
-            if epoch_loss < best_loss:
-                self.recr.eval()
+            self.recr.eval()
 
-                # write binary video data
-                self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
-                self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            # write binary video data
+            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
 
-                # write visualization for humans
-                self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+            # write visualization for humans
+            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
-                for vi, vd in zip(self.viz_frames, self.viz_dirs):
-                    self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
+            for vi, vd in zip(self.viz_frames, self.viz_dirs):
+                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
 
-                self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
-
-                best_loss = epoch_loss
+            self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
 
             print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
 
