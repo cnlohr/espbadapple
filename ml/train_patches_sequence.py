@@ -270,14 +270,13 @@ class ImageReconstruction(nn.Module):
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
         logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...], dim=-1)
 
-        # pick the highest‑prob tile‑class in each
-        max_idx_a = logprob_a.argmax(dim=-1, keepdim=True)  # shape: [batch, num_tiles, 1]
-        max_idx_b = logprob_b.argmax(dim=-1, keepdim=True)
+        # Pick the highest probability class between the two - this is the class to match
+        max_logprob = torch.maximum(logprob_a, logprob_b)
+        max_idx = max_logprob.argmax(dim=-1, keepdim=True)
 
-        # negative log‑prob of B at A’s max, and of A at B’s max
-        # (We want both to be one-hot distributions with the same top choice)
-        nll_ab = -logprob_b.gather(dim=-1, index=max_idx_a).squeeze(-1)
-        nll_ba = -logprob_a.gather(dim=-1, index=max_idx_b).squeeze(-1)
+        # negative log-prob of A and B at selected index
+        nll_ab = -logprob_b.gather(dim=-1, index=max_idx).squeeze(-1)
+        nll_ba = -logprob_a.gather(dim=-1, index=max_idx).squeeze(-1)
 
         per_tile_loss = (nll_ab + nll_ba) * 0.5
         return per_tile_loss.mean()
