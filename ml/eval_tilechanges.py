@@ -72,6 +72,9 @@ class SkipEvaluator:
         self.tiles = np.fromfile(blocks_path, dtype=np.float32)
         self.tiles = self.tiles.reshape(-1, block_size[0], block_size[1])
 
+        # quantize tiles to three gray levels [0, 0.5, 1]
+        self.tiles = np.round(2 * self.tiles) / 2
+
         # Load the base sequence as cpu integers from file
         self.base_sequence = np.fromfile(stream_path, dtype=np.int32)
         self.base_sequence = self.base_sequence.reshape(-1, self.tiles_per_img)
@@ -162,8 +165,8 @@ class SkipEvaluator:
             imgs_early_t = torch.Tensor(imgs_early).to(device)
 
             # apply deblocking filter
-            imgs_late_t = deblocking_filter(imgs_late_t, self.lut)
-            imgs_early_t = deblocking_filter(imgs_early_t, self.lut)
+            imgs_late_t = deblocking_filter(imgs_late_t, self.lut, quantize=True)
+            imgs_early_t = deblocking_filter(imgs_early_t, self.lut, quantize=True)
 
             # resample
             tgt_us = nn.functional.interpolate(gt_frame, size=(192, 256), mode='nearest')
