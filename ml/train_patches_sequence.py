@@ -175,7 +175,7 @@ class TileMSEMatcher(nn.Module):
 
 
 class ImageReconstruction(nn.Module):
-    def __init__(self, n_sequence):
+    def __init__(self, n_sequence, quantize=False):
         super().__init__()
         self.n_blocks = nblocks
         self.n_sequence = n_sequence
@@ -200,6 +200,9 @@ class ImageReconstruction(nn.Module):
 
         # Gumbel-Softmax temperature. Note this term is annealed by the training loop
         self.gs_tau = 1.0
+
+        # Quantization (matching hardware's three gray levels)
+        self.quantize = quantize
 
 
     def init_blocks_tiledata(self, tiles_path):
@@ -290,6 +293,13 @@ class ImageReconstruction(nn.Module):
         """
         block_len = math.prod(block_size)
 
+        if self.quantize:
+            # quantize to [0, 1, 2] but preserve gradients
+            block_rep = self.blocks + (torch.round(2 * self.blocks) / 2 - self.blocks).detach()
+        else:
+            # straight through
+            block_rep = self.blocks
+
         # Pluck out selected block weights (one hot per image tile)
         if self.training and self.train_sequence:
             # Use the gumbel-softmax trick to sample our tiles
@@ -303,13 +313,13 @@ class ImageReconstruction(nn.Module):
                                       ).float()
 
         # recreate (unfolded) target image from stored sequence
-        uf_reconstructed = torch.matmul(block_weights, self.blocks.view(self.n_blocks, block_len)).permute(0, 2, 1)
+        uf_reconstructed = torch.matmul(block_weights, block_rep.view(self.n_blocks, block_len)).permute(0, 2, 1)
 
         # fold back into expected image shape
         reconstructed = self.fold(uf_reconstructed)
 
         # Apply deblocking filter.
-        reconstructed = deblocking_filter(reconstructed, self.lut)
+        reconstructed = deblocking_filter(reconstructed, self.lut, self.quantize)
 
         return reconstructed
 
