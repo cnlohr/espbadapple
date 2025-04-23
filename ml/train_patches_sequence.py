@@ -11,6 +11,7 @@ import torch.nn as nn
 import torchvision.utils
 from ttools.modules.losses import LPIPS
 from video_data import VideoFrames, ContigChunkSampler
+from pyr_lk import PyramidalLK
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import math
@@ -392,6 +393,12 @@ class BlockTrainer:
         # Weighting factor for the tile-change regularization
         self.change_lambda = 0.01
 
+        # Lukas-Kanade optical flow evaluator
+        self.lk_evaluator = PyramidalLK(window_size=9, max_levels=None).to(device)
+
+        # Weighting factor for LK flow loss
+        self.flow_lambda = 0.04
+
         os.makedirs(self.out_data_dir, exist_ok=False)
         os.makedirs(self.out_blocks_dir, exist_ok=False)
         os.makedirs(self.out_img_dir, exist_ok=False)
@@ -406,6 +413,15 @@ class BlockTrainer:
             idxs = [self.dataset[frame_n][1]]
             recr_frame = self.recr(idxs)
             torchvision.utils.save_image(recr_frame, out_path)
+
+    def flow_loss(self, recr_a, recr_b, tgt_a, tgt_b):
+        """
+        Loss function that aims to match the Lukas-Kanade optical flow from recr_a -> recr_b to match tgt_a -> tgt_b.
+        """
+        flow_recr = self.lk_evaluator(recr_a, recr_b)
+        flow_tgt = self.lk_evaluator(tgt_a, tgt_b)
+
+        return torch.mean(torch.square(flow_recr - flow_tgt))
 
     def train(self):
         self.recr.eval()
@@ -428,6 +444,7 @@ class BlockTrainer:
             epoch_loss = 0.0
             epoch_loss_percep = 0.0
             epoch_loss_change = 0.0
+            epoch_loss_flow = 0.0
 
             epoch_n = 0
 
@@ -449,7 +466,12 @@ class BlockTrainer:
                 loss_percep = self.perceptual_loss(rcd_us, tgt_us)
                 loss_change = self.recr.tile_f2f_penalty(idx)
 
-                loss = loss_percep + self.change_lambda * loss_change
+                # Frame-to-frame optical flow loss
+                # Leverages contiguous frames in batch dim from ContigChunkSampler
+                loss_flow = self.flow_loss(reconstructed_img[:-1, ...], reconstructed_img[1:, ...],
+                                           target_img[:-1, ...], reconstructed_img[1:, ...])
+
+                loss = loss_percep + self.change_lambda * loss_change + self.flow_lambda * loss_flow
 
                 loss.backward()
 
@@ -461,15 +483,17 @@ class BlockTrainer:
                 epoch_loss += loss.item()
                 epoch_loss_percep += loss_percep.item()
                 epoch_loss_change += loss_change.item()
+                epoch_loss_flow += loss_flow.item()
 
                 epoch_n += 1
 
                 if epoch < 3:
-                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
+                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f flow %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item(), loss_flow.item()))
 
             epoch_loss /= epoch_n
             epoch_loss_percep /= epoch_n
             epoch_loss_change /= epoch_n
+            epoch_loss_flow /= epoch_n
 
             self.recr.eval()
 
@@ -485,7 +509,7 @@ class BlockTrainer:
 
             self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
 
-            print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
+            print("Epoch %d: loss %f (percep %f change %f flow %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change, epoch_loss_flow))
 
 
 def main():
