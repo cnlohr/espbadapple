@@ -9,6 +9,17 @@ You may need to...
 pip3 install numpy==1.23.0
 ```
 
+## Venv option
+
+From the `ml` folder you can:
+
+```
+python3 -m venv env
+source env/bin/activate
+pip3 install torch-tools torch opencv-python torchvision ttools numpy
+```
+
+
 To setup:
 ```
 cp ../comp2/tiles-64x48x8.dat kmeans_ni_mse.dat

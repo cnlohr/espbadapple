@@ -32,7 +32,7 @@ dataset.load_data("Touhou - Bad Apple.mp4")
 
 # Load reconstruction
 print("Load reconstruction...")
-recr = ImageReconstruction(n_sequence=len(dataset))
+recr = ImageReconstruction(n_sequence=len(dataset), quantize=True)
 recr.init_blocks_tiledata(blocks_path)
 recr.init_sequence(stream_path)
 recr.to(device)

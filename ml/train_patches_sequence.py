@@ -11,6 +11,7 @@ import torch.nn as nn
 import torchvision.utils
 from ttools.modules.losses import LPIPS
 from video_data import VideoFrames, ContigChunkSampler
+from pyr_lk import PyramidalLK
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import math
@@ -26,18 +27,93 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import torch
 
-def soft_clamp(x, min, max, hardness=10.0):
+def trilinear_interp(lut: torch.Tensor, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
     """
-    Like torch.clamp, but with soft edges (using softplus)
-    Increase hardness for sharper corners.
+    LUT: (Dx, Dy, Dz)
+    x, y, z: same shape S, floats in [0, D?-1]
+    returns v: shape S
     """
-    return min + F.softplus(x - min, beta=hardness) - F.softplus(x - max, beta=hardness)
+    Dx, Dy, Dz = lut.shape
+
+    # neighbor indices
+    x0 = x.floor().long().clamp(0, Dx - 2)
+    y0 = y.floor().long().clamp(0, Dy - 2)
+    z0 = z.floor().long().clamp(0, Dz - 2)
+    x1 = (x0 + 1).clamp(0, Dx - 1)
+    y1 = (y0 + 1).clamp(0, Dy - 1)
+    z1 = (z0 + 1).clamp(0, Dz - 1)
+
+    # interp weights
+    xd = x - x0.float()
+    yd = y - y0.float()
+    zd = z - z0.float()
+
+    # cube corner values
+    c000 = lut[x0, y0, z0]
+    c100 = lut[x1, y0, z0]
+    c010 = lut[x0, y1, z0]
+    c110 = lut[x1, y1, z0]
+    c001 = lut[x0, y0, z1]
+    c101 = lut[x1, y0, z1]
+    c011 = lut[x0, y1, z1]
+    c111 = lut[x1, y1, z1]
+
+    # interpolate in xy planes at z0 and z1
+    c00 = c000 * (1 - xd) * (1 - yd) \
+        + c100 * xd       * (1 - yd) \
+        + c010 * (1 - xd) * yd       \
+        + c110 * xd       * yd
+
+    c01 = c001 * (1 - xd) * (1 - yd) \
+        + c101 * xd       * (1 - yd) \
+        + c011 * (1 - xd) * yd       \
+        + c111 * xd       * yd
+
+    # final interp along z
+    v = c00 * (1 - zd) + c01 * zd
+
+    return v
+
+def gen_deblocking_lut():
+    # 3D LUT for deblocking op
+    # The actual math on the microcontroller is integer and bitwise ops that are hostile to gradients
+    # Here we make a LUT of the operation, which is exact for integer input and can be interpolated for valid gradients
+    # Addressing: (center, left, right) -> (output)
+    lut = torch.zeros((3, 3, 3), dtype=torch.float32, device=device)
+    lut[0, 0, 0] = 0.0
+    lut[1, 0, 0] = 0.0
+    lut[2, 0, 0] = 1.0
+    lut[0, 0, 1] = 0.0
+    lut[1, 0, 1] = 1.0
+    lut[2, 0, 1] = 2.0
+    lut[0, 0, 2] = 1.0
+    lut[1, 0, 2] = 1.0
+    lut[2, 0, 2] = 2.0
+    lut[0, 1, 0] = 0.0
+    lut[1, 1, 0] = 1.0
+    lut[2, 1, 0] = 2.0
+    lut[0, 1, 1] = 1.0
+    lut[1, 1, 1] = 1.0
+    lut[2, 1, 1] = 2.0
+    lut[0, 1, 2] = 1.0
+    lut[1, 1, 2] = 2.0
+    lut[2, 1, 2] = 2.0
+    lut[0, 2, 0] = 1.0
+    lut[1, 2, 0] = 1.0
+    lut[2, 2, 0] = 2.0
+    lut[0, 2, 1] = 1.0
+    lut[1, 2, 1] = 2.0
+    lut[2, 2, 1] = 2.0
+    lut[0, 2, 2] = 1.0
+    lut[1, 2, 2] = 2.0
+    lut[2, 2, 2] = 2.0
+
+    return lut
 
 
-def deblocking_filter(img_raw):
+def deblocking_filter(img_raw, lut, quantize=False):
     """
-    Runs Charles' custom deblocking filter on inputs.
-    This math is floating point with a clamp, but otherwise performs a similar operation.
+    Runs Charles' custom deblocking filter on inputs, optionally with quantization.
     """
 
     # Range scaling to [0..2]
@@ -48,37 +124,37 @@ def deblocking_filter(img_raw):
     # Create 1D masks for input coordinates, marking where the block filter would apply
     x_indices = torch.arange(W, device=img.device)
     y_indices = torch.arange(H, device=img.device)
-    mask_x = ((x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))).to(img.dtype)
-    mask_y = ((y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))).to(img.dtype)
+    mask_x = (x_indices % block_size[1] == 0) | (x_indices % block_size[1] == (block_size[1] - 1))
+    mask_y = (y_indices % block_size[0] == 0) | (y_indices % block_size[0] == (block_size[0] - 1))
 
     # Reshape for broadcasting
     mask_x = mask_x.view(1, 1, 1, W)
     mask_y = mask_y.view(1, 1, H, 1)
 
-    # Number of samples considered per pixel
-    qty = .9 * mask_x + .9 * mask_y  # shape (B, 1, H, W)
-
-    # Pad with replication (equivalent to clamps in c pixel-sampling function)
-    padded = F.pad(img, (1, 1, 1, 1), mode='replicate')
-
-    # Extract the center region (same as input) and neighbors
+    # left/right filter is evaluated first
+    padded = F.pad(img, (1, 1, 1, 1), mode='replicate')  # Pad w/ replication to match c impl
     center = padded[:, :, 1:-1, 1:-1]
     left = padded[:, :, 1:-1, :-2]
     right = padded[:, :, 1:-1, 2:]
-    up = padded[:, :, :-2, 1:-1]
-    down = padded[:, :, 2:, 1:-1]
+    filtered = torch.where(mask_x, trilinear_interp(lut, center, left, right), center)
 
-    # eval transform
-    filtered = center + (left + right ) / 2 * mask_x + (up + down ) / 2 * mask_y - qty
-    filtered = soft_clamp(filtered, min=0, max=2)
+    if quantize:
+        filtered = filtered + (torch.round(filtered) - filtered).detach()
 
-    # Pass through non-filtered pixels as-is
-    result = torch.where(qty == 1, center, filtered)
+    # up/down filter is evaluated second
+    padded2 = F.pad(filtered, (1, 1, 1, 1), mode='replicate')
+    center2 = padded2[:, :, 1:-1, 1:-1]
+    up = padded2[:, :, 1:-1, :-2]
+    down = padded2[:, :, 1:-1, 2:]
+    filtered2 = torch.where(mask_y, trilinear_interp(lut, center, up, down), center2)
+
+    if quantize:
+        filtered2 = filtered2 + (torch.round(filtered2) - filtered2).detach()
 
     # Undo scaling
-    result /= 2
+    filtered2 /= 2
 
-    return result
+    return filtered2
 
 
 class TileMSEMatcher(nn.Module):
@@ -100,7 +176,7 @@ class TileMSEMatcher(nn.Module):
 
 
 class ImageReconstruction(nn.Module):
-    def __init__(self, n_sequence):
+    def __init__(self, n_sequence, quantize=False):
         super().__init__()
         self.n_blocks = nblocks
         self.n_sequence = n_sequence
@@ -119,6 +195,16 @@ class ImageReconstruction(nn.Module):
         # Note this parameter will be large
         self.sequence = None
         self.train_sequence = True
+
+        # Lookup table for deblocking filter
+        self.lut = gen_deblocking_lut()
+
+        # Gumbel-Softmax temperature. Note this term is annealed by the training loop
+        self.gs_tau = 1.0
+
+        # Quantization (matching hardware's three gray levels)
+        self.quantize = quantize
+
 
     def init_blocks_tiledata(self, tiles_path):
         tiles = np.fromfile(tiles_path, dtype=np.float32)
@@ -188,13 +274,16 @@ class ImageReconstruction(nn.Module):
         logprob_a = F.log_softmax(self.sequence[frame_idxs, ...], dim=-1)
         logprob_b = F.log_softmax(self.sequence[frame_idxs_b, ...], dim=-1)
 
-        # symmetrized kl divergence
-        kl_div_elementwise_1 = F.kl_div(logprob_a, logprob_b, reduction='none', log_target=True)
-        kl_div_elementwise_2 = F.kl_div(logprob_b, logprob_a, reduction='none', log_target=True)
-        kl_div_elementwise = ( kl_div_elementwise_1 + kl_div_elementwise_2 ) / 2
-        kl_div = kl_div_elementwise.sum(-1)  # Sum over categorical dim to yield per-frame/per-tile KL divergence
+        # Pick the highest probability class between the two - this is the class to match
+        max_logprob = torch.maximum(logprob_a, logprob_b)
+        max_idx = max_logprob.argmax(dim=-1, keepdim=True)
 
-        return kl_div.mean()
+        # negative log-prob of A and B at selected index
+        nll_ab = -logprob_b.gather(dim=-1, index=max_idx).squeeze(-1)
+        nll_ba = -logprob_a.gather(dim=-1, index=max_idx).squeeze(-1)
+
+        per_tile_loss = (nll_ab + nll_ba) * 0.5
+        return per_tile_loss.mean()
 
     def forward(self, frame_idxs):
         """
@@ -205,11 +294,18 @@ class ImageReconstruction(nn.Module):
         """
         block_len = math.prod(block_size)
 
+        if self.quantize:
+            # quantize to [0, 1, 2] but preserve gradients
+            block_rep = self.blocks + (torch.round(2 * self.blocks) / 2 - self.blocks).detach()
+        else:
+            # straight through
+            block_rep = self.blocks
+
         # Pluck out selected block weights (one hot per image tile)
         if self.training and self.train_sequence:
             # Use the gumbel-softmax trick to sample our tiles
             block_weights = F.gumbel_softmax(logits=self.sequence[frame_idxs, ...],
-                                             tau=1.0,  # TODO tune me
+                                             tau=self.gs_tau,
                                              hard=False)
         else:
             # Use argmax
@@ -218,13 +314,13 @@ class ImageReconstruction(nn.Module):
                                       ).float()
 
         # recreate (unfolded) target image from stored sequence
-        uf_reconstructed = torch.matmul(block_weights, self.blocks.view(self.n_blocks, block_len)).permute(0, 2, 1)
+        uf_reconstructed = torch.matmul(block_weights, block_rep.view(self.n_blocks, block_len)).permute(0, 2, 1)
 
         # fold back into expected image shape
         reconstructed = self.fold(uf_reconstructed)
 
         # Apply deblocking filter.
-        reconstructed = deblocking_filter(reconstructed)
+        reconstructed = deblocking_filter(reconstructed, self.lut, self.quantize)
 
         return reconstructed
 
@@ -260,14 +356,10 @@ class BlockTrainer:
 
         self.recr = ImageReconstruction(n_sequence=len(self.dataset))
 
-        #self.recr.init_blocks_tiledata("start_20250223/tiles-64x48x8.dat")
-        #self.recr.init_sequence("start_20250223/stream_stripped.dat")
-
         self.recr.init_blocks_tiledata("kmeans_256_ni_mse.dat")
         # self.recr.init_sequence("stream-kmeans_256_ni.dat")
 
         self.recr.to(device)
-
         self.recr.init_sequence_matching(self.dataset)
 
         # sampe contiguous chunks with random offset
@@ -301,6 +393,12 @@ class BlockTrainer:
         # Weighting factor for the tile-change regularization
         self.change_lambda = 0.01
 
+        # Lukas-Kanade optical flow evaluator
+        self.lk_evaluator = PyramidalLK(window_size=9, max_levels=None).to(device)
+
+        # Weighting factor for LK flow loss
+        self.flow_lambda = 0.04
+
         os.makedirs(self.out_data_dir, exist_ok=False)
         os.makedirs(self.out_blocks_dir, exist_ok=False)
         os.makedirs(self.out_img_dir, exist_ok=False)
@@ -316,6 +414,15 @@ class BlockTrainer:
             recr_frame = self.recr(idxs)
             torchvision.utils.save_image(recr_frame, out_path)
 
+    def flow_loss(self, recr_a, recr_b, tgt_a, tgt_b):
+        """
+        Loss function that aims to match the Lukas-Kanade optical flow from recr_a -> recr_b to match tgt_a -> tgt_b.
+        """
+        flow_recr = self.lk_evaluator(recr_a, recr_b)
+        flow_tgt = self.lk_evaluator(tgt_a, tgt_b)
+
+        return torch.mean(torch.square(flow_recr - flow_tgt))
+
     def train(self):
         self.recr.eval()
         self.recr.dump_grid(os.path.join(self.out_blocks_dir, "000000_init_blocks.png"))
@@ -326,7 +433,10 @@ class BlockTrainer:
         self.recr.train_sequence = True
         self.recr.sequence.requires_grad = True
 
-        best_loss = 1e9
+        # gumbel-softmax temperature annealing - value updates once per epoch (aka once per pass thru video)
+        gs_tau_scale = 1.0
+        gs_tau_min = 0.1
+        gs_tau_anneal_rate = 1e-2
 
         for epoch in range(1000000):
             self.recr.train()
@@ -334,10 +444,14 @@ class BlockTrainer:
             epoch_loss = 0.0
             epoch_loss_percep = 0.0
             epoch_loss_change = 0.0
+            epoch_loss_flow = 0.0
 
             epoch_n = 0
 
             self.sampler.set_epoch(epoch)  # update sampler offset and shuffle
+
+            # anneal gumbel-softmax temperature
+            self.recr.gs_tau = max(gs_tau_min, gs_tau_scale * np.exp(-gs_tau_anneal_rate * epoch))
 
             for batch_n, (target_img, idx) in enumerate(self.data_loader, start=0):
 
@@ -352,7 +466,12 @@ class BlockTrainer:
                 loss_percep = self.perceptual_loss(rcd_us, tgt_us)
                 loss_change = self.recr.tile_f2f_penalty(idx)
 
-                loss = loss_percep + self.change_lambda * loss_change
+                # Frame-to-frame optical flow loss
+                # Leverages contiguous frames in batch dim from ContigChunkSampler
+                loss_flow = self.flow_loss(reconstructed_img[:-1, ...], reconstructed_img[1:, ...],
+                                           target_img[:-1, ...], reconstructed_img[1:, ...])
+
+                loss = loss_percep + self.change_lambda * loss_change + self.flow_lambda * loss_flow
 
                 loss.backward()
 
@@ -364,34 +483,33 @@ class BlockTrainer:
                 epoch_loss += loss.item()
                 epoch_loss_percep += loss_percep.item()
                 epoch_loss_change += loss_change.item()
+                epoch_loss_flow += loss_flow.item()
 
                 epoch_n += 1
 
                 if epoch < 3:
-                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item()))
+                    print("Epoch %d Batch %03d: frames (%04d - %04d), Loss %f (percep %f choice %f flow %f)" % (epoch, batch_n, min(idx), max(idx), loss.item(), loss_percep.item(), loss_change.item(), loss_flow.item()))
 
             epoch_loss /= epoch_n
             epoch_loss_percep /= epoch_n
             epoch_loss_change /= epoch_n
+            epoch_loss_flow /= epoch_n
 
-            if epoch_loss < best_loss:
-                self.recr.eval()
+            self.recr.eval()
 
-                # write binary video data
-                self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
-                self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            # write binary video data
+            self.recr.dump_blocks(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_blocks.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
+            self.recr.dump_sequence(os.path.join(self.out_data_dir, "%05d_%0.06f_p%0.06f_c%0.06f_stream.dat" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change)))
 
-                # write visualization for humans
-                self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
+            # write visualization for humans
+            self.recr.dump_grid(os.path.join(self.out_blocks_dir, "%05d_%0.06f_blocks.png" % (epoch, epoch_loss)))
 
-                for vi, vd in zip(self.viz_frames, self.viz_dirs):
-                    self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
+            for vi, vd in zip(self.viz_frames, self.viz_dirs):
+                self.dump_reconstructed_frame(os.path.join(vd, "%04d_%0.06f_img_%04d.png" % (epoch, epoch_loss, vi)), vi)
 
-                self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
+            self.recr.dump_probs_img(os.path.join(self.out_probs_dir, "%04d_%0.06f_probs.png" % (epoch, epoch_loss)))
 
-                best_loss = epoch_loss
-
-            print("Epoch %d: loss %f (percep %f change %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change))
+            print("Epoch %d: loss %f (percep %f change %f flow %f)" % (epoch, epoch_loss, epoch_loss_percep, epoch_loss_change, epoch_loss_flow))
 
 
 def main():

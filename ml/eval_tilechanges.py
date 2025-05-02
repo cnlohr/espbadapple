@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from video_data import VideoFrames
-from train_patches_sequence import deblocking_filter
+from train_patches_sequence import deblocking_filter, gen_deblocking_lut
 from ttools.modules.losses import LPIPS
 from blocksettings import *
 import tqdm
@@ -72,6 +72,9 @@ class SkipEvaluator:
         self.tiles = np.fromfile(blocks_path, dtype=np.float32)
         self.tiles = self.tiles.reshape(-1, block_size[0], block_size[1])
 
+        # quantize tiles to three gray levels [0, 0.5, 1]
+        self.tiles = np.round(2 * self.tiles) / 2
+
         # Load the base sequence as cpu integers from file
         self.base_sequence = np.fromfile(stream_path, dtype=np.int32)
         self.base_sequence = self.base_sequence.reshape(-1, self.tiles_per_img)
@@ -83,6 +86,9 @@ class SkipEvaluator:
         # per-frame per-tile semantic loss delta due to a given tile being swapped out
         self.change_early_ld = np.zeros((len(self.dataset), self.tiles_per_img))
         self.change_late_ld = np.zeros((len(self.dataset), self.tiles_per_img))
+
+        # deblocking filter lut
+        self.lut = gen_deblocking_lut()
 
     def make_change_late_seq(self):
         held_idxs = self.base_sequence[0].copy()
@@ -159,8 +165,8 @@ class SkipEvaluator:
             imgs_early_t = torch.Tensor(imgs_early).to(device)
 
             # apply deblocking filter
-            imgs_late_t = deblocking_filter(imgs_late_t)
-            imgs_early_t = deblocking_filter(imgs_early_t)
+            imgs_late_t = deblocking_filter(imgs_late_t, self.lut, quantize=True)
+            imgs_early_t = deblocking_filter(imgs_early_t, self.lut, quantize=True)
 
             # resample
             tgt_us = nn.functional.interpolate(gt_frame, size=(192, 256), mode='nearest')
