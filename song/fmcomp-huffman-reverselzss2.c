@@ -1,3 +1,25 @@
+
+// TODO: NOTE:
+//   There are some serious optimizations that are possible even from here.
+//      1. Instead of outputting a 1 or a 0 bit for every symbol or reverse pull.
+//         This is tricky though, because, you would need to "cork" the output and
+//         rewrite it once you know the proper length.  When we tested it, it only
+//         saved about 10 bytes, so we decided it was not worth it.
+//
+//      2. There is a silly optimization, to save 8 bytes, we can always include
+//         the run length in the "how far to go back" this makes no sense and just
+//         happens to make things smaller.  It was pure happenstance.
+//
+// General format:
+//   Pull off a bit.
+//       If 1: Back reference.  Pull off a UE for Run Length, Pull off UE for Run Offset.
+//          Put a bookmark where you are, go back and keep pulling
+//       If 0: Emit the literal.
+//   Subtract 1 from the run length.
+//   If run length == 0, pop up a level.
+//   Go back to step 1.
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -10,18 +32,12 @@ const int MinRL = 2;
 #define OFFSET_MINIMUM 7
 #define MAX_BACK_DEPTH 18
 
+#define INCLUDE_RUN_LENGTH_IN_BACK_TRACK_OFFSET 1
+
 FILE * fData, *fD;
 
 // Combine run + note + length
 //#define SINGLETABLE
-
-// TODO: NOTE:
-//   There are some serious optimizations that are possible even from here.
-//      1. Instead of outputting a 1 or a 0 bit for every symbol or reverse pull.
-//         This is tricky though, because, you would need to "cork" the output and
-//         rewrite it once you know the proper length.  When we tested it, it only
-//         saved about 10 bytes, so we decided it was not worth it.
-
 
 // Combine run + note + length
 //#define SINGLETABLE
@@ -192,7 +208,8 @@ int DecodeMatch( int startbit, uint32_t * notes_to_match, int length_max_to_matc
 			if( runlen < 0 || offset < 0 ) return matchno;
 			//printf( "DEGOL %d %d BPIN: %d\n", runlen, offset, bp );
 			runlen = runlen + MinRL + 1;
-			offset = offset + OFFSET_MINIMUM + runlen;
+			offset = offset + OFFSET_MINIMUM;
+			offset += runlen*INCLUDE_RUN_LENGTH_IN_BACK_TRACK_OFFSET;
 			int bpjump = bpstart - offset;
 			// Check for end of sequence or if bp points to something in the past.
 			if( bpjump < 0 || bpjump >= bitcount-1 ) return matchno;
@@ -621,7 +638,9 @@ int main()
 			printf( "OUTPUT   CB @ bp =%5d bestrl=%3d bests=%3d ", bitcount, bestrl, bests );
 			EmitBit( 1 );
 			i += bestrl - 1;
-			int offset = startplace - bests - bestrl - OFFSET_MINIMUM;
+			int offset = startplace - bests - OFFSET_MINIMUM;
+			offset -= bestrl*INCLUDE_RUN_LENGTH_IN_BACK_TRACK_OFFSET;
+
 			if( offset < 0 )
 			{
 				fprintf( stderr, "Error: OFFSET_MINIMUM is too large (%d - %d - %d - %d = %d)\n", startplace, bests, bestrl, OFFSET_MINIMUM, offset );
