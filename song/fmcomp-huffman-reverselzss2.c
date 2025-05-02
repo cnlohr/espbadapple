@@ -77,6 +77,7 @@ void EmitBit( int ib )
 static inline int BitsForNumber( unsigned number )
 {
 	if( number == 0 ) return 0;
+	number++;
 #if (defined( __GNUC__ ) || defined( __clang__ ))
 	return 32 - __builtin_clz( number - 1 );
 #else
@@ -95,8 +96,9 @@ static inline int BitsForNumber( unsigned number )
 
 int EmitExpGolomb( int ib )
 {
+	ib++;
 	int bitsemit = 0;
-	int bits = (ib == 0) ? 1 : BitsForNumber( ib+2 );
+	int bits = (ib == 0) ? 1 : BitsForNumber( ib );
 	int i;
 	for( i = 1; i < bits; i++ )
 	{
@@ -106,7 +108,6 @@ int EmitExpGolomb( int ib )
 
 	if( bits )
 	{
-		ib++;
 		for( i = 0; i < bits; i++ )
 		{
 			EmitBit( ((ib)>>(bits-i-1)) & 1 );
